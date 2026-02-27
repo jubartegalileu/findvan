@@ -10,7 +10,7 @@ import {
   getDuplicates,
   mergeDuplicates,
   getStats,
-  clearLeads
+  clearLeads,
 } from '../../src/services/leads-service.js';
 
 // Test data
@@ -22,7 +22,7 @@ const mockLeads = [
     address: 'Av. Paulista, 1000',
     city: 'São Paulo',
     company_name: 'Van Escolar ABC',
-    is_valid: true
+    is_valid: true,
   },
   {
     name: 'Transporte Escolar XYZ',
@@ -31,7 +31,7 @@ const mockLeads = [
     address: 'Rua Augusta, 500',
     city: 'São Paulo',
     company_name: 'Transporte Escolar XYZ',
-    is_valid: true
+    is_valid: true,
   },
   {
     name: 'Van Particular SP',
@@ -40,7 +40,7 @@ const mockLeads = [
     address: 'R. Oscar Freire, 250',
     city: 'São Paulo',
     company_name: 'Van Particular SP',
-    is_valid: true
+    is_valid: true,
   },
   {
     name: 'Transporte Educacional ABC',
@@ -49,8 +49,8 @@ const mockLeads = [
     address: 'Rua Vergueiro, 450',
     city: 'Rio de Janeiro',
     company_name: 'Transporte Educacional ABC',
-    is_valid: true
-  }
+    is_valid: true,
+  },
 ];
 
 describe('LeadsService', () => {
@@ -121,8 +121,8 @@ describe('LeadsService', () => {
           name: 'Test',
           phone: '123', // Invalid: too short
           city: 'São Paulo',
-          is_valid: true
-        }
+          is_valid: true,
+        },
       ];
 
       const result = await insertLeads(invalidLeads, 'google_maps');
@@ -134,9 +134,9 @@ describe('LeadsService', () => {
     test('should require name and city', async () => {
       const invalidLeads = [
         {
-          phone: '11987654321'
+          phone: '11987654321',
           // Missing name and city
-        }
+        },
       ];
 
       const result = await insertLeads(invalidLeads, 'google_maps');
@@ -150,7 +150,7 @@ describe('LeadsService', () => {
         name: `Company ${i}`,
         phone: `119876${String(i).padStart(5, '0')}`,
         city: 'São Paulo',
-        is_valid: true
+        is_valid: true,
       }));
 
       const result = await insertLeads(largeBatch, 'google_maps');
@@ -162,7 +162,7 @@ describe('LeadsService', () => {
     test('should return detailed error information', async () => {
       const mixedLeads = [
         { name: 'Valid', phone: '11987654321', city: 'SP', is_valid: true },
-        { name: 'Invalid', phone: '123', city: 'SP', is_valid: true }
+        { name: 'Invalid', phone: '123', city: 'SP', is_valid: true },
       ];
 
       const result = await insertLeads(mixedLeads, 'google_maps');

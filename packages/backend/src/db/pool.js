@@ -20,7 +20,7 @@ const pool = new Pool({
   min: parseInt(process.env.DB_POOL_MIN || '2', 10),
   max: parseInt(process.env.DB_POOL_MAX || '10', 10),
   idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT || '30000', 10),
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || '5000', 10),
   statement_cache_size: parseInt(process.env.DB_POOL_STATEMENT_CACHE_SIZE || '0', 10),
 });
 
@@ -68,7 +68,7 @@ export async function query(text, values) {
     console.error('Database query error:', {
       message: error.message,
       query: text.substring(0, 100),
-      code: error.code
+      code: error.code,
     });
     throw error;
   }
@@ -90,4 +90,5 @@ export async function closePool() {
   console.log('✓ Connection pool closed');
 }
 
+export { pool };
 export default pool;

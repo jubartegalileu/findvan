@@ -16,7 +16,7 @@ export async function insertLeads(leads, source) {
     inserted: 0,
     duplicate: 0,
     errors: 0,
-    details: []
+    details: [],
   };
 
   if (!Array.isArray(leads) || leads.length === 0) {
@@ -40,7 +40,7 @@ export async function insertLeads(leads, source) {
             results.errors++;
             results.details.push({
               phone: lead.phone,
-              error: 'Missing required fields (name, city)'
+              error: 'Missing required fields (name, city)',
             });
             continue;
           }
@@ -50,7 +50,7 @@ export async function insertLeads(leads, source) {
             results.errors++;
             results.details.push({
               phone: lead.phone,
-              error: 'Invalid phone format'
+              error: 'Invalid phone format',
             });
             continue;
           }
@@ -71,8 +71,8 @@ export async function insertLeads(leads, source) {
               lead.company_name || lead.name,
               lead.cnpj || null,
               lead.url || null,
-              lead.is_valid !== false
-            ]
+              lead.is_valid !== false,
+            ],
           );
 
           if (result.rows.length > 0) {
@@ -85,7 +85,7 @@ export async function insertLeads(leads, source) {
           results.errors++;
           results.details.push({
             phone: lead.phone,
-            error: error.message
+            error: error.message,
           });
         }
       }
@@ -128,7 +128,7 @@ export async function getLeadsByCity(city, page = 1, limit = 10) {
 
   const countResult = await query(
     'SELECT COUNT(*) as total FROM leads WHERE city = $1',
-    [city]
+    [city],
   );
   const total = parseInt(countResult.rows[0].total, 10);
   const pages = Math.ceil(total / limit);
@@ -139,7 +139,7 @@ export async function getLeadsByCity(city, page = 1, limit = 10) {
      WHERE city = $1
      ORDER BY created_at DESC
      LIMIT $2 OFFSET $3`,
-    [city, limit, offset]
+    [city, limit, offset],
   );
 
   return {
@@ -147,7 +147,7 @@ export async function getLeadsByCity(city, page = 1, limit = 10) {
     total,
     page,
     pages,
-    limit
+    limit,
   };
 }
 
@@ -158,8 +158,8 @@ export async function getLeadsByCity(city, page = 1, limit = 10) {
  */
 export async function getLeadByPhone(phone) {
   const result = await query(
-    `SELECT * FROM leads WHERE phone = $1 LIMIT 1`,
-    [phone]
+    'SELECT * FROM leads WHERE phone = $1 LIMIT 1',
+    [phone],
   );
 
   return result.rows[0] || null;
@@ -178,7 +178,7 @@ export async function getLeadsBySource(source, limit = 100) {
      WHERE source = $1
      ORDER BY created_at DESC
      LIMIT $2`,
-    [source, limit]
+    [source, limit],
   );
 
   return result.rows;
@@ -221,7 +221,7 @@ export async function getValidLeads(city = null, page = 1, limit = 10) {
     page,
     pages,
     limit,
-    is_valid: true
+    is_valid: true,
   };
 }
 
@@ -243,7 +243,7 @@ export async function getDuplicates() {
      GROUP BY phone
      HAVING COUNT(*) > 1
      ORDER BY count DESC`,
-    []
+    [],
   );
 
   return result.rows.map(row => ({
@@ -253,8 +253,8 @@ export async function getDuplicates() {
       id,
       name: row.names[idx],
       source: row.sources[idx],
-      created_at: row.created_ats[idx]
-    }))
+      created_at: row.created_ats[idx],
+    })),
   }));
 }
 
@@ -273,7 +273,7 @@ export async function mergeDuplicates(phone, keepId) {
     // Get all records with this phone
     const allRecords = await client.query(
       'SELECT id, source, name, email, address, company_name, cnpj, url FROM leads WHERE phone = $1 ORDER BY created_at DESC',
-      [phone]
+      [phone],
     );
 
     if (allRecords.rows.length <= 1) {
@@ -307,13 +307,13 @@ export async function mergeDuplicates(phone, keepId) {
       `UPDATE leads
        SET email = $1, address = $2, company_name = $3, cnpj = $4, url = $5, is_duplicate = FALSE
        WHERE id = $6`,
-      [mergedData.email, mergedData.address, mergedData.company_name, mergedData.cnpj, mergedData.url, keepId]
+      [mergedData.email, mergedData.address, mergedData.company_name, mergedData.cnpj, mergedData.url, keepId],
     );
 
     // Delete other records
     const deleteResult = await client.query(
       'DELETE FROM leads WHERE phone = $1 AND id != $2',
-      [phone, keepId]
+      [phone, keepId],
     );
 
     const deletedCount = deleteResult.rowCount;
@@ -322,7 +322,7 @@ export async function mergeDuplicates(phone, keepId) {
 
     return {
       merged: 1,
-      deleted: deletedCount
+      deleted: deletedCount,
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -346,7 +346,7 @@ export async function getStats() {
       COUNT(CASE WHEN is_duplicate THEN 1 END) as duplicate_leads,
       COUNT(DISTINCT phone) as unique_phones
      FROM leads`,
-    []
+    [],
   );
 
   const row = result.rows[0];
@@ -356,7 +356,7 @@ export async function getStats() {
     cities: parseInt(row.cities, 10),
     valid_leads: parseInt(row.valid_leads, 10),
     duplicate_leads: parseInt(row.duplicate_leads, 10),
-    unique_phones: parseInt(row.unique_phones, 10)
+    unique_phones: parseInt(row.unique_phones, 10),
   };
 }
 

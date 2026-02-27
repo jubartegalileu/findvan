@@ -4,13 +4,13 @@ import { query, closePool } from '../../src/db/pool.js';
 import {
   insertLeads,
   getLeadsByCity,
-  getLeadsByPhone,
+  getLeadByPhone,
   getLeadsBySource,
   getValidLeads,
   getDuplicates,
   mergeDuplicates,
   getStats,
-  clearLeads
+  clearLeads,
 } from '../../src/services/leads-service.js';
 
 // Simulated data from Module 1 Scraper
@@ -29,7 +29,7 @@ const scrapedLeads = [
     captured_at: '2026-02-27T04:00:36.736Z',
     is_valid: true,
     is_duplicate: false,
-    validation_errors: []
+    validation_errors: [],
   },
   {
     id: 'gm_1772164836736_wyr8mk852',
@@ -45,7 +45,7 @@ const scrapedLeads = [
     captured_at: '2026-02-27T04:00:36.736Z',
     is_valid: true,
     is_duplicate: false,
-    validation_errors: []
+    validation_errors: [],
   },
   {
     id: 'gm_1772164836736_5fjc35dx7',
@@ -61,7 +61,7 @@ const scrapedLeads = [
     captured_at: '2026-02-27T04:00:36.736Z',
     is_valid: true,
     is_duplicate: false,
-    validation_errors: []
+    validation_errors: [],
   },
   {
     id: 'gm_1772164836737_hwamq3rzd',
@@ -77,7 +77,7 @@ const scrapedLeads = [
     captured_at: '2026-02-27T04:00:36.737Z',
     is_valid: true,
     is_duplicate: false,
-    validation_errors: []
+    validation_errors: [],
   },
   {
     id: 'gm_1772164836737_o2s7sirr7',
@@ -93,7 +93,7 @@ const scrapedLeads = [
     captured_at: '2026-02-27T04:00:36.737Z',
     is_valid: true,
     is_duplicate: true,
-    validation_errors: []
+    validation_errors: [],
   },
   {
     id: 'gm_1772164836737_eu0qjgmc8',
@@ -109,7 +109,7 @@ const scrapedLeads = [
     captured_at: '2026-02-27T04:00:36.737Z',
     is_valid: true,
     is_duplicate: true,
-    validation_errors: []
+    validation_errors: [],
   },
   {
     id: 'gm_1772164836737_8ixnurwjz',
@@ -125,7 +125,7 @@ const scrapedLeads = [
     captured_at: '2026-02-27T04:00:36.737Z',
     is_valid: true,
     is_duplicate: false,
-    validation_errors: []
+    validation_errors: [],
   },
   {
     id: 'gm_1772164836737_j763h3c53',
@@ -141,7 +141,7 @@ const scrapedLeads = [
     captured_at: '2026-02-27T04:00:36.737Z',
     is_valid: true,
     is_duplicate: false,
-    validation_errors: []
+    validation_errors: [],
   },
   {
     id: 'gm_1772164836737_5gymmasz3',
@@ -157,7 +157,7 @@ const scrapedLeads = [
     captured_at: '2026-02-27T04:00:36.737Z',
     is_valid: true,
     is_duplicate: false,
-    validation_errors: []
+    validation_errors: [],
   },
   {
     id: 'gm_1772164836737_sta13h692',
@@ -173,8 +173,8 @@ const scrapedLeads = [
     captured_at: '2026-02-27T04:00:36.737Z',
     is_valid: true,
     is_duplicate: false,
-    validation_errors: []
-  }
+    validation_errors: [],
+  },
 ];
 
 describe('Scraper → Database → Query Integration', () => {
@@ -324,7 +324,7 @@ describe('Scraper → Database → Query Integration', () => {
     const source2Leads = scrapedLeads.slice(3, 6).map(l => ({
       ...l,
       source: 'facebook',
-      phone: '55' + l.phone // Add area code to differentiate
+      phone: '55' + l.phone, // Add area code to differentiate
     }));
 
     await insertLeads(source1Leads, 'google_maps');

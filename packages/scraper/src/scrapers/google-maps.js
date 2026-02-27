@@ -12,7 +12,7 @@ import { defaultScraperConfig, browserConfig, navigationOptions } from '../confi
 
 // Add stealth plugin to avoid detection
 puppeteer.use(StealthPlugin());
-import { parseGoogleMapsHTML, filterValidLeads } from './parser.js';
+import { parseGoogleMapsHTML, filterValidLeads } from './parser-v2.js';
 import { normalizePhone, validateLead, cleanLead } from '../validators/lead-validator.js';
 import { deduplicateByPhone, countDuplicates } from '../validators/deduplicator.js';
 import { writeLeadsToJSON } from '../storage/json-writer.js';
@@ -27,7 +27,8 @@ async function scrapeGoogleMaps(options = {}) {
     city = 'São Paulo',
     keyword = 'transporte escolar',
     maxResults = 100,
-    delay = defaultScraperConfig.delay
+    delay = defaultScraperConfig.delay,
+    useMock = false // Use sample data instead of real Google Maps
   } = options;
 
   const startTime = new Date();
@@ -35,6 +36,7 @@ async function scrapeGoogleMaps(options = {}) {
     city,
     keyword,
     maxResults,
+    useMock,
     timestamp: startTime.toISOString()
   });
 
@@ -43,13 +45,32 @@ async function scrapeGoogleMaps(options = {}) {
   const leads = [];
 
   try {
-    // Launch browser
-    logger.info('📱 Launching Puppeteer browser');
-    browser = await puppeteer.launch(browserConfig);
-    page = await browser.newPage();
+    // Use mock data if requested
+    if (useMock) {
+      logger.info('🎭 Using mock data (sample Google Maps HTML)');
+      const fs = (await import('fs')).default;
+      const path = (await import('path')).default;
+      const { fileURLToPath } = await import('url');
 
-    // Set viewport for realistic interaction
-    await page.setViewport({ width: 1280, height: 720 });
+      const __dirname = path.dirname(fileURLToPath(import.meta.url));
+      const mockPath = path.join(__dirname, '../../data/google-maps-sample.html');
+
+      if (fs.existsSync(mockPath)) {
+        const mockHtml = fs.readFileSync(mockPath, 'utf-8');
+        const parsed = parseGoogleMapsHTML(mockHtml, city);
+        leads.push(...parsed);
+        logger.info(`✓ Loaded ${leads.length} mock leads from sample HTML`);
+      } else {
+        logger.warn(`Mock file not found: ${mockPath}`);
+      }
+    } else {
+      // Launch browser for real scraping
+      logger.info('📱 Launching Puppeteer browser');
+      browser = await puppeteer.launch(browserConfig);
+      page = await browser.newPage();
+
+      // Set viewport for realistic interaction
+      await page.setViewport({ width: 1280, height: 720 });
 
     // Set user agent to avoid detection
     await page.setUserAgent(

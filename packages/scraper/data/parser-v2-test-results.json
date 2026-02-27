@@ -1,15 +1,16 @@
 {
-  "metadata": {
-    "source": "google-maps",
-    "captured_at": "2026-02-27T04:00:36.738Z",
-    "total_leads": 10,
-    "unique_leads": 8,
-    "duplicate_leads": 2,
-    "file_version": "1.0"
+  "timestamp": "2026-02-27T03:59:29.490Z",
+  "stats": {
+    "total_extracted": 10,
+    "total_valid": 10,
+    "total_unique": 8,
+    "total_duplicates": 2,
+    "valid_rate": "100.0%",
+    "unique_rate": "80.0%"
   },
   "leads": [
     {
-      "id": "gm_1772164836736_meke9llsd",
+      "id": "gm_1772164769487_7hpm4knif",
       "source": "google_maps",
       "name": "Van Escolar ABC",
       "phone": "11987654321",
@@ -19,13 +20,13 @@
       "company_name": "Van Escolar ABC",
       "cnpj": null,
       "url": null,
-      "captured_at": "2026-02-27T04:00:36.736Z",
+      "captured_at": "2026-02-27T03:59:29.487Z",
       "is_valid": true,
       "is_duplicate": false,
       "validation_errors": []
     },
     {
-      "id": "gm_1772164836736_wyr8mk852",
+      "id": "gm_1772164769488_7qwxu5nvp",
       "source": "google_maps",
       "name": "Transporte Escolar XYZ",
       "phone": "11998765432",
@@ -35,13 +36,13 @@
       "company_name": "Transporte Escolar XYZ",
       "cnpj": null,
       "url": null,
-      "captured_at": "2026-02-27T04:00:36.736Z",
+      "captured_at": "2026-02-27T03:59:29.488Z",
       "is_valid": true,
       "is_duplicate": false,
       "validation_errors": []
     },
     {
-      "id": "gm_1772164836736_5fjc35dx7",
+      "id": "gm_1772164769488_bzh6yyup4",
       "source": "google_maps",
       "name": "Van Particular SP",
       "phone": "11987654999",
@@ -51,13 +52,13 @@
       "company_name": "Van Particular SP",
       "cnpj": null,
       "url": null,
-      "captured_at": "2026-02-27T04:00:36.736Z",
+      "captured_at": "2026-02-27T03:59:29.488Z",
       "is_valid": true,
       "is_duplicate": false,
       "validation_errors": []
     },
     {
-      "id": "gm_1772164836737_hwamq3rzd",
+      "id": "gm_1772164769488_y3qax6kvu",
       "source": "google_maps",
       "name": "Transporte Escolar 24h",
       "phone": "11987654444",
@@ -67,13 +68,13 @@
       "company_name": "Transporte Escolar 24h",
       "cnpj": null,
       "url": null,
-      "captured_at": "2026-02-27T04:00:36.737Z",
+      "captured_at": "2026-02-27T03:59:29.488Z",
       "is_valid": true,
       "is_duplicate": false,
       "validation_errors": []
     },
     {
-      "id": "gm_1772164836737_o2s7sirr7",
+      "id": "gm_1772164769489_q82asdjlj",
       "source": "google_maps",
       "name": "Van Escolar Premium",
       "phone": "11998765432",
@@ -83,13 +84,13 @@
       "company_name": "Van Escolar Premium",
       "cnpj": null,
       "url": null,
-      "captured_at": "2026-02-27T04:00:36.737Z",
+      "captured_at": "2026-02-27T03:59:29.489Z",
       "is_valid": true,
       "is_duplicate": true,
       "validation_errors": []
     },
     {
-      "id": "gm_1772164836737_eu0qjgmc8",
+      "id": "gm_1772164769489_g33xqvc94",
       "source": "google_maps",
       "name": "Transporte Educacional ABC",
       "phone": "11987654321",
@@ -99,13 +100,13 @@
       "company_name": "Transporte Educacional ABC",
       "cnpj": null,
       "url": null,
-      "captured_at": "2026-02-27T04:00:36.737Z",
+      "captured_at": "2026-02-27T03:59:29.489Z",
       "is_valid": true,
       "is_duplicate": true,
       "validation_errors": []
     },
     {
-      "id": "gm_1772164836737_8ixnurwjz",
+      "id": "gm_1772164769489_ehkvcequf",
       "source": "google_maps",
       "name": "Vans Escolares SP",
       "phone": "11999998888",
@@ -115,13 +116,13 @@
       "company_name": "Vans Escolares SP",
       "cnpj": null,
       "url": null,
-      "captured_at": "2026-02-27T04:00:36.737Z",
+      "captured_at": "2026-02-27T03:59:29.489Z",
       "is_valid": true,
       "is_duplicate": false,
       "validation_errors": []
     },
     {
-      "id": "gm_1772164836737_j763h3c53",
+      "id": "gm_1772164769489_oxwvmt8zx",
       "source": "google_maps",
       "name": "Transporte Escolar Seguro",
       "phone": "11987654555",
@@ -131,13 +132,13 @@
       "company_name": "Transporte Escolar Seguro",
       "cnpj": null,
       "url": null,
-      "captured_at": "2026-02-27T04:00:36.737Z",
+      "captured_at": "2026-02-27T03:59:29.489Z",
       "is_valid": true,
       "is_duplicate": false,
       "validation_errors": []
     },
     {
-      "id": "gm_1772164836737_5gymmasz3",
+      "id": "gm_1772164769489_4vft8hpxi",
       "source": "google_maps",
       "name": "Van Edu SP",
       "phone": "11987654888",
@@ -147,13 +148,13 @@
       "company_name": "Van Edu SP",
       "cnpj": null,
       "url": null,
-      "captured_at": "2026-02-27T04:00:36.737Z",
+      "captured_at": "2026-02-27T03:59:29.489Z",
       "is_valid": true,
       "is_duplicate": false,
       "validation_errors": []
     },
     {
-      "id": "gm_1772164836737_sta13h692",
+      "id": "gm_1772164769489_v2951mnvn",
       "source": "google_maps",
       "name": "Transporte Infantil ABC",
       "phone": "11999888777",
@@ -163,7 +164,7 @@
       "company_name": "Transporte Infantil ABC",
       "cnpj": null,
       "url": null,
-      "captured_at": "2026-02-27T04:00:36.737Z",
+      "captured_at": "2026-02-27T03:59:29.489Z",
       "is_valid": true,
       "is_duplicate": false,
       "validation_errors": []

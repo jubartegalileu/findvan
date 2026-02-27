@@ -1,0 +1,349 @@
+{
+  "project": {
+    "name": "Aplicativo OSINT + SDR para Prospecção Vans Escolares",
+    "version": "1.0.0",
+    "date": "2026-02-26",
+    "status": "Pronto para Implementação",
+    "analyst": "Atlas (Business Analyst)"
+  },
+
+  "product": {
+    "type": "SaaS Desktop",
+    "focus": "Gestão de Transporte Escolar + Geolocalização + WhatsApp",
+    "pricing": {
+      "van_escolar": {
+        "monthly": "R$ 50",
+        "annual": "R$ 600"
+      },
+      "micro_onibus": {
+        "monthly": "R$ 80",
+        "annual": "R$ 960"
+      }
+    },
+    "differentiators": [
+      "Facilidade de uso",
+      "Disparo WhatsApp por geolocalização",
+      "Micro CRM integrado",
+      "Controle de pagamento"
+    ]
+  },
+
+  "market": {
+    "tam_annual_brl": {
+      "conservative": "R$ 63M",
+      "moderate": "R$ 90.9M",
+      "optimistic": "R$ 109.2M"
+    },
+    "sam_phase1_annual": {
+      "revenue": "R$ 300K - R$ 1.2M",
+      "units": "500 - 1.250 assinantes",
+      "target_cities": 5
+    },
+    "leads_per_month": "5K - 9K",
+    "target_segment": "Autônomos (70%) + Pequenas Empresas (20%) + Micro-Ônibus (10%)"
+  },
+
+  "osint_strategy": {
+    "sources": [
+      {
+        "rank": 1,
+        "name": "Google Maps",
+        "priority": "CRÍTICA",
+        "volume_per_month": "2K - 4K",
+        "effort": "Médio",
+        "implementation_sprint": 1
+      },
+      {
+        "rank": 2,
+        "name": "Facebook Groups",
+        "priority": "CRÍTICA",
+        "volume_per_month": "1K - 2K",
+        "effort": "Médio",
+        "implementation_sprint": 2
+      },
+      {
+        "rank": 3,
+        "name": "CNPJ Lookup",
+        "priority": "CRÍTICA",
+        "volume_per_month": "1K - 2K",
+        "effort": "Baixo",
+        "implementation_sprint": 2
+      },
+      {
+        "rank": 4,
+        "name": "OLX + Marketplace",
+        "priority": "ALTA",
+        "volume_per_month": "0.5K - 1K",
+        "effort": "Baixo",
+        "implementation_sprint": 3
+      },
+      {
+        "rank": 5,
+        "name": "LinkedIn",
+        "priority": "ALTA",
+        "volume_per_month": "0.5K - 1K",
+        "effort": "Médio",
+        "implementation_sprint": 3
+      }
+    ],
+    "weekly_flow": {
+      "monday": "Google Maps (500-800 leads)",
+      "tuesday": "Facebook (300-500 leads)",
+      "wednesday": "CNPJ (200-400 leads)",
+      "thursday": "OLX (150-300 leads)",
+      "friday": "Google Dorking + LinkedIn (100-200 leads)",
+      "weekend": "Manual validation + Deduplication",
+      "weekly_total": "1.250 - 2.200 leads",
+      "monthly_total": "5K - 9K leads"
+    }
+  },
+
+  "tech_stack": {
+    "frontend": {
+      "framework": "Electron + React 18",
+      "styling": "TailwindCSS",
+      "language": "TypeScript",
+      "http_client": "Axios",
+      "router": "React Router",
+      "charts": "Chart.js"
+    },
+    "backend": {
+      "runtime": "Python 3.11",
+      "framework": "FastAPI",
+      "orm": "SQLAlchemy",
+      "validation": "Pydantic",
+      "migrations": "Alembic",
+      "task_queue": "Celery"
+    },
+    "scraper": {
+      "runtime": "Node.js 18",
+      "browser_automation": "Puppeteer",
+      "html_parser": "Cheerio",
+      "http_client": "Got"
+    },
+    "database": {
+      "primary": "PostgreSQL 15",
+      "cache_queue": "Redis 7"
+    },
+    "deployment": {
+      "local": "Docker + Docker Compose",
+      "cloud": "Railway"
+    }
+  },
+
+  "roadmap": {
+    "total_sprints": 5,
+    "total_weeks": "8-10",
+    "total_hours": "210-270",
+    "people": 2,
+    "hours_per_day_per_person": 5,
+    "sprints": [
+      {
+        "number": 1,
+        "duration_weeks": 2,
+        "hours": "40-50h",
+        "goal": "Setup + Google Maps Scraper",
+        "deliverable": "100+ leads em DB",
+        "status": "Scraper básico"
+      },
+      {
+        "number": 2,
+        "duration_weeks": 2,
+        "hours": "50-60h",
+        "goal": "Facebook + CNPJ + Deduplicação",
+        "deliverable": "5K-8K leads únicos",
+        "status": "Múltiplas fontes"
+      },
+      {
+        "number": 3,
+        "duration_weeks": 2,
+        "hours": "50-60h",
+        "goal": "Frontend Dashboard",
+        "deliverable": "Interface funcional",
+        "status": "Visualização completa"
+      },
+      {
+        "number": 4,
+        "duration_weeks": 2,
+        "hours": "40-50h",
+        "goal": "WhatsApp + Sistema Vendas",
+        "deliverable": "Chat + SDR workflow",
+        "status": "MVP Completo"
+      },
+      {
+        "number": 5,
+        "duration_weeks": 2,
+        "hours": "30-40h",
+        "goal": "Testes + Deploy + Docs",
+        "deliverable": "App pronta para uso",
+        "status": "Produção"
+      }
+    ]
+  },
+
+  "database_schema": {
+    "tables": [
+      {
+        "name": "users",
+        "columns": ["id", "email", "password_hash", "name", "created_at"]
+      },
+      {
+        "name": "leads",
+        "columns": ["id", "name", "phone", "email", "address", "city", "source", "company_name", "cnpj", "is_active", "is_validated", "created_at", "updated_at"]
+      },
+      {
+        "name": "conversations",
+        "columns": ["id", "lead_id", "status", "assigned_to", "notes", "last_contact", "created_at", "updated_at"]
+      },
+      {
+        "name": "messages",
+        "columns": ["id", "conversation_id", "author", "text", "status", "timestamp"]
+      },
+      {
+        "name": "scrape_jobs",
+        "columns": ["id", "source", "city", "keywords", "status", "result_count", "created_at", "completed_at"]
+      }
+    ]
+  },
+
+  "api_endpoints": {
+    "leads": [
+      "GET /api/leads",
+      "GET /api/leads/{id}",
+      "POST /api/leads",
+      "PUT /api/leads/{id}",
+      "DELETE /api/leads/{id}",
+      "GET /api/leads/export/csv"
+    ],
+    "scraper": [
+      "POST /api/scraper/run",
+      "GET /api/scraper/jobs",
+      "GET /api/scraper/jobs/{id}"
+    ],
+    "whatsapp_conversations": [
+      "GET /api/conversations",
+      "GET /api/conversations/{lead_id}",
+      "POST /api/conversations/{lead_id}/message",
+      "PUT /api/conversations/{lead_id}/status",
+      "GET /api/conversations/stats"
+    ],
+    "auth": [
+      "POST /api/auth/login",
+      "POST /api/auth/logout",
+      "GET /api/auth/me"
+    ]
+  },
+
+  "risks_and_mitigations": [
+    {
+      "risk": "Google Maps rate limiting",
+      "probability": "MÉDIA",
+      "impact": "Bloquear scraper",
+      "mitigation": "Proxy, delays, API oficial"
+    },
+    {
+      "risk": "Facebook API bloqueio",
+      "probability": "ALTA",
+      "impact": "Parar coleta",
+      "mitigation": "Manual 1x/mês ou Business API"
+    },
+    {
+      "risk": "Twilio sandbox limitado",
+      "probability": "CERTA",
+      "impact": "Testar com <5 pessoas",
+      "mitigation": "Migrar para WhatsApp Business API"
+    },
+    {
+      "risk": "Performance com muitos leads",
+      "probability": "MÉDIA",
+      "impact": "UI lenta",
+      "mitigation": "Virtual scrolling, índices, cache"
+    }
+  ],
+
+  "files_created": {
+    "documentation": [
+      "docs/ANALYSIS-OSINT-MVP-COMPLETE.md (Principal)",
+      "docs/FOLDER-STRUCTURE-CHECKLIST.md (Implementação)",
+      "PROJECT-SUMMARY.json (Este arquivo)"
+    ]
+  },
+
+  "next_steps": [
+    {
+      "week": 1,
+      "action": "Validação rápida",
+      "items": [
+        "Scraping manual 1 cidade",
+        "Pesquisa de dados (CNPJ, grupos Facebook)",
+        "Benchmarking concorrentes"
+      ]
+    },
+    {
+      "week": 2,
+      "action": "Setup técnico",
+      "items": [
+        "Criar repo GitHub",
+        "Setup Python + Node + PostgreSQL",
+        "Primeira commit"
+      ]
+    },
+    {
+      "week": "3-10",
+      "action": "Desenvolvimento (5 Sprints)",
+      "items": [
+        "Sprint 1: Scraper básico",
+        "Sprint 2: Múltiplas fontes",
+        "Sprint 3: Dashboard",
+        "Sprint 4: WhatsApp",
+        "Sprint 5: Deploy"
+      ]
+    }
+  ],
+
+  "cost_breakdown": {
+    "development": {
+      "hours": "210-270",
+      "cost_per_hour_brl": "Seu investimento",
+      "total": "Varia conforme custo/hora"
+    },
+    "infrastructure": {
+      "docker": "Grátis",
+      "postgresql": "Grátis",
+      "redis": "Grátis",
+      "railway_monthly": "R$ 0-100",
+      "twilio_monthly": "R$ 0-500 (sandbox grátis)",
+      "google_maps_api": "R$ 0-100 (free tier)"
+    },
+    "tools": {
+      "github": "Grátis",
+      "vscode": "Grátis",
+      "insomnia": "Grátis",
+      "total_monthly": "R$ 0-700"
+    }
+  },
+
+  "success_metrics": {
+    "phase1_target": {
+      "leads_collected": "5K-10K/mês",
+      "leads_contacted": "100-200/mês",
+      "conversion_rate": "5-10% (1-2 clientes)",
+      "mrr": "R$ 600-1.200 (1-2 assinantes)"
+    },
+    "phase2_target": {
+      "leads_collected": "10K-20K/mês",
+      "conversion_rate": "10-15%",
+      "customers": "10-30",
+      "mrr": "R$ 6K-18K"
+    }
+  },
+
+  "documentation_files": {
+    "ANALYSIS-OSINT-MVP-COMPLETE.md": "Análise completa: mercado, OSINT, stack, roadmap",
+    "FOLDER-STRUCTURE-CHECKLIST.md": "Estrutura de pastas + checklist detalhado por sprint",
+    "PROJECT-SUMMARY.json": "Este arquivo (referência rápida)"
+  },
+
+  "ready_to_start": true,
+  "last_updated": "2026-02-26"
+}

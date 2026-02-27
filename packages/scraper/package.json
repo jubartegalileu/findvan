@@ -1,0 +1,35 @@
+{
+  "name": "@findvan/scraper",
+  "version": "1.0.0",
+  "description": "OSINT Scraper for lead generation (Google Maps, Facebook, CNPJ, OLX, LinkedIn)",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "scraper:google-maps": "node src/scrapers/google-maps.js",
+    "scraper:facebook": "node src/scrapers/facebook.js",
+    "scraper:cnpj": "node src/scrapers/cnpj-lookup.js",
+    "scraper:olx": "node src/scrapers/olx.js",
+    "scraper:linkedin": "node src/scrapers/linkedin.js",
+    "test": "node --test tests/**/*.test.js",
+    "lint": "eslint src/ tests/",
+    "build": "echo 'No build needed for Node scraper'",
+    "typecheck": "echo 'TypeScript not configured for scraper'"
+  },
+  "dependencies": {
+    "puppeteer": "^21.6.1",
+    "cheerio": "^1.0.0-rc.12",
+    "got": "^13.0.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.4.5",
+    "winston": "^3.11.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.55.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

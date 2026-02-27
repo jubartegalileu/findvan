@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # ============================================================
+  # PostgreSQL Database (Module 2)
+  # ============================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: findvan-postgres
+    environment:
+      POSTGRES_USER: findvan
+      POSTGRES_PASSWORD: findvan_password
+      POSTGRES_DB: findvan_db
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=pt_BR.UTF-8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U findvan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - findvan-net
+
+  # ============================================================
+  # Redis Cache & Queue (Celery tasks)
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: findvan-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - findvan-net
+
+  # ============================================================
+  # PgAdmin (Database Management GUI - Optional)
+  # ============================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: findvan-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@findvan.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - findvan-net
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  findvan-net:
+    driver: bridge
+
+# ============================================================
+# Usage
+# ============================================================
+# Start services:   docker-compose up -d
+# Stop services:    docker-compose down
+# View logs:        docker-compose logs -f
+# Restart:          docker-compose restart

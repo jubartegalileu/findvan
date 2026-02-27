@@ -13,18 +13,22 @@
     "scraper:olx": "node src/scrapers/olx.js",
     "scraper:linkedin": "node src/scrapers/linkedin.js",
     "test": "node --test tests/**/*.test.js",
+    "test:scraper": "node scripts/test-scraper.js",
+    "validate:leads": "node scripts/validate-leads.js",
     "lint": "eslint src/ tests/",
     "build": "echo 'No build needed for Node scraper'",
     "typecheck": "echo 'TypeScript not configured for scraper'"
   },
   "dependencies": {
-    "puppeteer": "^21.6.1",
-    "cheerio": "^1.0.0-rc.12",
-    "got": "^13.0.0",
     "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
     "dotenv": "^16.4.5",
-    "winston": "^3.11.0",
-    "uuid": "^9.0.0"
+    "got": "^13.0.0",
+    "puppeteer": "^21.6.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "uuid": "^9.0.0",
+    "winston": "^3.11.0"
   },
   "devDependencies": {
     "eslint": "^8.55.0"

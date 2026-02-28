@@ -249,25 +249,49 @@ def post_batch_campaign(payload: BatchCampaignRequest):
 def post_batch_delete(payload: BatchIdsRequest):
     if not payload.ids:
         raise HTTPException(status_code=400, detail="Nenhum lead selecionado.")
-    result = batch_soft_delete(payload.ids)
-    return {"status": "ok", **result}
+    unique_ids = sorted({lead_id for lead_id in payload.ids})
+    existing_ids = {int(lead.get("id")) for lead in get_leads_by_ids(unique_ids)}
+    missing_ids = [lead_id for lead_id in unique_ids if lead_id not in existing_ids]
+    result = batch_soft_delete(unique_ids)
+    deleted = int(result.get("deleted", 0))
+    processed = len(unique_ids)
+    return {
+        "status": "ok",
+        "processed": processed,
+        "deleted": deleted,
+        "failed": max(processed - deleted, 0),
+        "errors": [{"id": lead_id, "error": "Lead not found"} for lead_id in missing_ids],
+    }
 
 
 @router.post("/batch/export")
 def post_batch_export(payload: BatchIdsRequest):
     if not payload.ids:
         raise HTTPException(status_code=400, detail="Nenhum lead selecionado.")
-    leads = get_leads_by_ids(payload.ids)
-    return {"status": "ok", "leads": leads}
+    unique_ids = sorted({lead_id for lead_id in payload.ids})
+    leads = get_leads_by_ids(unique_ids)
+    exported_ids = {int(lead.get("id")) for lead in leads}
+    missing_ids = [lead_id for lead_id in unique_ids if lead_id not in exported_ids]
+    processed = len(unique_ids)
+    exported = len(leads)
+    return {
+        "status": "ok",
+        "processed": processed,
+        "exported": exported,
+        "failed": max(processed - exported, 0),
+        "errors": [{"id": lead_id, "error": "Lead not found"} for lead_id in missing_ids],
+        "leads": leads,
+    }
 
 
 @router.post("/batch/status")
 def post_batch_status(payload: BatchStatusRequest):
     if not payload.ids:
         raise HTTPException(status_code=400, detail="Nenhum lead selecionado.")
+    unique_ids = sorted({lead_id for lead_id in payload.ids})
     updated = 0
     errors: list[dict] = []
-    for lead_id in payload.ids:
+    for lead_id in unique_ids:
         try:
             result = change_status(
                 lead_id=lead_id,
@@ -282,12 +306,31 @@ def post_batch_status(payload: BatchStatusRequest):
                 errors.append({"id": lead_id, "error": "Lead not found"})
         except ValueError as exc:
             errors.append({"id": lead_id, "error": str(exc)})
-    return {"status": "ok", "updated": updated, "errors": errors}
+    processed = len(unique_ids)
+    return {
+        "status": "ok",
+        "processed": processed,
+        "updated": updated,
+        "failed": max(processed - updated, 0),
+        "errors": errors,
+    }
 
 
 @router.post("/batch/tag")
 def post_batch_tag(payload: BatchTagRequest):
     if not payload.ids:
         raise HTTPException(status_code=400, detail="Nenhum lead selecionado.")
-    result = batch_add_tag(payload.ids, payload.tag)
-    return {"status": "ok", **result}
+    unique_ids = sorted({lead_id for lead_id in payload.ids})
+    existing_ids = {int(lead.get("id")) for lead in get_leads_by_ids(unique_ids)}
+    missing_ids = [lead_id for lead_id in unique_ids if lead_id not in existing_ids]
+    result = batch_add_tag(unique_ids, payload.tag)
+    updated = int(result.get("updated", 0))
+    processed = len(unique_ids)
+    return {
+        "status": "ok",
+        "processed": processed,
+        "updated": updated,
+        "failed": max(processed - updated, 0),
+        "tag": result.get("tag"),
+        "errors": [{"id": lead_id, "error": "Lead not found"} for lead_id in missing_ids],
+    }

@@ -43,10 +43,12 @@ def test_batch_campaign_partial_failure_reports_errors(monkeypatch):
 
 def test_batch_delete_ok(monkeypatch):
     monkeypatch.setattr(leads_api, "batch_soft_delete", lambda ids: {"deleted": len(ids)})
+    monkeypatch.setattr(leads_api, "get_leads_by_ids", lambda ids: [{"id": lead_id} for lead_id in ids])
     client = build_client()
     response = client.post("/api/leads/batch/delete", json={"ids": [10, 11, 12]})
     assert response.status_code == 200
     assert response.json()["deleted"] == 3
+    assert response.json()["failed"] == 0
 
 
 def test_status_alias_and_transitions(monkeypatch):
@@ -117,6 +119,7 @@ def test_lead_tags_endpoints(monkeypatch):
     monkeypatch.setattr(leads_api, "add_lead_tag", lambda lead_id, tag: ["prioridade alta", tag])
     monkeypatch.setattr(leads_api, "remove_lead_tag", lambda lead_id, tag: ["prioridade alta"])
     monkeypatch.setattr(leads_api, "batch_add_tag", lambda ids, tag: {"updated": len(ids), "tag": tag})
+    monkeypatch.setattr(leads_api, "get_leads_by_ids", lambda ids: [{"id": lead_id} for lead_id in ids])
 
     client = build_client()
 
@@ -131,6 +134,7 @@ def test_lead_tags_endpoints(monkeypatch):
     batch_response = client.post("/api/leads/batch/tag", json={"ids": [9, 10], "tag": "indicacao"})
     assert batch_response.status_code == 200
     assert batch_response.json()["updated"] == 2
+    assert batch_response.json()["failed"] == 0
 
 
 def test_normalize_consistency_endpoint(monkeypatch):
@@ -153,3 +157,35 @@ def test_normalize_consistency_endpoint(monkeypatch):
     assert payload["status"] == "ok"
     assert payload["scanned"] == 10
     assert payload["updated"] == 4
+
+
+def test_batch_export_reports_processed_and_failures(monkeypatch):
+    monkeypatch.setattr(leads_api, "get_leads_by_ids", lambda ids: [{"id": 1}, {"id": 3}])
+    client = build_client()
+    response = client.post("/api/leads/batch/export", json={"ids": [1, 2, 3]})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed"] == 3
+    assert payload["exported"] == 2
+    assert payload["failed"] == 1
+    assert payload["errors"] == [{"id": 2, "error": "Lead not found"}]
+
+
+def test_batch_status_reports_processed_and_failures(monkeypatch):
+    def _change_status(**kwargs):
+        if kwargs["lead_id"] == 2:
+            return None
+        return {"id": kwargs["lead_id"], "funnel_status": kwargs["new_status"]}
+
+    monkeypatch.setattr(leads_api, "change_status", _change_status)
+    client = build_client()
+    response = client.post(
+        "/api/leads/batch/status",
+        json={"ids": [1, 2, 3], "new_status": "contactado", "author": "qa"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed"] == 3
+    assert payload["updated"] == 2
+    assert payload["failed"] == 1
+    assert payload["errors"] == [{"id": 2, "error": "Lead not found"}]

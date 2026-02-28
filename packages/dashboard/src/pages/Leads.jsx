@@ -174,7 +174,7 @@ export default function Leads({ onNavigate, activePath }) {
   const [batchBusy, setBatchBusy] = useState(false);
   const [campaignBatchModalOpen, setCampaignBatchModalOpen] = useState(false);
   const [campaignBatchStatus, setCampaignBatchStatus] = useState('Campanha Wave 2');
-  const [campaignBatchResult, setCampaignBatchResult] = useState(null);
+  const [batchResult, setBatchResult] = useState(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [activeLead, setActiveLead] = useState(null);
   const [formLead, setFormLead] = useState(null);
@@ -215,16 +215,23 @@ export default function Leads({ onNavigate, activePath }) {
       const saved = sessionStorage.getItem(SESSION_FILTER_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        const validFunnels = Array.isArray(parsed.selectedFunnels)
+          ? parsed.selectedFunnels.filter((item) => funnelStatusOptions.some((option) => option.value === item))
+          : [];
+        const validScoreRange = scoreRanges.some((option) => option.value === parsed.selectedScoreRange)
+          ? parsed.selectedScoreRange
+          : 'all';
+        const validScoreSort = parsed.scoreSort === 'asc' || parsed.scoreSort === 'desc' ? parsed.scoreSort : 'desc';
         setSelectedState(parsed.selectedState || '');
         setSelectedCity(parsed.selectedCity || '');
         setSearch(parsed.search || '');
-        setSelectedScoreRange(parsed.selectedScoreRange || 'all');
-        setSelectedFunnels(Array.isArray(parsed.selectedFunnels) ? parsed.selectedFunnels : []);
+        setSelectedScoreRange(validScoreRange);
+        setSelectedFunnels(validFunnels);
         setSelectedSource(parsed.selectedSource || '');
         setSelectedTag(parsed.selectedTag || '');
         setCapturedDateFrom(parsed.capturedDateFrom || '');
         setCapturedDateTo(parsed.capturedDateTo || '');
-        setScoreSort(parsed.scoreSort || 'desc');
+        setScoreSort(validScoreSort);
       }
     } catch (error) {
       // no-op
@@ -688,6 +695,12 @@ export default function Leads({ onNavigate, activePath }) {
     setCapturedDateFrom('');
     setCapturedDateTo('');
     setScoreSort('desc');
+    setBatchResult(null);
+    try {
+      sessionStorage.removeItem(SESSION_FILTER_KEY);
+    } catch (error) {
+      // no-op
+    }
   };
 
   const toggleLeadSelection = (leadId, checked) => {
@@ -729,8 +742,23 @@ export default function Leads({ onNavigate, activePath }) {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      const processed = Number(payload?.processed ?? selectedLeadIds.length);
+      const exported = Number(payload?.exported ?? (payload?.leads || []).length);
+      const failed = Number(payload?.failed ?? Math.max(processed - exported, 0));
+      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
+      setBatchResult({
+        type: failed > 0 ? 'warning' : 'success',
+        summary:
+          failed > 0
+            ? `Exportação parcial: ${exported}/${processed} leads exportados (${failed} falhas).`
+            : `Exportação concluída com ${exported}/${processed} leads.`,
+        processed,
+        updated: exported,
+        failed,
+        errors,
+      });
     } catch (error) {
-      setModalMessage(error?.message || 'Erro ao exportar lote.');
+      setBatchResult({ type: 'error', summary: error?.message || 'Erro ao exportar lote.' });
     } finally {
       setBatchBusy(false);
     }
@@ -767,11 +795,25 @@ export default function Leads({ onNavigate, activePath }) {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.detail || 'Falha ao atualizar status em lote.');
-      setModalMessage(`Status atualizado em ${payload.updated || 0} leads.`);
+      const processed = Number(payload?.processed ?? selectedLeadIds.length);
+      const updated = Number(payload?.updated ?? 0);
+      const failed = Number(payload?.failed ?? Math.max(processed - updated, 0));
+      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
+      setBatchResult({
+        type: failed > 0 ? 'warning' : 'success',
+        summary:
+          failed > 0
+            ? `Status atualizado parcialmente: ${updated}/${processed} (${failed} falhas).`
+            : `Status atualizado em ${updated}/${processed} leads.`,
+        processed,
+        updated,
+        failed,
+        errors,
+      });
       setSelectedLeadIds([]);
       await loadLeads();
     } catch (error) {
-      setModalMessage(error?.message || 'Erro no batch de status.');
+      setBatchResult({ type: 'error', summary: error?.message || 'Erro no batch de status.' });
     } finally {
       setBatchBusy(false);
     }
@@ -779,7 +821,7 @@ export default function Leads({ onNavigate, activePath }) {
 
   const openBatchCampaignModal = () => {
     if (selectedLeadIds.length === 0 || batchBusy) return;
-    setCampaignBatchResult(null);
+    setBatchResult(null);
     setCampaignBatchModalOpen(true);
   };
 
@@ -796,7 +838,7 @@ export default function Leads({ onNavigate, activePath }) {
 
     try {
       setBatchBusy(true);
-      setCampaignBatchResult(null);
+      setBatchResult(null);
       const response = await fetch(`${API_BASE}/api/leads/batch/campaign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -809,7 +851,7 @@ export default function Leads({ onNavigate, activePath }) {
       const updated = Number(payload?.updated ?? 0);
       const failed = Number(payload?.failed ?? Math.max(processed - updated, 0));
       const errors = Array.isArray(payload?.errors) ? payload.errors : [];
-      setCampaignBatchResult({
+      setBatchResult({
         type: failed > 0 ? 'warning' : 'success',
         summary:
           failed > 0
@@ -825,7 +867,7 @@ export default function Leads({ onNavigate, activePath }) {
       setSelectedLeadIds([]);
       await loadLeads();
     } catch (error) {
-      setCampaignBatchResult({
+      setBatchResult({
         type: 'error',
         summary: error?.message || 'Erro no batch de campanha.',
       });
@@ -848,11 +890,25 @@ export default function Leads({ onNavigate, activePath }) {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.detail || 'Falha ao excluir leads em lote.');
-      setModalMessage(`${payload.deleted || 0} leads removidos.`);
+      const processed = Number(payload?.processed ?? selectedLeadIds.length);
+      const deleted = Number(payload?.deleted ?? 0);
+      const failed = Number(payload?.failed ?? Math.max(processed - deleted, 0));
+      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
+      setBatchResult({
+        type: failed > 0 ? 'warning' : 'success',
+        summary:
+          failed > 0
+            ? `Exclusão parcial: ${deleted}/${processed} leads removidos (${failed} falhas).`
+            : `${deleted}/${processed} leads removidos.`,
+        processed,
+        updated: deleted,
+        failed,
+        errors,
+      });
       setSelectedLeadIds([]);
       await loadLeads();
     } catch (error) {
-      setModalMessage(error?.message || 'Erro no batch de exclusão.');
+      setBatchResult({ type: 'error', summary: error?.message || 'Erro no batch de exclusão.' });
     } finally {
       setBatchBusy(false);
     }
@@ -871,10 +927,24 @@ export default function Leads({ onNavigate, activePath }) {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.detail || 'Falha ao aplicar tag em lote.');
-      setModalMessage(`Tag aplicada em ${payload.updated || 0} leads.`);
+      const processed = Number(payload?.processed ?? selectedLeadIds.length);
+      const updated = Number(payload?.updated ?? 0);
+      const failed = Number(payload?.failed ?? Math.max(processed - updated, 0));
+      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
+      setBatchResult({
+        type: failed > 0 ? 'warning' : 'success',
+        summary:
+          failed > 0
+            ? `Tag aplicada parcialmente: ${updated}/${processed} leads (${failed} falhas).`
+            : `Tag aplicada em ${updated}/${processed} leads.`,
+        processed,
+        updated,
+        failed,
+        errors,
+      });
       await loadLeads();
     } catch (error) {
-      setModalMessage(error?.message || 'Erro ao aplicar tag em lote.');
+      setBatchResult({ type: 'error', summary: error?.message || 'Erro ao aplicar tag em lote.' });
     } finally {
       setBatchBusy(false);
     }
@@ -1170,18 +1240,18 @@ export default function Leads({ onNavigate, activePath }) {
             </div>
           )}
 
-          {campaignBatchResult?.summary && (
-            <div className={`fv-batch-feedback ${campaignBatchResult.type || 'success'}`}>
-              <div className="fv-batch-feedback-title">{campaignBatchResult.summary}</div>
-              {Number.isFinite(campaignBatchResult.processed) && (
+          {batchResult?.summary && (
+            <div className={`fv-batch-feedback ${batchResult.type || 'success'}`}>
+              <div className="fv-batch-feedback-title">{batchResult.summary}</div>
+              {Number.isFinite(batchResult.processed) && (
                 <div className="fv-row-sub">
-                  Processados: {campaignBatchResult.processed} • Sucessos: {campaignBatchResult.updated || 0} • Falhas:{' '}
-                  {campaignBatchResult.failed || 0}
+                  Processados: {batchResult.processed} • Sucessos: {batchResult.updated || 0} • Falhas:{' '}
+                  {batchResult.failed || 0}
                 </div>
               )}
-              {Array.isArray(campaignBatchResult.errors) && campaignBatchResult.errors.length > 0 && (
+              {Array.isArray(batchResult.errors) && batchResult.errors.length > 0 && (
                 <div className="fv-row-sub">
-                  IDs com falha: {campaignBatchResult.errors.map((item) => item.id).join(', ')}
+                  IDs com falha: {batchResult.errors.map((item) => item.id).join(', ')}
                 </div>
               )}
             </div>

@@ -3,6 +3,8 @@ import Layout from '../components/Layout.jsx';
 import Icon from '../components/Icon.jsx';
 import './dashboard.css';
 import { API_BASE } from '../lib/apiBase.js';
+import { buildOperationalSlo, SLO_WINDOWS } from '../lib/campaignMonitoring.js';
+import { readMessagingActivity } from '../lib/messagingActivity.js';
 
 const funnelMeta = {
   novo: { label: 'Novo', className: 'funnel-novo' },
@@ -121,12 +123,14 @@ export default function Dashboard({ onNavigate, activePath }) {
   });
   const [activityEvents, setActivityEvents] = useState([]);
   const [scraperRuns, setScraperRuns] = useState([]);
+  const [receipts, setReceipts] = useState([]);
+  const [sloWindow, setSloWindow] = useState('24h');
 
   const loadDashboard = async () => {
     setLoading(true);
     setErrorMessage('');
     try {
-      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes] = await Promise.all([
+      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes] = await Promise.all([
         fetch(`${API_BASE}/api/leads/?limit=120`),
         fetchWithFallback(
           `${API_BASE}/api/scraper/runs?limit=10`,
@@ -146,6 +150,7 @@ export default function Dashboard({ onNavigate, activePath }) {
           `${API_BASE}/api/dashboard/weekly-performance/`
         ),
         fetchWithFallback(`${API_BASE}/api/activity?limit=15`, `${API_BASE}/api/activity/?limit=15`),
+        fetch(`${API_BASE}/api/integrations/messaging/receipts?limit=150`),
       ]);
 
       const [
@@ -156,6 +161,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         urgentPayload,
         weeklyPayload,
         activityPayload,
+        receiptsPayload,
       ] = await Promise.all([
         leadsRes.json(),
         runsRes.json(),
@@ -164,6 +170,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         urgentRes.json(),
         weeklyRes.json(),
         activityRes.json(),
+        receiptsRes.json(),
       ]);
 
       if (!leadsRes.ok) {
@@ -190,6 +197,9 @@ export default function Dashboard({ onNavigate, activePath }) {
       if (activityRes.ok && Array.isArray(activityPayload?.events)) {
         setActivityEvents(activityPayload.events);
       }
+      if (receiptsRes.ok && Array.isArray(receiptsPayload?.events)) {
+        setReceipts(receiptsPayload.events);
+      }
 
       setLastRefresh(new Date());
     } catch (error) {
@@ -201,20 +211,28 @@ export default function Dashboard({ onNavigate, activePath }) {
 
   const loadRealtimePanels = async () => {
     try {
-      const [weeklyRes, activityRes] = await Promise.all([
+      const [weeklyRes, activityRes, receiptsRes] = await Promise.all([
         fetchWithFallback(
           `${API_BASE}/api/dashboard/weekly-performance`,
           `${API_BASE}/api/dashboard/weekly-performance/`
         ),
         fetchWithFallback(`${API_BASE}/api/activity?limit=15`, `${API_BASE}/api/activity/?limit=15`),
+        fetch(`${API_BASE}/api/integrations/messaging/receipts?limit=150`),
       ]);
-      const [weeklyPayload, activityPayload] = await Promise.all([weeklyRes.json(), activityRes.json()]);
+      const [weeklyPayload, activityPayload, receiptsPayload] = await Promise.all([
+        weeklyRes.json(),
+        activityRes.json(),
+        receiptsRes.json(),
+      ]);
 
       if (weeklyRes.ok && weeklyPayload?.performance) {
         setWeeklyPerformance(weeklyPayload.performance);
       }
       if (activityRes.ok && Array.isArray(activityPayload?.events)) {
         setActivityEvents(activityPayload.events);
+      }
+      if (receiptsRes.ok && Array.isArray(receiptsPayload?.events)) {
+        setReceipts(receiptsPayload.events);
       }
       setLastRefresh(new Date());
     } catch (error) {
@@ -316,6 +334,10 @@ export default function Dashboard({ onNavigate, activePath }) {
   );
 
   const activityRecent = useMemo(() => activity.slice(0, 15), [activity]);
+  const slo = useMemo(
+    () => buildOperationalSlo({ receipts, activity: readMessagingActivity(), window: sloWindow }),
+    [receipts, sloWindow, lastRefresh]
+  );
 
   const exportLeads = () => {
     if (!leads.length) {
@@ -568,6 +590,63 @@ export default function Dashboard({ onNavigate, activePath }) {
             {activityRecent.length === 0 && <div className="fv-row-sub">Sem atividade recente.</div>}
           </div>
         </div>
+      </section>
+
+      <section className="fv-panel fv-scraper-section">
+        <div className="fv-panel-header">
+          <h2 className="fv-icon-label">
+            <Icon name="activity" />
+            SLO operacional
+          </h2>
+          <label className="fv-field fv-field-inline">
+            <span>Janela</span>
+            <select className="fv-input fv-select" value={sloWindow} onChange={(event) => setSloWindow(event.target.value)}>
+              {SLO_WINDOWS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {!slo.hasData ? (
+          <div className="fv-row-sub">Sem dados suficientes para cálculo de SLO na janela selecionada.</div>
+        ) : (
+          <>
+            <div className="fv-slo-grid">
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Taxa de entrega</div>
+                <div className="fv-card-value">{slo.deliveryRate}%</div>
+                <div className="fv-card-meta">{slo.delivered} eventos entregues</div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Taxa de resposta</div>
+                <div className="fv-card-value">{slo.replyRate}%</div>
+                <div className="fv-card-meta">{slo.replied} respostas</div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Taxa de falha</div>
+                <div className="fv-card-value">{slo.failureRate}%</div>
+                <div className="fv-card-meta">{slo.failed} falhas</div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Latência média</div>
+                <div className="fv-card-value">{slo.latencyAvgMinutes} min</div>
+                <div className="fv-card-meta">{slo.sent} envios analisados</div>
+              </div>
+            </div>
+            <div className="fv-slo-alerts">
+              <div className={`fv-row-chip fv-slo-severity ${slo.severity.key}`}>Prioridade: {slo.severity.label}</div>
+              {slo.alerts.length === 0 && <div className="fv-row-sub">Nenhum alerta crítico para esta janela.</div>}
+              {slo.alerts.slice(0, 4).map((alert, index) => (
+                <div key={`${alert.key}-${index}`} className={`fv-alert-pill fv-alert-${alert.key}`}>
+                  {alert.message}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="fv-columns">

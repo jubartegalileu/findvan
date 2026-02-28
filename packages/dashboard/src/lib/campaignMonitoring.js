@@ -10,6 +10,12 @@ const toNumber = (value) => {
   return Number.isFinite(num) ? num : 0;
 };
 
+export const SLO_WINDOWS = [
+  { value: '1h', label: 'Última 1h', hours: 1 },
+  { value: '24h', label: 'Últimas 24h', hours: 24 },
+  { value: '7d', label: 'Últimos 7 dias', hours: 24 * 7 },
+];
+
 const normalizeStatus = (status) => {
   const value = String(status || '').trim().toLowerCase();
   if (!value) return '';
@@ -21,6 +27,20 @@ const parseDate = (value) => {
   const date = new Date(value || '');
   if (Number.isNaN(date.getTime())) return null;
   return date;
+};
+
+const getWindowHours = (window) => {
+  const selected = SLO_WINDOWS.find((item) => item.value === window);
+  return selected?.hours || 24;
+};
+
+const filterByWindow = (rows, window, readDate) => {
+  const now = Date.now();
+  const minTime = now - getWindowHours(window) * 60 * 60 * 1000;
+  return rows.filter((row) => {
+    const at = readDate(row);
+    return at instanceof Date && !Number.isNaN(at.getTime()) && at.getTime() >= minTime;
+  });
 };
 
 const statusPriority = {
@@ -61,6 +81,118 @@ const ensureCampaign = (map, name) => {
     });
   }
   return map.get(name);
+};
+
+const getSloSeverity = ({ sent, deliveryRate, replyRate, failureRate, latencyAvgMinutes }) => {
+  if (sent <= 0) return { key: 'low', label: 'Baixa prioridade' };
+  if (failureRate >= 20 || deliveryRate < 50 || latencyAvgMinutes > 120) {
+    return { key: 'critical', label: 'Crítico' };
+  }
+  if (failureRate >= 10 || deliveryRate < 70 || latencyAvgMinutes > 60) {
+    return { key: 'high', label: 'Alto' };
+  }
+  if ((sent >= 20 && replyRate < 5) || failureRate >= 5 || deliveryRate < 85) {
+    return { key: 'medium', label: 'Médio' };
+  }
+  return { key: 'low', label: 'Baixa prioridade' };
+};
+
+export const buildOperationalSlo = ({ receipts = [], activity = [], window = '24h' }) => {
+  const filteredActivity = filterByWindow(activity, window, (entry) => parseDate(entry?.at));
+  const filteredReceipts = filterByWindow(receipts, window, (entry) => parseDate(entry?.occurred_at || entry?.received_at));
+
+  const sent = filteredActivity.length;
+  const statusCounts = filteredActivity.reduce(
+    (acc, entry) => {
+      const status = String(entry?.status || '').toLowerCase();
+      if (status === 'delivered') acc.delivered += 1;
+      if (status === 'failed') acc.failed += 1;
+      if (status === 'replied') acc.replied += 1;
+      return acc;
+    },
+    { delivered: 0, replied: 0, failed: 0 }
+  );
+
+  const receiptCounts = filteredReceipts.reduce(
+    (acc, entry) => {
+      const type = String(entry?.event_type || '').toLowerCase();
+      if (type === 'delivered') acc.delivered += 1;
+      if (type === 'failed') acc.failed += 1;
+      if (type === 'replied') acc.replied += 1;
+      return acc;
+    },
+    { delivered: 0, replied: 0, failed: 0 }
+  );
+
+  const delivered = statusCounts.delivered + receiptCounts.delivered;
+  const replied = statusCounts.replied + receiptCounts.replied;
+  const failed = statusCounts.failed + receiptCounts.failed;
+  const deliveryRate = sent > 0 ? Math.round((delivered / sent) * 100) : 0;
+  const replyRate = sent > 0 ? Math.round((replied / sent) * 100) : 0;
+  const failureRate = sent > 0 ? Math.round((failed / sent) * 100) : 0;
+
+  const sendByLead = new Map();
+  filteredActivity.forEach((entry) => {
+    const leadId = String(entry?.lead_id || '').trim();
+    const at = parseDate(entry?.at);
+    if (!leadId || !at) return;
+    if (!sendByLead.has(leadId)) sendByLead.set(leadId, []);
+    sendByLead.get(leadId).push(at);
+  });
+  sendByLead.forEach((values) => values.sort((a, b) => a.getTime() - b.getTime()));
+
+  let latencySamples = 0;
+  let latencySumMinutes = 0;
+  filteredReceipts.forEach((entry) => {
+    const leadId = String(entry?.lead_id || '').trim();
+    const receivedAt = parseDate(entry?.occurred_at || entry?.received_at);
+    if (!leadId || !receivedAt) return;
+    const sentTimes = sendByLead.get(leadId);
+    if (!Array.isArray(sentTimes) || sentTimes.length === 0) return;
+    let matched = null;
+    for (let index = sentTimes.length - 1; index >= 0; index -= 1) {
+      if (sentTimes[index].getTime() <= receivedAt.getTime()) {
+        matched = sentTimes[index];
+        break;
+      }
+    }
+    if (!matched) return;
+    const diffMinutes = (receivedAt.getTime() - matched.getTime()) / 60000;
+    if (diffMinutes < 0 || diffMinutes > 60 * 24) return;
+    latencySamples += 1;
+    latencySumMinutes += diffMinutes;
+  });
+
+  const latencyAvgMinutes = latencySamples > 0 ? Math.round((latencySumMinutes / latencySamples) * 10) / 10 : 0;
+  const severity = getSloSeverity({ sent, deliveryRate, replyRate, failureRate, latencyAvgMinutes });
+  const alerts = [];
+
+  if (sent > 0) {
+    if (failureRate >= 20) alerts.push({ key: 'critical', message: `Taxa de falha alta (${failureRate}%).` });
+    if (deliveryRate < 70) alerts.push({ key: 'high', message: `Taxa de entrega baixa (${deliveryRate}%).` });
+    if (latencyAvgMinutes > 60) alerts.push({ key: 'high', message: `Latência média elevada (${latencyAvgMinutes} min).` });
+    if (replyRate < 5 && sent >= 20) alerts.push({ key: 'medium', message: `Taxa de resposta baixa (${replyRate}%).` });
+  }
+
+  alerts.sort((a, b) => {
+    const rank = { critical: 4, high: 3, medium: 2, low: 1 };
+    return (rank[b.key] || 0) - (rank[a.key] || 0);
+  });
+
+  return {
+    window,
+    hasData: sent > 0 || filteredReceipts.length > 0,
+    sent,
+    delivered,
+    replied,
+    failed,
+    deliveryRate,
+    replyRate,
+    failureRate,
+    latencyAvgMinutes,
+    severity,
+    alerts,
+  };
 };
 
 export const buildReconciliationInsights = ({ leads = [], receipts = [], activity = [] }) => {
@@ -142,7 +274,7 @@ export const buildReconciliationInsights = ({ leads = [], receipts = [], activit
   };
 };
 
-export const buildCampaignMonitoring = ({ leads = [], receipts = [], activity = [] }) => {
+export const buildCampaignMonitoring = ({ leads = [], receipts = [], activity = [], window = '24h' }) => {
   const map = new Map();
   const leadCampaignById = new Map();
 
@@ -206,6 +338,7 @@ export const buildCampaignMonitoring = ({ leads = [], receipts = [], activity = 
     items,
     totals,
     reconciliation: buildReconciliationInsights({ leads, receipts, activity }),
+    slo: buildOperationalSlo({ receipts, activity, window }),
   };
 };
 

@@ -6,7 +6,7 @@ import {
   clearMessagingActivity,
   readMessagingActivity,
 } from '../lib/messagingActivity.js';
-import { buildCampaignMonitoring, fetchCampaignMonitoringData } from '../lib/campaignMonitoring.js';
+import { buildCampaignMonitoring, fetchCampaignMonitoringData, SLO_WINDOWS } from '../lib/campaignMonitoring.js';
 import './dashboard.css';
 
 const templates = [
@@ -48,6 +48,7 @@ export default function WhatsApp({ onNavigate, activePath }) {
   const [monitoringLoading, setMonitoringLoading] = useState(false);
   const [monitoringError, setMonitoringError] = useState('');
   const [monitoringUpdatedAt, setMonitoringUpdatedAt] = useState('');
+  const [sloWindow, setSloWindow] = useState('24h');
 
   const [form, setForm] = useState({
     lead_id: getInitialLeadId(),
@@ -96,6 +97,7 @@ export default function WhatsApp({ onNavigate, activePath }) {
         leads,
         receipts,
         activity: readMessagingActivity(),
+        window: sloWindow,
       });
       setMonitoring(result);
       setMonitoringUpdatedAt(new Date().toLocaleTimeString('pt-BR'));
@@ -131,7 +133,7 @@ export default function WhatsApp({ onNavigate, activePath }) {
       window.removeEventListener('storage', onStorage);
       window.clearInterval(timer);
     };
-  }, []);
+  }, [sloWindow]);
 
   const onChangeField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -361,6 +363,63 @@ export default function WhatsApp({ onNavigate, activePath }) {
       <section className="fv-columns fv-scraper-section">
         <div className="fv-panel">
           <div className="fv-panel-header">
+            <h2>SLO operacional</h2>
+            <label className="fv-field fv-field-inline">
+              <span>Janela</span>
+              <select className="fv-input fv-select" value={sloWindow} onChange={(event) => setSloWindow(event.target.value)}>
+                {SLO_WINDOWS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {!monitoring.slo?.hasData ? (
+            <div className="fv-row-sub">Sem dados suficientes para cálculo de SLO na janela selecionada.</div>
+          ) : (
+            <>
+              <div className="fv-slo-grid">
+                <div className="fv-card fv-card-soft">
+                  <div className="fv-card-label">Taxa de entrega</div>
+                  <div className="fv-card-value">{monitoring.slo.deliveryRate}%</div>
+                  <div className="fv-card-meta">{monitoring.slo.delivered} eventos entregues</div>
+                </div>
+                <div className="fv-card fv-card-soft">
+                  <div className="fv-card-label">Taxa de resposta</div>
+                  <div className="fv-card-value">{monitoring.slo.replyRate}%</div>
+                  <div className="fv-card-meta">{monitoring.slo.replied} respostas</div>
+                </div>
+                <div className="fv-card fv-card-soft">
+                  <div className="fv-card-label">Taxa de falha</div>
+                  <div className="fv-card-value">{monitoring.slo.failureRate}%</div>
+                  <div className="fv-card-meta">{monitoring.slo.failed} falhas</div>
+                </div>
+                <div className="fv-card fv-card-soft">
+                  <div className="fv-card-label">Latência média</div>
+                  <div className="fv-card-value">{monitoring.slo.latencyAvgMinutes} min</div>
+                  <div className="fv-card-meta">{monitoring.slo.sent} envios analisados</div>
+                </div>
+              </div>
+              <div className="fv-slo-alerts">
+                <div className={`fv-row-chip fv-slo-severity ${monitoring.slo.severity.key}`}>
+                  Prioridade: {monitoring.slo.severity.label}
+                </div>
+                {monitoring.slo.alerts.length === 0 && (
+                  <div className="fv-row-sub">Nenhum alerta crítico para esta janela.</div>
+                )}
+                {monitoring.slo.alerts.slice(0, 4).map((alert, index) => (
+                  <div key={`${alert.key}-${index}`} className={`fv-alert-pill fv-alert-${alert.key}`}>
+                    {alert.message}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="fv-panel">
+          <div className="fv-panel-header">
             <h2>Monitoramento de campanhas</h2>
             <button className="fv-ghost small" type="button" onClick={loadMonitoring} disabled={monitoringLoading}>
               {monitoringLoading ? 'Atualizando...' : 'Atualizar'}
@@ -393,7 +452,9 @@ export default function WhatsApp({ onNavigate, activePath }) {
             ))}
           </div>
         </div>
+      </section>
 
+      <section className="fv-columns fv-scraper-section">
         <div className="fv-panel">
           <div className="fv-panel-header">
             <h2>Reconciliação de status</h2>

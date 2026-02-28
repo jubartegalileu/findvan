@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout.jsx';
-import { buildCampaignMonitoring, fetchCampaignMonitoringData } from '../lib/campaignMonitoring.js';
+import { buildCampaignMonitoring, fetchCampaignMonitoringData, SLO_WINDOWS } from '../lib/campaignMonitoring.js';
 import { readMessagingActivity } from '../lib/messagingActivity.js';
 import './dashboard.css';
 
@@ -12,6 +12,7 @@ export default function Campaigns({ onNavigate, activePath }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState('');
+  const [sloWindow, setSloWindow] = useState('24h');
 
   const loadMonitoring = async () => {
     setLoading(true);
@@ -23,6 +24,7 @@ export default function Campaigns({ onNavigate, activePath }) {
           leads,
           receipts,
           activity: readMessagingActivity(),
+          window: sloWindow,
         })
       );
       setUpdatedAt(new Date().toLocaleTimeString('pt-BR'));
@@ -42,7 +44,7 @@ export default function Campaigns({ onNavigate, activePath }) {
       window.clearInterval(timer);
       window.removeEventListener('findvan:messaging-activity-updated', onActivityUpdated);
     };
-  }, []);
+  }, [sloWindow]);
 
   return (
     <Layout onNavigate={onNavigate} activePath={activePath}>
@@ -86,6 +88,63 @@ export default function Campaigns({ onNavigate, activePath }) {
           </div>
           <div className="fv-card-meta">{monitoring.totals.replied} respostas</div>
         </div>
+      </section>
+
+      <section className="fv-panel fv-scraper-section">
+        <div className="fv-panel-header">
+          <h2>SLO operacional</h2>
+          <label className="fv-field fv-field-inline">
+            <span>Janela</span>
+            <select className="fv-input fv-select" value={sloWindow} onChange={(event) => setSloWindow(event.target.value)}>
+              {SLO_WINDOWS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {!monitoring.slo?.hasData ? (
+          <div className="fv-row-sub">Sem dados suficientes para cálculo de SLO na janela selecionada.</div>
+        ) : (
+          <>
+            <div className="fv-slo-grid">
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Taxa de entrega</div>
+                <div className="fv-card-value">{monitoring.slo.deliveryRate}%</div>
+                <div className="fv-card-meta">{monitoring.slo.delivered} eventos entregues</div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Taxa de resposta</div>
+                <div className="fv-card-value">{monitoring.slo.replyRate}%</div>
+                <div className="fv-card-meta">{monitoring.slo.replied} respostas</div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Taxa de falha</div>
+                <div className="fv-card-value">{monitoring.slo.failureRate}%</div>
+                <div className="fv-card-meta">{monitoring.slo.failed} falhas</div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Latência média</div>
+                <div className="fv-card-value">{monitoring.slo.latencyAvgMinutes} min</div>
+                <div className="fv-card-meta">{monitoring.slo.sent} envios analisados</div>
+              </div>
+            </div>
+            <div className="fv-slo-alerts">
+              <div className={`fv-row-chip fv-slo-severity ${monitoring.slo.severity.key}`}>
+                Prioridade: {monitoring.slo.severity.label}
+              </div>
+              {monitoring.slo.alerts.length === 0 && (
+                <div className="fv-row-sub">Nenhum alerta crítico para esta janela.</div>
+              )}
+              {monitoring.slo.alerts.slice(0, 4).map((alert, index) => (
+                <div key={`${alert.key}-${index}`} className={`fv-alert-pill fv-alert-${alert.key}`}>
+                  {alert.message}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="fv-panel">

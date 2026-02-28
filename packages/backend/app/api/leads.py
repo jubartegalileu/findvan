@@ -221,8 +221,21 @@ def post_recalculate_scores():
 def post_batch_campaign(payload: BatchCampaignRequest):
     if not payload.ids:
         raise HTTPException(status_code=400, detail="Nenhum lead selecionado.")
-    result = batch_update_campaign(payload.ids, payload.campaign_status)
-    return {"status": "ok", **result}
+    unique_ids = sorted({lead_id for lead_id in payload.ids})
+    result = batch_update_campaign(unique_ids, payload.campaign_status)
+    updated = int(result.get("updated", 0))
+    processed = len(unique_ids)
+
+    existing_ids = {int(lead.get("id")) for lead in get_leads_by_ids(unique_ids)}
+    missing_ids = [lead_id for lead_id in unique_ids if lead_id not in existing_ids]
+
+    return {
+        "status": "ok",
+        "processed": processed,
+        "updated": updated,
+        "failed": max(processed - updated, 0),
+        "errors": [{"id": lead_id, "error": "Lead not found"} for lead_id in missing_ids],
+    }
 
 
 @router.post("/batch/delete")

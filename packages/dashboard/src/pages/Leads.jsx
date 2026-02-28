@@ -172,6 +172,9 @@ export default function Leads({ onNavigate, activePath }) {
   const [scoreSort, setScoreSort] = useState('desc');
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [batchBusy, setBatchBusy] = useState(false);
+  const [campaignBatchModalOpen, setCampaignBatchModalOpen] = useState(false);
+  const [campaignBatchStatus, setCampaignBatchStatus] = useState('Campanha Wave 2');
+  const [campaignBatchResult, setCampaignBatchResult] = useState(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [activeLead, setActiveLead] = useState(null);
   const [formLead, setFormLead] = useState(null);
@@ -774,13 +777,26 @@ export default function Leads({ onNavigate, activePath }) {
     }
   };
 
+  const openBatchCampaignModal = () => {
+    if (selectedLeadIds.length === 0 || batchBusy) return;
+    setCampaignBatchResult(null);
+    setCampaignBatchModalOpen(true);
+  };
+
   const batchUpdateCampaign = async () => {
     if (selectedLeadIds.length === 0) return;
-    const campaignStatus = window.prompt('Status/campanha para os leads selecionados:', 'Campanha Wave 2');
-    if (!campaignStatus) return;
+    const campaignStatus = campaignBatchStatus.trim();
+    if (!campaignStatus) {
+      setCampaignBatchResult({
+        type: 'error',
+        summary: 'Informe o nome/status da campanha antes de confirmar.',
+      });
+      return;
+    }
 
     try {
       setBatchBusy(true);
+      setCampaignBatchResult(null);
       const response = await fetch(`${API_BASE}/api/leads/batch/campaign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -788,10 +804,31 @@ export default function Leads({ onNavigate, activePath }) {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.detail || 'Falha ao atualizar campanha em lote.');
-      setModalMessage(`Campanha atualizada em ${payload.updated || 0} leads.`);
+
+      const processed = Number(payload?.processed ?? selectedLeadIds.length);
+      const updated = Number(payload?.updated ?? 0);
+      const failed = Number(payload?.failed ?? Math.max(processed - updated, 0));
+      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
+      setCampaignBatchResult({
+        type: failed > 0 ? 'warning' : 'success',
+        summary:
+          failed > 0
+            ? `Execução parcial: ${updated}/${processed} leads atualizados (${failed} falhas).`
+            : `Campanha aplicada com sucesso em ${updated}/${processed} leads.`,
+        processed,
+        updated,
+        failed,
+        errors,
+      });
+
+      setCampaignBatchModalOpen(false);
+      setSelectedLeadIds([]);
       await loadLeads();
     } catch (error) {
-      setModalMessage(error?.message || 'Erro no batch de campanha.');
+      setCampaignBatchResult({
+        type: 'error',
+        summary: error?.message || 'Erro no batch de campanha.',
+      });
     } finally {
       setBatchBusy(false);
     }
@@ -1118,7 +1155,7 @@ export default function Leads({ onNavigate, activePath }) {
               <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={batchUpdateStatus}>
                 Alterar status
               </button>
-              <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={batchUpdateCampaign}>
+              <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={openBatchCampaignModal}>
                 Adicionar campanha
               </button>
               <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={batchApplyTag}>
@@ -1130,6 +1167,23 @@ export default function Leads({ onNavigate, activePath }) {
               <button className="fv-primary" type="button" disabled={batchBusy} onClick={batchDeleteLeads}>
                 Excluir
               </button>
+            </div>
+          )}
+
+          {campaignBatchResult?.summary && (
+            <div className={`fv-batch-feedback ${campaignBatchResult.type || 'success'}`}>
+              <div className="fv-batch-feedback-title">{campaignBatchResult.summary}</div>
+              {Number.isFinite(campaignBatchResult.processed) && (
+                <div className="fv-row-sub">
+                  Processados: {campaignBatchResult.processed} • Sucessos: {campaignBatchResult.updated || 0} • Falhas:{' '}
+                  {campaignBatchResult.failed || 0}
+                </div>
+              )}
+              {Array.isArray(campaignBatchResult.errors) && campaignBatchResult.errors.length > 0 && (
+                <div className="fv-row-sub">
+                  IDs com falha: {campaignBatchResult.errors.map((item) => item.id).join(', ')}
+                </div>
+              )}
             </div>
           )}
 
@@ -1289,6 +1343,49 @@ export default function Leads({ onNavigate, activePath }) {
           </div>
         </aside>
       </section>
+
+      {campaignBatchModalOpen && (
+        <div className="fv-modal-backdrop" onClick={() => (batchBusy ? null : setCampaignBatchModalOpen(false))}>
+          <div className="fv-modal fv-compact-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="fv-panel-header">
+              <h2>Adicionar à campanha</h2>
+              <button
+                className="fv-ghost small"
+                type="button"
+                disabled={batchBusy}
+                onClick={() => setCampaignBatchModalOpen(false)}
+              >
+                ✕ Fechar
+              </button>
+            </div>
+
+            <div className="fv-field">
+              <span>Campanha/Status alvo</span>
+              <input
+                className="fv-input"
+                placeholder="Ex: Campanha Wave 7"
+                value={campaignBatchStatus}
+                onChange={(event) => setCampaignBatchStatus(event.target.value)}
+                disabled={batchBusy}
+              />
+            </div>
+
+            <div className="fv-message fv-message-neutral">
+              Confirma aplicar a campanha <strong>{campaignBatchStatus || '—'}</strong> para{' '}
+              <strong>{selectedLeadIds.length}</strong> leads selecionados?
+            </div>
+
+            <div className="fv-actions fv-modal-actions">
+              <button className="fv-ghost" type="button" disabled={batchBusy} onClick={() => setCampaignBatchModalOpen(false)}>
+                Cancelar
+              </button>
+              <button className="fv-primary" type="button" disabled={batchBusy} onClick={batchUpdateCampaign}>
+                {batchBusy ? 'Executando...' : 'Confirmar execução'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeLead && formLead && (
         <div className="fv-modal-backdrop" onClick={closeLeadModal}>

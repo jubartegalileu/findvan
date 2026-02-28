@@ -1139,6 +1139,48 @@ body,
   padding: 8px 10px;
 }
 
+.fv-batch-feedback {
+  margin-bottom: 10px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(32, 80, 114, 0.12);
+  background: #edf9f0;
+}
+
+.fv-batch-feedback-title {
+  font-weight: 700;
+  color: var(--fv-c1);
+  margin-bottom: 4px;
+}
+
+.fv-batch-feedback.warning {
+  background: rgba(249, 168, 37, 0.15);
+  border-color: rgba(143, 97, 0, 0.25);
+}
+
+.fv-batch-feedback.warning .fv-batch-feedback-title {
+  color: #8f6100;
+}
+
+.fv-batch-feedback.error {
+  background: rgba(229, 57, 53, 0.12);
+  border-color: rgba(183, 28, 28, 0.2);
+}
+
+.fv-batch-feedback.error .fv-batch-feedback-title {
+  color: #b71c1c;
+}
+
+.fv-compact-modal {
+  width: min(620px, calc(100vw - 48px));
+}
+
+.fv-message-neutral {
+  background: rgba(50, 157, 156, 0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
 @media (max-width: 1080px) {
   .fv-app {
     grid-template-columns: 1fr;

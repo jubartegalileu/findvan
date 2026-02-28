@@ -18,10 +18,27 @@ def test_batch_campaign_requires_ids():
 
 def test_batch_campaign_ok(monkeypatch):
     monkeypatch.setattr(leads_api, "batch_update_campaign", lambda ids, campaign_status: {"updated": len(ids)})
+    monkeypatch.setattr(leads_api, "get_leads_by_ids", lambda ids: [{"id": lead_id} for lead_id in ids])
     client = build_client()
     response = client.post("/api/leads/batch/campaign", json={"ids": [1, 2], "campaign_status": "Wave 1"})
     assert response.status_code == 200
+    assert response.json()["processed"] == 2
     assert response.json()["updated"] == 2
+    assert response.json()["failed"] == 0
+    assert response.json()["errors"] == []
+
+
+def test_batch_campaign_partial_failure_reports_errors(monkeypatch):
+    monkeypatch.setattr(leads_api, "batch_update_campaign", lambda ids, campaign_status: {"updated": 1})
+    monkeypatch.setattr(leads_api, "get_leads_by_ids", lambda ids: [{"id": 1}, {"id": 3}])
+    client = build_client()
+    response = client.post("/api/leads/batch/campaign", json={"ids": [1, 2, 3], "campaign_status": "Wave 1"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed"] == 3
+    assert payload["updated"] == 1
+    assert payload["failed"] == 2
+    assert payload["errors"] == [{"id": 2, "error": "Lead not found"}]
 
 
 def test_batch_delete_ok(monkeypatch):

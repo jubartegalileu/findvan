@@ -194,6 +194,35 @@ CREATE TABLE IF NOT EXISTS retention_job_status (
 );
 """
 
+ALERTING_STATE_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS alerting_state (
+  state_key VARCHAR(100) PRIMARY KEY,
+  suppressed_count INTEGER NOT NULL DEFAULT 0,
+  queued_count INTEGER NOT NULL DEFAULT 0,
+  sent_count INTEGER NOT NULL DEFAULT 0,
+  fallback_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  last_sent_at TIMESTAMP,
+  last_fallback_at TIMESTAMP,
+  last_suppressed_at TIMESTAMP,
+  cooldown_until_by_key JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+"""
+
+ALERTING_RECENT_EVENTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS alerting_recent_events (
+  id BIGSERIAL PRIMARY KEY,
+  state_key VARCHAR(100) NOT NULL DEFAULT 'global',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  delivery VARCHAR(50) NOT NULL,
+  reason TEXT,
+  event_payload JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS idx_alerting_recent_events_state_created
+  ON alerting_recent_events(state_key, created_at DESC, id DESC);
+"""
+
 
 @contextmanager
 def get_connection():
@@ -217,4 +246,6 @@ def ensure_schema():
             cur.execute(MESSAGING_RECEIPTS_TABLE_SQL)
             cur.execute(JOB_LOCKS_TABLE_SQL)
             cur.execute(RETENTION_STATUS_TABLE_SQL)
+            cur.execute(ALERTING_STATE_TABLE_SQL)
+            cur.execute(ALERTING_RECENT_EVENTS_TABLE_SQL)
         conn.commit()

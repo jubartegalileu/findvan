@@ -9,9 +9,12 @@ import time
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from ..db import get_connection
+
 
 ALERT_CONTRACT_VERSION = "1.0.0"
 MAX_LOCAL_ALERTS = 50
+STATE_KEY = "global"
 
 _state_lock = threading.Lock()
 _dispatch_lock = threading.Lock()
@@ -58,6 +61,154 @@ def _get_cooldown_seconds() -> int:
     return max(30, _to_int("ALERT_COOLDOWN_SECONDS", 300))
 
 
+def _iso(value) -> str | None:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if value is None:
+        return None
+    return str(value)
+
+
+def _read_persisted_state() -> dict | None:
+    query = """
+        SELECT suppressed_count, queued_count, sent_count, fallback_count, last_error,
+               last_sent_at, last_fallback_at, last_suppressed_at, cooldown_until_by_key
+        FROM alerting_state
+        WHERE state_key = %s
+        LIMIT 1;
+    """
+    recent_query = """
+        SELECT created_at, delivery, reason, event_payload
+        FROM alerting_recent_events
+        WHERE state_key = %s
+        ORDER BY created_at DESC, id DESC
+        LIMIT %s;
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (STATE_KEY,))
+                row = cur.fetchone()
+                cur.execute(recent_query, (STATE_KEY, MAX_LOCAL_ALERTS))
+                recent_rows = cur.fetchall()
+        if not row:
+            return None
+        cooldown = row[8] if isinstance(row[8], dict) else {}
+        recent = []
+        for recent_row in recent_rows:
+            payload = recent_row[3] if isinstance(recent_row[3], dict) else {}
+            recent.append(
+                {
+                    "timestamp": _iso(recent_row[0]),
+                    "delivery": str(recent_row[1] or ""),
+                    "reason": str(recent_row[2] or ""),
+                    "event": payload,
+                }
+            )
+        return {
+            "suppressed_count": int(row[0] or 0),
+            "queued_count": int(row[1] or 0),
+            "sent_count": int(row[2] or 0),
+            "fallback_count": int(row[3] or 0),
+            "last_error": row[4],
+            "last_sent_at": _iso(row[5]),
+            "last_fallback_at": _iso(row[6]),
+            "last_suppressed_at": _iso(row[7]),
+            "cooldown_until_by_key": cooldown,
+            "recent": recent,
+        }
+    except Exception:
+        return None
+
+
+def _write_persisted_state(state: dict) -> None:
+    query = """
+        INSERT INTO alerting_state (
+          state_key, suppressed_count, queued_count, sent_count, fallback_count,
+          last_error, last_sent_at, last_fallback_at, last_suppressed_at, cooldown_until_by_key, updated_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, NOW())
+        ON CONFLICT (state_key) DO UPDATE
+        SET suppressed_count = EXCLUDED.suppressed_count,
+            queued_count = EXCLUDED.queued_count,
+            sent_count = EXCLUDED.sent_count,
+            fallback_count = EXCLUDED.fallback_count,
+            last_error = EXCLUDED.last_error,
+            last_sent_at = EXCLUDED.last_sent_at,
+            last_fallback_at = EXCLUDED.last_fallback_at,
+            last_suppressed_at = EXCLUDED.last_suppressed_at,
+            cooldown_until_by_key = EXCLUDED.cooldown_until_by_key,
+            updated_at = NOW();
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    STATE_KEY,
+                    int(state.get("suppressed_count") or 0),
+                    int(state.get("queued_count") or 0),
+                    int(state.get("sent_count") or 0),
+                    int(state.get("fallback_count") or 0),
+                    state.get("last_error"),
+                    state.get("last_sent_at"),
+                    state.get("last_fallback_at"),
+                    state.get("last_suppressed_at"),
+                    json.dumps(state.get("cooldown_until_by_key") or {}),
+                ),
+            )
+        conn.commit()
+
+
+def _insert_recent_item(item: dict) -> None:
+    insert_query = """
+        INSERT INTO alerting_recent_events (state_key, created_at, delivery, reason, event_payload)
+        VALUES (%s, %s, %s, %s, %s::jsonb);
+    """
+    trim_query = """
+        DELETE FROM alerting_recent_events
+        WHERE state_key = %s
+          AND id NOT IN (
+            SELECT id
+            FROM alerting_recent_events
+            WHERE state_key = %s
+            ORDER BY created_at DESC, id DESC
+            LIMIT %s
+          );
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                insert_query,
+                (
+                    STATE_KEY,
+                    item.get("timestamp"),
+                    item.get("delivery"),
+                    item.get("reason"),
+                    json.dumps(item.get("event") if isinstance(item.get("event"), dict) else {}),
+                ),
+            )
+            cur.execute(trim_query, (STATE_KEY, STATE_KEY, MAX_LOCAL_ALERTS))
+        conn.commit()
+
+
+def _sync_state_to_memory() -> None:
+    persisted = _read_persisted_state()
+    if not persisted:
+        return
+    with _state_lock:
+        _state.update(persisted)
+
+
+def _persist_state_best_effort() -> None:
+    with _state_lock:
+        snapshot = deepcopy(_state)
+    try:
+        _write_persisted_state(snapshot)
+    except Exception:
+        pass
+
+
 def _severity_from_metrics(metrics: dict) -> tuple[str, str]:
     block_rate = float(metrics.get("block_rate") or 0)
     delivery_rate = float(metrics.get("delivery_rate") or 0)
@@ -91,22 +242,30 @@ def build_slo_alert_event(metrics: dict, source: str = "dashboard", window: str 
 
 
 def _should_suppress(alert_event: dict) -> bool:
+    _sync_state_to_memory()
     cooldown_seconds = _get_cooldown_seconds()
     key = f"{alert_event.get('event_type')}|{alert_event.get('severity')}|{alert_event.get('source')}"
     now = time.time()
     with _state_lock:
-        cooldown_until = _state["cooldown_until_by_key"].get(key)
+        cooldown_until = float(_state["cooldown_until_by_key"].get(key) or 0)
         if cooldown_until and now < cooldown_until:
             _state["suppressed_count"] += 1
             _state["last_suppressed_at"] = _utcnow_iso()
-            return True
-        _state["cooldown_until_by_key"][key] = now + cooldown_seconds
-    return False
+            should_suppress = True
+        else:
+            _state["cooldown_until_by_key"][key] = now + cooldown_seconds
+            should_suppress = False
+    _persist_state_best_effort()
+    return should_suppress
 
 
 def _append_recent(item: dict) -> None:
     with _state_lock:
         _state["recent"] = [item, *_state["recent"]][:MAX_LOCAL_ALERTS]
+    try:
+        _insert_recent_item(item)
+    except Exception:
+        pass
 
 
 def _store_fallback(alert_event: dict, reason: str) -> None:
@@ -121,6 +280,7 @@ def _store_fallback(alert_event: dict, reason: str) -> None:
         _state["fallback_count"] += 1
         _state["last_fallback_at"] = fallback_item["timestamp"]
         _state["last_error"] = reason
+    _persist_state_best_effort()
 
 
 def _store_sent(alert_event: dict) -> None:
@@ -135,6 +295,7 @@ def _store_sent(alert_event: dict) -> None:
         _state["sent_count"] += 1
         _state["last_sent_at"] = sent_item["timestamp"]
         _state["last_error"] = None
+    _persist_state_best_effort()
 
 
 def _send_webhook(alert_event: dict) -> None:
@@ -183,6 +344,7 @@ def trigger_operational_alert(alert_event: dict) -> dict:
     with _dispatch_lock:
         with _state_lock:
             _state["queued_count"] += 1
+        _persist_state_best_effort()
         thread = threading.Thread(target=_send_webhook, args=(deepcopy(alert_event),), daemon=True, name="alert-dispatch")
         thread.start()
     return {"status": "queued", "delivery": "webhook_async"}
@@ -197,6 +359,7 @@ def dispatch_slo_alert(metrics: dict, source: str = "dashboard", window: str = "
 
 
 def get_alerting_status() -> dict:
+    _sync_state_to_memory()
     with _state_lock:
         snapshot = deepcopy(_state)
     snapshot["configured"] = bool(_get_alert_webhook_url())
@@ -221,3 +384,12 @@ def clear_alerting_state() -> None:
         _state["last_suppressed_at"] = None
         _state["recent"] = []
         _state["cooldown_until_by_key"] = {}
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM alerting_recent_events WHERE state_key = %s;", (STATE_KEY,))
+                cur.execute("DELETE FROM alerting_state WHERE state_key = %s;", (STATE_KEY,))
+            conn.commit()
+    except Exception:
+        pass

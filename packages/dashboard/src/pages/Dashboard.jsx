@@ -133,6 +133,7 @@ export default function Dashboard({ onNavigate, activePath }) {
   const [sloThresholds, setSloThresholds] = useState(DEFAULT_SLO_THRESHOLDS);
   const [governanceHistory, setGovernanceHistory] = useState([]);
   const [guardrails, setGuardrails] = useState([]);
+  const [predictiveRisk, setPredictiveRisk] = useState([]);
   const [playbooks, setPlaybooks] = useState([]);
   const [playbookExecutions, setPlaybookExecutions] = useState([]);
   const [postmortemReadiness, setPostmortemReadiness] = useState({ template: null, critical_incidents: [] });
@@ -148,7 +149,7 @@ export default function Dashboard({ onNavigate, activePath }) {
     setLoading(true);
     setErrorMessage('');
     try {
-      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes, telemetryRes, guardrailsRes, playbooksRes, executionsRes, postmortemRes] = await Promise.all([
+      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes, telemetryRes, guardrailsRes, predictiveRiskRes, playbooksRes, executionsRes, postmortemRes] = await Promise.all([
         fetch(`${API_BASE}/api/leads/?limit=120`),
         fetchWithFallback(
           `${API_BASE}/api/scraper/runs?limit=10`,
@@ -173,6 +174,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         fetchWithFallback(`${API_BASE}/api/dashboard/metrics-governance/history?limit=5`, `${API_BASE}/api/dashboard/metrics-governance/history/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/operational-telemetry?limit=5`, `${API_BASE}/api/dashboard/operational-telemetry/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/guardrails?limit=5`, `${API_BASE}/api/dashboard/guardrails/?limit=5`),
+        fetchWithFallback(`${API_BASE}/api/dashboard/predictive-risk?limit=5`, `${API_BASE}/api/dashboard/predictive-risk/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/playbooks?limit=5`, `${API_BASE}/api/dashboard/playbooks/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/playbooks/executions?limit=5`, `${API_BASE}/api/dashboard/playbooks/executions/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/postmortem-readiness?limit=5`, `${API_BASE}/api/dashboard/postmortem-readiness/?limit=5`),
@@ -191,6 +193,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         governanceHistoryPayload,
         telemetryPayload,
         guardrailsPayload,
+        predictiveRiskPayload,
         playbooksPayload,
         executionsPayload,
         postmortemPayload,
@@ -207,6 +210,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         governanceHistoryRes.json(),
         telemetryRes.json(),
         guardrailsRes.json(),
+        predictiveRiskRes.json(),
         playbooksRes.json(),
         executionsRes.json(),
         postmortemRes.json(),
@@ -257,6 +261,9 @@ export default function Dashboard({ onNavigate, activePath }) {
       }
       if (guardrailsRes.ok && Array.isArray(guardrailsPayload?.guardrails)) {
         setGuardrails(guardrailsPayload.guardrails);
+      }
+      if (predictiveRiskRes.ok && Array.isArray(predictiveRiskPayload?.risks)) {
+        setPredictiveRisk(predictiveRiskPayload.risks);
       }
       if (playbooksRes.ok && Array.isArray(playbooksPayload?.playbooks)) {
         setPlaybooks(playbooksPayload.playbooks);
@@ -763,6 +770,23 @@ export default function Dashboard({ onNavigate, activePath }) {
                 Incidentes operacionais
               </h2>
             </div>
+            <div className="fv-table">
+              <div className="fv-row-title">Risco preditivo por componente</div>
+              {(predictiveRisk || []).slice(0, 3).map((risk) => (
+                <div key={risk.component} className="fv-row fv-monitoring-row">
+                  <div>
+                    <div className="fv-row-title">{risk.component}</div>
+                    <div className="fv-row-sub">
+                      probabilidade: {Math.round((risk.probability || 0) * 100)}% • severidade prevista: {risk.predicted_severity}
+                    </div>
+                    <div className="fv-row-sub">{risk.recommendation}</div>
+                  </div>
+                  <div className={`fv-row-chip fv-alert-${risk.predicted_severity || 'medium'}`}>{risk.score || 0}</div>
+                </div>
+              ))}
+              {predictiveRisk.length === 0 && <div className="fv-row-sub">Sem sinais preditivos relevantes.</div>}
+            </div>
+            <div className="fv-divider" />
             <div className="fv-table">
               <div className="fv-row-title">Guardrails prioritários</div>
               {guardrails.slice(0, 3).map((item, index) => (

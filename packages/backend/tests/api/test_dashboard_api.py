@@ -203,6 +203,46 @@ def test_dashboard_guardrails_ok(monkeypatch):
     assert payload["guardrails"][0]["severity"] == "high"
 
 
+def test_dashboard_predictive_risk_ok(monkeypatch):
+    monkeypatch.setattr(dashboard_api, "get_alerting_status", lambda: {"fallback_count": 3, "suppressed_count": 2})
+    monkeypatch.setattr(dashboard_api, "get_retention_job_status", lambda: {"fail_count": 2})
+    monkeypatch.setattr(
+        dashboard_api,
+        "list_incidents",
+        lambda limit=10, offset=0: [{"id": 1, "source": "retention", "event_type": "retention_cycle_error", "severity": "high"}],
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "build_guardrails",
+        lambda incidents, alerting_metrics, retention_metrics, limit=10: [
+            {"component": "retention", "severity": "high", "title": "Falha retenção"}
+        ],
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "build_predictive_risk",
+        lambda incidents, guardrails, alerting_metrics, retention_metrics, limit=10: [
+            {
+                "component": "retention",
+                "score": 72,
+                "predicted_severity": "high",
+                "probability": 0.72,
+                "model_version": "1.0.0",
+                "signals": {"incident_count": 1},
+                "recommendation": "mitigar",
+            }
+        ],
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/predictive-risk?limit=5&offset=0")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["applied_limit"] == 5
+    assert payload["applied_offset"] == 0
+    assert payload["risks"][0]["predicted_severity"] == "high"
+
+
 def test_dashboard_playbooks_ok(monkeypatch):
     monkeypatch.setattr(
         dashboard_api,

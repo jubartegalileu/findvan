@@ -7,6 +7,7 @@ from ..db import get_connection
 
 
 INCIDENT_CLASSIFIER_VERSION = "1.0.0"
+PREDICTIVE_RISK_MODEL_VERSION = "1.0.0"
 _SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 POSTMORTEM_TEMPLATE_VERSION = "1.0.0"
 
@@ -488,3 +489,106 @@ def build_postmortem_readiness(limit: int = 10, offset: int = 0) -> dict:
         "applied_limit": limit,
         "applied_offset": offset,
     }
+
+
+def _severity_from_score(score: float) -> str:
+    if score >= 80:
+        return "critical"
+    if score >= 60:
+        return "high"
+    if score >= 35:
+        return "medium"
+    return "low"
+
+
+def build_predictive_risk(
+    incidents: list[dict],
+    guardrails: list[dict],
+    alerting_metrics: dict,
+    retention_metrics: dict,
+    limit: int = 10,
+) -> list[dict]:
+    components = {
+        "retention": {
+            "incident_count": 0,
+            "guardrail_count": 0,
+            "severity_sum": 0,
+            "signal_boost": float(int(retention_metrics.get("fail_count") or 0) * 4),
+            "latest_at": None,
+        },
+        "alerting": {
+            "incident_count": 0,
+            "guardrail_count": 0,
+            "severity_sum": 0,
+            "signal_boost": float(
+                int(alerting_metrics.get("fallback_count") or 0) * 2
+                + int(alerting_metrics.get("suppressed_count") or 0) * 0.2
+            ),
+            "latest_at": None,
+        },
+        "messaging": {
+            "incident_count": 0,
+            "guardrail_count": 0,
+            "severity_sum": 0,
+            "signal_boost": 5.0,
+            "latest_at": None,
+        },
+    }
+
+    for incident in incidents:
+        classification = incident.get("classification") or {}
+        component = str(classification.get("component") or "messaging").strip().lower()
+        if component not in components:
+            component = "messaging"
+        severity = _normalize_severity(incident.get("severity"))
+        components[component]["incident_count"] += 1
+        components[component]["severity_sum"] += _SEVERITY_RANK.get(severity, 2)
+        if incident.get("created_at"):
+            components[component]["latest_at"] = incident.get("created_at")
+
+    for guardrail in guardrails:
+        component = str(guardrail.get("component") or "messaging").strip().lower()
+        if component not in components:
+            component = "messaging"
+        severity = _normalize_severity(guardrail.get("severity"))
+        components[component]["guardrail_count"] += 1
+        components[component]["severity_sum"] += _SEVERITY_RANK.get(severity, 2) * 1.5
+
+    risks = []
+    for component, stats in components.items():
+        raw_score = (
+            stats["incident_count"] * 8
+            + stats["guardrail_count"] * 12
+            + stats["severity_sum"] * 6
+            + stats["signal_boost"]
+        )
+        score = max(0.0, min(100.0, round(raw_score, 1)))
+        probability = max(0.0, min(1.0, round(score / 100.0, 2)))
+        severity = _severity_from_score(score)
+
+        recommendation = "Monitorar sinais e manter rotina padrão."
+        if severity in {"high", "critical"}:
+            recommendation = "Priorizar mitigação preventiva e revisar guardrails ativos."
+        elif severity == "medium":
+            recommendation = "Ajustar parâmetros operacionais para evitar escalada."
+
+        risks.append(
+            {
+                "component": component,
+                "score": score,
+                "predicted_severity": severity,
+                "probability": probability,
+                "model_version": PREDICTIVE_RISK_MODEL_VERSION,
+                "signals": {
+                    "incident_count": stats["incident_count"],
+                    "guardrail_count": stats["guardrail_count"],
+                    "signal_boost": round(float(stats["signal_boost"]), 2),
+                    "latest_at": stats["latest_at"],
+                },
+                "recommendation": recommendation,
+            }
+        )
+
+    risks.sort(key=lambda item: item["score"], reverse=True)
+    capped_limit = max(1, min(int(limit or 10), 100))
+    return risks[:capped_limit]

@@ -10,7 +10,9 @@ from ..services.alerts_service import dispatch_slo_alert, get_alerting_status
 from ..services.metrics_governance_service import get_active_thresholds, get_threshold_history, update_thresholds
 from ..services.operational_telemetry_service import (
     INCIDENT_CLASSIFIER_VERSION,
+    PREDICTIVE_RISK_MODEL_VERSION,
     build_guardrails,
+    build_predictive_risk,
     build_postmortem_readiness,
     list_incidents,
     list_playbook_executions,
@@ -168,6 +170,38 @@ def dashboard_guardrails(limit: int = Query(default=10, ge=1, le=50), offset: in
             "applied_limit": limit,
             "applied_offset": offset,
             "classifier_version": INCIDENT_CLASSIFIER_VERSION,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/predictive-risk")
+def dashboard_predictive_risk(limit: int = Query(default=10, ge=1, le=50), offset: int = Query(default=0, ge=0)):
+    try:
+        alerting = get_alerting_status()
+        retention = get_retention_job_status()
+        sample_size = max(limit + offset, 20)
+        incidents = list_incidents(limit=sample_size, offset=0)
+        guardrails = build_guardrails(
+            incidents=incidents,
+            alerting_metrics=alerting,
+            retention_metrics=retention,
+            limit=sample_size,
+        )
+        risks = build_predictive_risk(
+            incidents=incidents,
+            guardrails=guardrails,
+            alerting_metrics=alerting,
+            retention_metrics=retention,
+            limit=sample_size,
+        )
+        sliced = risks[offset : offset + limit]
+        return {
+            "status": "ok",
+            "risks": sliced,
+            "applied_limit": limit,
+            "applied_offset": offset,
+            "model_version": PREDICTIVE_RISK_MODEL_VERSION,
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

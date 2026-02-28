@@ -1,7 +1,7 @@
 # Epic 16 — Wave 12 Operational Excellence & Self-Healing
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Excelência Operacional)
 **Wave:** 12
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Elevar a operação para padrão de auto-recuperação, com remediação automá
 
 ## Definition of Done
 
-- [ ] Stories 16.1, 16.2 e 16.3 implementadas e aprovadas
-- [ ] Políticas de self-healing ativas para cenários críticos definidos
-- [ ] Guardrails de degradação SLO disponíveis em backend e visíveis no dashboard
-- [ ] Playbooks operacionais e evidências de execução persistidas
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 16.1, 16.2 e 16.3 implementadas e aprovadas
+- [x] Políticas de self-healing ativas para cenários críticos definidos
+- [x] Guardrails de degradação SLO disponíveis em backend e visíveis no dashboard
+- [x] Playbooks operacionais e evidências de execução persistidas
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

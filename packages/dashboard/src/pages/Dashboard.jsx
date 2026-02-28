@@ -3,7 +3,7 @@ import Layout from '../components/Layout.jsx';
 import Icon from '../components/Icon.jsx';
 import './dashboard.css';
 import { API_BASE } from '../lib/apiBase.js';
-import { buildOperationalSlo, SLO_WINDOWS } from '../lib/campaignMonitoring.js';
+import { buildCostThroughputInsights, buildOperationalSlo, SLO_WINDOWS } from '../lib/campaignMonitoring.js';
 import { readMessagingActivity } from '../lib/messagingActivity.js';
 
 const funnelMeta = {
@@ -338,6 +338,16 @@ export default function Dashboard({ onNavigate, activePath }) {
     () => buildOperationalSlo({ receipts, activity: readMessagingActivity(), window: sloWindow }),
     [receipts, sloWindow, lastRefresh]
   );
+  const costInsights = useMemo(
+    () =>
+      buildCostThroughputInsights({
+        leads,
+        receipts,
+        activity: readMessagingActivity(),
+        window: sloWindow,
+      }),
+    [leads, receipts, sloWindow, lastRefresh]
+  );
 
   const exportLeads = () => {
     if (!leads.length) {
@@ -642,6 +652,64 @@ export default function Dashboard({ onNavigate, activePath }) {
               {slo.alerts.slice(0, 4).map((alert, index) => (
                 <div key={`${alert.key}-${index}`} className={`fv-alert-pill fv-alert-${alert.key}`}>
                   {alert.message}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="fv-divider" />
+        <div className="fv-panel-header">
+          <h2 className="fv-icon-label">
+            <Icon name="campaigns" />
+            Custo & throughput
+          </h2>
+        </div>
+        {!costInsights.hasData ? (
+          <div className="fv-row-sub">Sem dados de custo para a janela selecionada.</div>
+        ) : (
+          <>
+            <div className="fv-slo-grid">
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Processados</div>
+                <div className="fv-card-value">{costInsights.current.processed}</div>
+                <div className="fv-card-meta">Enviados + eventos de status</div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Custo relativo</div>
+                <div className="fv-card-value">{costInsights.current.relativeCost}</div>
+                <div className="fv-card-meta">
+                  Δ {costInsights.trend.costDelta >= 0 ? '+' : ''}
+                  {costInsights.trend.costDelta} vs janela anterior
+                </div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Eficiência</div>
+                <div className="fv-card-value">{costInsights.current.efficiency}%</div>
+                <div className="fv-card-meta">
+                  Δ {costInsights.trend.efficiencyDelta >= 0 ? '+' : ''}
+                  {costInsights.trend.efficiencyDelta} p.p.
+                </div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Enviados</div>
+                <div className="fv-card-value">{costInsights.current.sent}</div>
+                <div className="fv-card-meta">
+                  Δ {costInsights.trend.sentDelta >= 0 ? '+' : ''}
+                  {costInsights.trend.sentDelta} vs janela anterior
+                </div>
+              </div>
+            </div>
+            <div className="fv-table fv-scraper-section">
+              {(costInsights.byCampaign || []).slice(0, 3).map((item) => (
+                <div key={item.campaign} className="fv-row fv-monitoring-row">
+                  <div>
+                    <div className="fv-row-title">{item.campaign}</div>
+                    <div className="fv-row-sub">
+                      Enviados: {item.sent} • Respostas: {item.replied} • Falhas: {item.failed}
+                    </div>
+                  </div>
+                  <div className="fv-row-chip">Custo {item.relativeCost}</div>
                 </div>
               ))}
             </div>

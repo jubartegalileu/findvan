@@ -145,6 +145,61 @@ export default function Campaigns({ onNavigate, activePath }) {
             </div>
           </>
         )}
+
+        <div className="fv-divider" />
+        <div className="fv-panel-header">
+          <h2>Insights de custo & throughput</h2>
+        </div>
+        {!monitoring.cost?.hasData ? (
+          <div className="fv-row-sub">Sem dados de custo para a janela selecionada.</div>
+        ) : (
+          <>
+            <div className="fv-slo-grid">
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Processados</div>
+                <div className="fv-card-value">{monitoring.cost.current.processed}</div>
+                <div className="fv-card-meta">Volume operacional consolidado</div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Custo relativo</div>
+                <div className="fv-card-value">{monitoring.cost.current.relativeCost}</div>
+                <div className="fv-card-meta">
+                  Δ {monitoring.cost.trend.costDelta >= 0 ? '+' : ''}
+                  {monitoring.cost.trend.costDelta} vs janela anterior
+                </div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Eficiência</div>
+                <div className="fv-card-value">{monitoring.cost.current.efficiency}%</div>
+                <div className="fv-card-meta">
+                  Δ {monitoring.cost.trend.efficiencyDelta >= 0 ? '+' : ''}
+                  {monitoring.cost.trend.efficiencyDelta} p.p.
+                </div>
+              </div>
+              <div className="fv-card fv-card-soft">
+                <div className="fv-card-label">Enviados</div>
+                <div className="fv-card-value">{monitoring.cost.current.sent}</div>
+                <div className="fv-card-meta">
+                  Δ {monitoring.cost.trend.sentDelta >= 0 ? '+' : ''}
+                  {monitoring.cost.trend.sentDelta} vs janela anterior
+                </div>
+              </div>
+            </div>
+            <div className="fv-table fv-scraper-section">
+              {(monitoring.cost.byCampaign || []).map((item) => (
+                <div key={item.campaign} className="fv-row fv-monitoring-row">
+                  <div>
+                    <div className="fv-row-title">{item.campaign}</div>
+                    <div className="fv-row-sub">
+                      Enviados: {item.sent} • Respondidos: {item.replied} • Falhas: {item.failed}
+                    </div>
+                  </div>
+                  <div className="fv-row-chip">Custo {item.relativeCost}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="fv-panel">

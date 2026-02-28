@@ -43,6 +43,14 @@ const filterByWindow = (rows, window, readDate) => {
   });
 };
 
+const filterByRange = (rows, startMs, endMs, readDate) =>
+  rows.filter((row) => {
+    const at = readDate(row);
+    if (!(at instanceof Date) || Number.isNaN(at.getTime())) return false;
+    const time = at.getTime();
+    return time >= startMs && time < endMs;
+  });
+
 const statusPriority = {
   queued: 1,
   delivered: 2,
@@ -82,6 +90,9 @@ const ensureCampaign = (map, name) => {
   }
   return map.get(name);
 };
+
+const calcRelativeCost = ({ sent = 0, delivered = 0, replied = 0, failed = 0 }) =>
+  Math.round((sent * 1 + delivered * 0.1 + replied * 0.2 + failed * 0.6) * 100) / 100;
 
 const getSloSeverity = ({ sent, deliveryRate, replyRate, failureRate, latencyAvgMinutes }) => {
   if (sent <= 0) return { key: 'low', label: 'Baixa prioridade' };
@@ -192,6 +203,116 @@ export const buildOperationalSlo = ({ receipts = [], activity = [], window = '24
     latencyAvgMinutes,
     severity,
     alerts,
+  };
+};
+
+export const buildCostThroughputInsights = ({ leads = [], receipts = [], activity = [], window = '24h' }) => {
+  const now = Date.now();
+  const windowMs = getWindowHours(window) * 60 * 60 * 1000;
+  const currentStart = now - windowMs;
+  const previousStart = currentStart - windowMs;
+
+  const readActivityDate = (entry) => parseDate(entry?.at);
+  const readReceiptDate = (entry) => parseDate(entry?.occurred_at || entry?.received_at);
+
+  const currentActivity = filterByRange(activity, currentStart, now, readActivityDate);
+  const previousActivity = filterByRange(activity, previousStart, currentStart, readActivityDate);
+  const currentReceipts = filterByRange(receipts, currentStart, now, readReceiptDate);
+  const previousReceipts = filterByRange(receipts, previousStart, currentStart, readReceiptDate);
+
+  const aggregate = (activityRows, receiptRows) => {
+    const sent = activityRows.length;
+    const statuses = activityRows.reduce(
+      (acc, entry) => {
+        const status = String(entry?.status || '').toLowerCase();
+        if (status === 'delivered') acc.delivered += 1;
+        if (status === 'failed') acc.failed += 1;
+        if (status === 'replied') acc.replied += 1;
+        return acc;
+      },
+      { delivered: 0, replied: 0, failed: 0 }
+    );
+    const receiptStatuses = receiptRows.reduce(
+      (acc, entry) => {
+        const type = String(entry?.event_type || '').toLowerCase();
+        if (type === 'delivered') acc.delivered += 1;
+        if (type === 'failed') acc.failed += 1;
+        if (type === 'replied') acc.replied += 1;
+        return acc;
+      },
+      { delivered: 0, replied: 0, failed: 0 }
+    );
+
+    const delivered = statuses.delivered + receiptStatuses.delivered;
+    const replied = statuses.replied + receiptStatuses.replied;
+    const failed = statuses.failed + receiptStatuses.failed;
+    const processed = sent + delivered + replied + failed;
+    const relativeCost = calcRelativeCost({ sent, delivered, replied, failed });
+    const efficiency = sent > 0 ? Math.round((replied / sent) * 100) : 0;
+    return { sent, delivered, replied, failed, processed, relativeCost, efficiency };
+  };
+
+  const current = aggregate(currentActivity, currentReceipts);
+  const previous = aggregate(previousActivity, previousReceipts);
+  const trend = {
+    sentDelta: current.sent - previous.sent,
+    costDelta: Math.round((current.relativeCost - previous.relativeCost) * 100) / 100,
+    efficiencyDelta: current.efficiency - previous.efficiency,
+  };
+
+  const leadCampaignById = new Map();
+  leads.forEach((lead) => {
+    const leadId = String(lead?.id || '').trim();
+    const campaign = normalizeCampaign(lead?.campaign_status);
+    if (leadId && campaign) leadCampaignById.set(leadId, campaign);
+  });
+
+  const campaignMap = new Map();
+  const ensureCampaignCost = (name) => {
+    if (!campaignMap.has(name)) {
+      campaignMap.set(name, { campaign: name, sent: 0, delivered: 0, replied: 0, failed: 0, relativeCost: 0 });
+    }
+    return campaignMap.get(name);
+  };
+
+  currentActivity.forEach((entry) => {
+    const leadId = String(entry?.lead_id || '').trim();
+    const campaign = leadCampaignById.get(leadId);
+    if (!campaign) return;
+    const item = ensureCampaignCost(campaign);
+    item.sent += 1;
+    const status = String(entry?.status || '').toLowerCase();
+    if (status === 'delivered') item.delivered += 1;
+    if (status === 'failed') item.failed += 1;
+    if (status === 'replied') item.replied += 1;
+  });
+
+  currentReceipts.forEach((entry) => {
+    const leadId = String(entry?.lead_id || '').trim();
+    const campaign = leadCampaignById.get(leadId);
+    if (!campaign) return;
+    const item = ensureCampaignCost(campaign);
+    const type = String(entry?.event_type || '').toLowerCase();
+    if (type === 'delivered') item.delivered += 1;
+    if (type === 'failed') item.failed += 1;
+    if (type === 'replied') item.replied += 1;
+  });
+
+  const byCampaign = Array.from(campaignMap.values())
+    .map((item) => ({
+      ...item,
+      relativeCost: calcRelativeCost(item),
+      efficiency: item.sent > 0 ? Math.round((item.replied / item.sent) * 100) : 0,
+    }))
+    .sort((a, b) => b.relativeCost - a.relativeCost || b.sent - a.sent);
+
+  return {
+    window,
+    hasData: current.processed > 0,
+    current,
+    previous,
+    trend,
+    byCampaign: byCampaign.slice(0, 5),
   };
 };
 
@@ -339,6 +460,7 @@ export const buildCampaignMonitoring = ({ leads = [], receipts = [], activity = 
     totals,
     reconciliation: buildReconciliationInsights({ leads, receipts, activity }),
     slo: buildOperationalSlo({ receipts, activity, window }),
+    cost: buildCostThroughputInsights({ leads, receipts, activity, window }),
   };
 };
 

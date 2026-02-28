@@ -83,6 +83,24 @@ CREATE TABLE IF NOT EXISTS scraper_keyword_profiles (
 CREATE INDEX IF NOT EXISTS idx_scraper_keyword_profiles_state_city ON scraper_keyword_profiles(state, city);
 """
 
+SCRAPER_SCHEDULES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS scraper_schedules (
+  id BIGSERIAL PRIMARY KEY,
+  state VARCHAR(2) NOT NULL,
+  city TEXT NOT NULL,
+  keywords TEXT[] NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 50,
+  frequency VARCHAR(20) NOT NULL,
+  day_of_week INTEGER,
+  execution_time TIME NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_scraper_schedules_active ON scraper_schedules(is_active);
+CREATE INDEX IF NOT EXISTS idx_scraper_schedules_state_city ON scraper_schedules(state, city);
+"""
+
 LEAD_INTERACTIONS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS lead_interactions (
   id BIGSERIAL PRIMARY KEY,
@@ -113,5 +131,6 @@ def ensure_schema():
             cur.execute(LEADS_TABLE_SQL)
             cur.execute(SCRAPER_RUNS_TABLE_SQL)
             cur.execute(SCRAPER_KEYWORD_PROFILES_TABLE_SQL)
+            cur.execute(SCRAPER_SCHEDULES_TABLE_SQL)
             cur.execute(LEAD_INTERACTIONS_TABLE_SQL)
         conn.commit()

@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from datetime import datetime
 from .leads_service import insert_leads
 from ..db import get_connection
 from ..config import SCRAPER_NODE_PATH
@@ -11,6 +12,8 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 SCRAPER_SCRIPT = REPO_ROOT / "packages" / "scraper" / "scripts" / "run-google-maps.js"
 SCRAPER_DATA_DIR = REPO_ROOT / "packages" / "scraper" / "data" / "raw-leads"
 DEFAULT_KEYWORD = "transporte escolar"
+SCHEDULE_FREQUENCIES = {"daily", "weekly", "monthly"}
+MAX_ACTIVE_SCHEDULES = 5
 
 
 def _resolve_chrome_binary() -> str:
@@ -423,3 +426,229 @@ def get_scraper_stats() -> dict:
         "latest_total": latest_total,
         "latest_unique": latest_unique,
     }
+
+
+def _validate_schedule_payload(payload: dict, partial: bool = False) -> dict:
+    clean = payload.copy()
+    if "state" in clean and clean["state"] is not None:
+        clean["state"] = str(clean["state"]).strip().upper()
+    if "city" in clean and clean["city"] is not None:
+        clean["city"] = str(clean["city"]).strip()
+
+    if "keywords" in clean and clean["keywords"] is not None:
+        keywords = [item.strip() for item in clean["keywords"] if item and item.strip()]
+        clean["keywords"] = keywords or [DEFAULT_KEYWORD]
+
+    if "frequency" in clean and clean["frequency"] is not None:
+        clean["frequency"] = str(clean["frequency"]).strip().lower()
+        if clean["frequency"] not in SCHEDULE_FREQUENCIES:
+            raise ValueError("Frequência inválida. Use: daily, weekly ou monthly.")
+
+    if "execution_time" in clean and clean["execution_time"] is not None:
+        try:
+            datetime.strptime(str(clean["execution_time"]), "%H:%M")
+        except ValueError as exc:
+            raise ValueError("execution_time deve estar no formato HH:MM.") from exc
+
+    if "day_of_week" in clean and clean["day_of_week"] is not None:
+        day_of_week = int(clean["day_of_week"])
+        if day_of_week < 0 or day_of_week > 6:
+            raise ValueError("day_of_week deve ser entre 0 e 6.")
+        clean["day_of_week"] = day_of_week
+
+    if not partial:
+        required = ["state", "city", "keywords", "quantity", "frequency", "execution_time", "is_active"]
+        for field in required:
+            if field not in clean or clean[field] in (None, ""):
+                raise ValueError(f"Campo obrigatório: {field}.")
+        if clean["frequency"] == "weekly" and clean.get("day_of_week") is None:
+            raise ValueError("day_of_week é obrigatório para frequência weekly.")
+
+    if clean.get("frequency") != "weekly":
+        clean["day_of_week"] = clean.get("day_of_week")
+    return clean
+
+
+def _count_active_schedules(exclude_id: int | None = None) -> int:
+    if exclude_id is None:
+        query = """
+            SELECT COUNT(*)
+            FROM scraper_schedules
+            WHERE is_active = true;
+        """
+        params: tuple = ()
+    else:
+        query = """
+            SELECT COUNT(*)
+            FROM scraper_schedules
+            WHERE is_active = true
+              AND id <> %s;
+        """
+        params = (exclude_id,)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            row = cur.fetchone()
+    return int(row[0] or 0)
+
+
+def _log_schedule_event(city: str, state: str, quantity: int, note: str) -> None:
+    _record_scraper_run(
+        city=city,
+        state=state,
+        target_count=quantity,
+        total_count=0,
+        unique_count=0,
+        duplicate_count=0,
+        inserted_count=0,
+        db_duplicate_count=0,
+        status="scheduled",
+        error_message=note[:300],
+    )
+
+
+def list_scraper_schedules() -> list[dict]:
+    query = """
+        SELECT id, state, city, keywords, quantity, frequency, day_of_week, execution_time, is_active, created_at, updated_at
+        FROM scraper_schedules
+        ORDER BY created_at DESC;
+    """
+    keys = [
+        "id",
+        "state",
+        "city",
+        "keywords",
+        "quantity",
+        "frequency",
+        "day_of_week",
+        "execution_time",
+        "is_active",
+        "created_at",
+        "updated_at",
+    ]
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            rows = cur.fetchall()
+    return [dict(zip(keys, row)) for row in rows]
+
+
+def create_scraper_schedule(payload: dict) -> dict:
+    clean = _validate_schedule_payload(payload, partial=False)
+    if clean["is_active"] and _count_active_schedules() >= MAX_ACTIVE_SCHEDULES:
+        raise ValueError("Limite de 5 agendamentos ativos atingido.")
+
+    query = """
+        INSERT INTO scraper_schedules (state, city, keywords, quantity, frequency, day_of_week, execution_time, is_active, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s::time, %s, NOW(), NOW())
+        RETURNING id, state, city, keywords, quantity, frequency, day_of_week, execution_time, is_active, created_at, updated_at;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    clean["state"],
+                    clean["city"],
+                    clean["keywords"],
+                    int(clean["quantity"]),
+                    clean["frequency"],
+                    clean.get("day_of_week"),
+                    clean["execution_time"],
+                    bool(clean["is_active"]),
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+
+    if row[8]:
+        _log_schedule_event(row[2], row[1], row[4], f"Agendamento criado ({row[5]})")
+
+    keys = [
+        "id",
+        "state",
+        "city",
+        "keywords",
+        "quantity",
+        "frequency",
+        "day_of_week",
+        "execution_time",
+        "is_active",
+        "created_at",
+        "updated_at",
+    ]
+    return dict(zip(keys, row))
+
+
+def update_scraper_schedule(schedule_id: int, payload: dict) -> dict | None:
+    allowed = {
+        "state",
+        "city",
+        "keywords",
+        "quantity",
+        "frequency",
+        "day_of_week",
+        "execution_time",
+        "is_active",
+    }
+    changes = {key: value for key, value in payload.items() if key in allowed and value is not None}
+    if not changes:
+        return None
+
+    clean = _validate_schedule_payload(changes, partial=True)
+
+    if clean.get("is_active") is True and _count_active_schedules(exclude_id=schedule_id) >= MAX_ACTIVE_SCHEDULES:
+        raise ValueError("Limite de 5 agendamentos ativos atingido.")
+
+    set_parts = []
+    values = []
+    for key, value in clean.items():
+        if key == "execution_time":
+            set_parts.append("execution_time = %s::time")
+        else:
+            set_parts.append(f"{key} = %s")
+        values.append(value)
+    set_parts.append("updated_at = NOW()")
+    values.append(schedule_id)
+
+    query = f"""
+        UPDATE scraper_schedules
+        SET {", ".join(set_parts)}
+        WHERE id = %s
+        RETURNING id, state, city, keywords, quantity, frequency, day_of_week, execution_time, is_active, created_at, updated_at;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, tuple(values))
+            row = cur.fetchone()
+        conn.commit()
+
+    if not row:
+        return None
+    if row[8]:
+        _log_schedule_event(row[2], row[1], row[4], f"Agendamento atualizado ({row[5]})")
+
+    keys = [
+        "id",
+        "state",
+        "city",
+        "keywords",
+        "quantity",
+        "frequency",
+        "day_of_week",
+        "execution_time",
+        "is_active",
+        "created_at",
+        "updated_at",
+    ]
+    return dict(zip(keys, row))
+
+
+def delete_scraper_schedule(schedule_id: int) -> bool:
+    query = "DELETE FROM scraper_schedules WHERE id = %s;"
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (schedule_id,))
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted

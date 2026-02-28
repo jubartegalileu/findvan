@@ -54,3 +54,51 @@ def test_scraper_keywords_endpoints(monkeypatch):
     )
     assert put_response.status_code == 200
     assert len(put_response.json()["profile"]["keywords"]) == 2
+
+
+def test_scraper_schedules_crud_endpoints(monkeypatch):
+    monkeypatch.setattr(
+        scraper_api,
+        "list_scraper_schedules",
+        lambda: [{"id": 1, "state": "SP", "city": "Campinas", "is_active": True}],
+    )
+    monkeypatch.setattr(
+        scraper_api,
+        "create_scraper_schedule",
+        lambda payload: {"id": 2, "state": payload["state"], "city": payload["city"], "is_active": True},
+    )
+    monkeypatch.setattr(
+        scraper_api,
+        "update_scraper_schedule",
+        lambda schedule_id, payload: {"id": schedule_id, "state": "SP", "city": "Campinas", "is_active": payload.get("is_active", True)},
+    )
+    monkeypatch.setattr(scraper_api, "delete_scraper_schedule", lambda schedule_id: True)
+
+    client = build_client()
+
+    list_response = client.get("/api/scraper/schedules")
+    assert list_response.status_code == 200
+    assert list_response.json()["schedules"][0]["id"] == 1
+
+    create_response = client.post(
+        "/api/scraper/schedules",
+        json={
+            "state": "SP",
+            "city": "Campinas",
+            "keywords": ["transporte escolar"],
+            "quantity": 50,
+            "frequency": "daily",
+            "execution_time": "09:00",
+            "is_active": True,
+        },
+    )
+    assert create_response.status_code == 200
+    assert create_response.json()["schedule"]["id"] == 2
+
+    patch_response = client.patch("/api/scraper/schedules/2", json={"is_active": False})
+    assert patch_response.status_code == 200
+    assert patch_response.json()["schedule"]["is_active"] is False
+
+    delete_response = client.delete("/api/scraper/schedules/2")
+    assert delete_response.status_code == 200
+    assert delete_response.json()["status"] == "ok"

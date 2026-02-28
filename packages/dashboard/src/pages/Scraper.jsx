@@ -25,6 +25,13 @@ export default function Scraper({ onNavigate, activePath }) {
   const [keywordsHint, setKeywordsHint] = useState('Keywords padrão');
   const [message, setMessage] = useState('');
   const [intelligentFeedback, setIntelligentFeedback] = useState(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedOptions, setAdvancedOptions] = useState({
+    ignore_existing: true,
+    validate_phone: true,
+    auto_cnpj: false,
+    source: 'google_maps',
+  });
   const [loadingRun, setLoadingRun] = useState(false);
   const [progress, setProgress] = useState(0);
   const [states, setStates] = useState([]);
@@ -38,6 +45,17 @@ export default function Scraper({ onNavigate, activePath }) {
     latest_total: null,
     latest_unique: null,
   });
+  const [schedules, setSchedules] = useState([]);
+  const [scheduleState, setScheduleState] = useState('');
+  const [scheduleCity, setScheduleCity] = useState('');
+  const [scheduleKeywords, setScheduleKeywords] = useState('transporte escolar');
+  const [scheduleQuantity, setScheduleQuantity] = useState(50);
+  const [scheduleFrequency, setScheduleFrequency] = useState('daily');
+  const [scheduleDayOfWeek, setScheduleDayOfWeek] = useState(1);
+  const [scheduleExecutionTime, setScheduleExecutionTime] = useState('09:00');
+  const [scheduleActive, setScheduleActive] = useState(true);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleMessage, setScheduleMessage] = useState('');
 
   const normalize = (value) =>
     value
@@ -100,10 +118,34 @@ export default function Scraper({ onNavigate, activePath }) {
     };
   }, []);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('findvan.scraper.advancedOptions');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setAdvancedOptions((prev) => ({
+        ...prev,
+        ...parsed,
+        source: parsed?.source || 'google_maps',
+      }));
+    } catch (error) {
+      // ignore local parse failures
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('findvan.scraper.advancedOptions', JSON.stringify(advancedOptions));
+  }, [advancedOptions]);
+
   const cityOptions = useMemo(() => {
     if (!stateCode) return [];
     return citiesByUf[stateCode] || [];
   }, [citiesByUf, stateCode]);
+
+  const scheduleCityOptions = useMemo(() => {
+    if (!scheduleState) return [];
+    return citiesByUf[scheduleState] || [];
+  }, [citiesByUf, scheduleState]);
 
   const findCityMatch = (value) =>
     cityOptions.find((option) => normalize(option) === normalize(value));
@@ -124,15 +166,20 @@ export default function Scraper({ onNavigate, activePath }) {
         if (!fallbackUrl) return primary;
         return fetch(fallbackUrl);
       };
-      const [statsRes, runsRes] = await Promise.all([
+      const [statsRes, runsRes, schedulesRes] = await Promise.all([
         fetchWithFallback(`${API_BASE}/api/scraper/stats`, `${API_BASE}/api/scraper/stats/`),
         fetchWithFallback(
           `${API_BASE}/api/scraper/runs?limit=20`,
           `${API_BASE}/api/scraper/runs/?limit=20`
         ),
+        fetchWithFallback(
+          `${API_BASE}/api/scraper/schedules`,
+          `${API_BASE}/api/scraper/schedules/`
+        ),
       ]);
       const statsPayload = await statsRes.json();
       const runsPayload = await runsRes.json();
+      const schedulesPayload = await schedulesRes.json();
 
       if (statsRes.ok && statsPayload?.stats) {
         setStatsData(statsPayload.stats);
@@ -151,6 +198,10 @@ export default function Scraper({ onNavigate, activePath }) {
           lastRun: new Date(run.created_at).toLocaleTimeString('pt-BR'),
         }));
         setJobs(mappedRuns);
+      }
+
+      if (schedulesRes.ok && Array.isArray(schedulesPayload?.schedules)) {
+        setSchedules(schedulesPayload.schedules);
       }
     } catch (error) {
       // keep previous UI values on fetch failure
@@ -233,6 +284,10 @@ export default function Scraper({ onNavigate, activePath }) {
           state: stateCode,
           max_results: count || 50,
           keywords: selectedKeywords,
+          ignore_existing: advancedOptions.ignore_existing,
+          validate_phone: advancedOptions.validate_phone,
+          auto_cnpj: advancedOptions.auto_cnpj,
+          source: advancedOptions.source,
         }),
       });
       const payload = await response.json();
@@ -273,6 +328,95 @@ export default function Scraper({ onNavigate, activePath }) {
       setProgress(0);
     } finally {
       setLoadingRun(false);
+    }
+  };
+
+  const parseScheduleKeywords = () => {
+    const values = scheduleKeywords
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return values.length > 0 ? values : ['transporte escolar'];
+  };
+
+  const resetScheduleForm = () => {
+    setScheduleState('');
+    setScheduleCity('');
+    setScheduleKeywords('transporte escolar');
+    setScheduleQuantity(50);
+    setScheduleFrequency('daily');
+    setScheduleDayOfWeek(1);
+    setScheduleExecutionTime('09:00');
+    setScheduleActive(true);
+  };
+
+  const handleCreateSchedule = async () => {
+    if (!scheduleState || !scheduleCity.trim()) {
+      setScheduleMessage('Selecione estado e cidade para criar o agendamento.');
+      return;
+    }
+    setScheduleLoading(true);
+    setScheduleMessage('');
+    try {
+      const response = await fetch(`${API_BASE}/api/scraper/schedules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          state: scheduleState,
+          city: scheduleCity.trim(),
+          keywords: parseScheduleKeywords(),
+          quantity: Number(scheduleQuantity || 50),
+          frequency: scheduleFrequency,
+          day_of_week: scheduleFrequency === 'weekly' ? Number(scheduleDayOfWeek) : null,
+          execution_time: scheduleExecutionTime,
+          is_active: scheduleActive,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Erro ao criar agendamento.');
+      }
+      setScheduleMessage('Agendamento criado com sucesso.');
+      resetScheduleForm();
+      await refreshScraperData();
+    } catch (error) {
+      setScheduleMessage(String(error?.message || 'Erro ao criar agendamento.'));
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
+  const toggleScheduleActive = async (schedule) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/scraper/schedules/${schedule.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !schedule.is_active }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao atualizar agendamento.');
+      }
+      await refreshScraperData();
+    } catch (error) {
+      setScheduleMessage(String(error?.message || 'Falha ao atualizar agendamento.'));
+    }
+  };
+
+  const removeSchedule = async (schedule) => {
+    if (!window.confirm(`Remover agendamento de ${schedule.city}/${schedule.state}?`)) return;
+    try {
+      const response = await fetch(`${API_BASE}/api/scraper/schedules/${schedule.id}`, {
+        method: 'DELETE',
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao remover agendamento.');
+      }
+      setScheduleMessage('Agendamento removido.');
+      await refreshScraperData();
+    } catch (error) {
+      setScheduleMessage(String(error?.message || 'Falha ao remover agendamento.'));
     }
   };
 
@@ -368,6 +512,58 @@ export default function Scraper({ onNavigate, activePath }) {
             Iniciar nova coleta
           </button>
         </div>
+        <div className="fv-link" role="button" tabIndex={0} onClick={() => setAdvancedOpen((prev) => !prev)} onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') setAdvancedOpen((prev) => !prev);
+        }}>
+          {advancedOpen ? 'Ocultar avançado' : 'Mostrar avançado'}
+        </div>
+        {advancedOpen && (
+          <div className="fv-inline-form">
+            <label className="fv-funnel-check">
+              <input
+                type="checkbox"
+                checked={advancedOptions.ignore_existing}
+                onChange={(event) =>
+                  setAdvancedOptions((prev) => ({ ...prev, ignore_existing: event.target.checked }))
+                }
+              />
+              Ignorar leads existentes
+            </label>
+            <label className="fv-funnel-check">
+              <input
+                type="checkbox"
+                checked={advancedOptions.validate_phone}
+                onChange={(event) =>
+                  setAdvancedOptions((prev) => ({ ...prev, validate_phone: event.target.checked }))
+                }
+              />
+              Validar telefone
+            </label>
+            <label className="fv-funnel-check">
+              <input
+                type="checkbox"
+                checked={advancedOptions.auto_cnpj}
+                onChange={(event) =>
+                  setAdvancedOptions((prev) => ({ ...prev, auto_cnpj: event.target.checked }))
+                }
+              />
+              Buscar CNPJ (mais lento)
+            </label>
+            <select
+              className="fv-input fv-select"
+              value={advancedOptions.source}
+              onChange={(event) => setAdvancedOptions((prev) => ({ ...prev, source: event.target.value }))}
+            >
+              <option value="google_maps">Google Maps</option>
+              <option value="instagram" disabled>
+                Instagram (Em breve)
+              </option>
+              <option value="manual" disabled>
+                Lista manual (Em breve)
+              </option>
+            </select>
+          </div>
+        )}
         {message && <div className="fv-message">{message}</div>}
         {intelligentFeedback?.show && (
           <div className="fv-feedback-banner">
@@ -401,6 +597,121 @@ export default function Scraper({ onNavigate, activePath }) {
             <div className="fv-progress-fill" style={{ width: `${progress}%` }} />
           </div>
           <div className="fv-progress-value">{progress}%</div>
+        </div>
+      </section>
+
+      <section className="fv-panel">
+        <div className="fv-panel-header">
+          <h2>Agendamentos</h2>
+          <span className="fv-row-sub">{schedules.filter((item) => item.is_active).length}/5 ativos</span>
+        </div>
+        <div className="fv-inline-form">
+          <select
+            className="fv-input fv-input-state fv-select"
+            value={scheduleState}
+            onChange={(event) => {
+              setScheduleState(event.target.value);
+              setScheduleCity('');
+            }}
+          >
+            <option value="">Estado</option>
+            {states.map((state) => (
+              <option key={`schedule-${state.sigla}`} value={state.sigla}>
+                {state.nome}
+              </option>
+            ))}
+          </select>
+          <input
+            className="fv-input"
+            placeholder="Cidade"
+            value={scheduleCity}
+            onChange={(event) => setScheduleCity(event.target.value)}
+            list="fv-schedule-city-list"
+            disabled={!scheduleState}
+          />
+          <datalist id="fv-schedule-city-list">
+            {scheduleCityOptions.map((option, index) => (
+              <option key={`schedule-city-${scheduleState}-${option}-${index}`} value={option} />
+            ))}
+          </datalist>
+          <input
+            className="fv-input"
+            placeholder="Keywords (vírgula)"
+            value={scheduleKeywords}
+            onChange={(event) => setScheduleKeywords(event.target.value)}
+          />
+          <input
+            className="fv-input fv-input-number"
+            type="number"
+            min={1}
+            max={999}
+            value={scheduleQuantity}
+            onChange={(event) => setScheduleQuantity(Number(event.target.value || 50))}
+          />
+          <select
+            className="fv-input fv-select"
+            value={scheduleFrequency}
+            onChange={(event) => setScheduleFrequency(event.target.value)}
+          >
+            <option value="daily">Diária</option>
+            <option value="weekly">Semanal</option>
+            <option value="monthly">Mensal</option>
+          </select>
+          {scheduleFrequency === 'weekly' && (
+            <select
+              className="fv-input fv-select"
+              value={scheduleDayOfWeek}
+              onChange={(event) => setScheduleDayOfWeek(Number(event.target.value))}
+            >
+              <option value={0}>Domingo</option>
+              <option value={1}>Segunda</option>
+              <option value={2}>Terça</option>
+              <option value={3}>Quarta</option>
+              <option value={4}>Quinta</option>
+              <option value={5}>Sexta</option>
+              <option value={6}>Sábado</option>
+            </select>
+          )}
+          <input
+            className="fv-input"
+            type="time"
+            value={scheduleExecutionTime}
+            onChange={(event) => setScheduleExecutionTime(event.target.value)}
+          />
+          <label className="fv-funnel-check">
+            <input
+              type="checkbox"
+              checked={scheduleActive}
+              onChange={(event) => setScheduleActive(event.target.checked)}
+            />
+            Ativo
+          </label>
+          <button className="fv-primary" type="button" onClick={handleCreateSchedule} disabled={scheduleLoading}>
+            Criar agendamento
+          </button>
+        </div>
+        {scheduleMessage && <div className="fv-message">{scheduleMessage}</div>}
+        <div className="fv-table">
+          {schedules.map((schedule) => (
+            <div key={schedule.id} className="fv-row">
+              <div>
+                <div className="fv-row-title">
+                  {schedule.city} • {schedule.state}
+                </div>
+                <div className="fv-row-sub">
+                  {schedule.frequency} • {String(schedule.execution_time || '').slice(0, 5)} • {schedule.quantity} leads
+                </div>
+              </div>
+              <div className="fv-row-chip">{(schedule.keywords || []).join(', ')}</div>
+              <button className="fv-ghost small" type="button" onClick={() => toggleScheduleActive(schedule)}>
+                {schedule.is_active ? 'Desativar' : 'Ativar'}
+              </button>
+              <button className="fv-ghost small" type="button" onClick={() => removeSchedule(schedule)}>
+                Remover
+              </button>
+            </div>
+          ))}
+          {schedules.length === 0 && <div className="fv-row-sub">Sem agendamentos cadastrados.</div>}
         </div>
       </section>
 

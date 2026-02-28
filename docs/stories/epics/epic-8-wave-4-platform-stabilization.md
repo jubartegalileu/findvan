@@ -1,7 +1,7 @@
 # Epic 8 — Wave 4 Platform Stabilization & Integration Readiness
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Stability / Enablement)
 **Wave:** 4
 **Estimativa:** 1-2 semanas
@@ -66,10 +66,10 @@ Reduzir fricção operacional do time (dev/qa), estabilizar validação E2E loca
 
 ## Definition of Done
 
-- [ ] Stories 8.1, 8.2 e 8.3 implementadas e aprovadas
-- [ ] Ambiente local padronizado e documentado
-- [ ] Smoke E2E estável com evidências consistentes
-- [ ] Contratos de readiness aprovados por arquitetura
+- [x] Stories 8.1, 8.2 e 8.3 implementadas e aprovadas
+- [x] Ambiente local padronizado e documentado
+- [x] Smoke E2E estável com evidências consistentes
+- [x] Contratos de readiness aprovados por arquitetura
 
 ## Exit Criteria
 

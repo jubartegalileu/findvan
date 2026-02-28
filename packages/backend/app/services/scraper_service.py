@@ -457,10 +457,12 @@ def _validate_schedule_payload(payload: dict, partial: bool = False) -> dict:
         clean["day_of_week"] = day_of_week
 
     if not partial:
-        required = ["state", "city", "keywords", "quantity", "frequency", "execution_time", "is_active"]
+        required = ["state", "keywords", "quantity", "frequency", "execution_time", "is_active"]
         for field in required:
             if field not in clean or clean[field] in (None, ""):
                 raise ValueError(f"Campo obrigatório: {field}.")
+        if not clean.get("city"):
+            clean["city"] = clean["state"]
         if clean["frequency"] == "weekly" and clean.get("day_of_week") is None:
             raise ValueError("day_of_week é obrigatório para frequência weekly.")
 

@@ -351,10 +351,12 @@ export default function Scraper({ onNavigate, activePath }) {
   };
 
   const handleCreateSchedule = async () => {
-    if (!scheduleState || !scheduleCity.trim()) {
-      setScheduleMessage('Selecione estado e cidade para criar o agendamento.');
+    if (!scheduleState) {
+      setScheduleMessage('Selecione o estado para criar o agendamento.');
       return;
     }
+    const scheduleStateMeta = states.find((item) => item.sigla === scheduleState);
+    const resolvedScheduleCity = scheduleCity.trim() || scheduleStateMeta?.nome || scheduleState;
     setScheduleLoading(true);
     setScheduleMessage('');
     try {
@@ -363,7 +365,7 @@ export default function Scraper({ onNavigate, activePath }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           state: scheduleState,
-          city: scheduleCity.trim(),
+          city: resolvedScheduleCity,
           keywords: parseScheduleKeywords(),
           quantity: Number(scheduleQuantity || 50),
           frequency: scheduleFrequency,
@@ -623,7 +625,7 @@ export default function Scraper({ onNavigate, activePath }) {
           </select>
           <input
             className="fv-input"
-            placeholder="Cidade"
+            placeholder="Cidade (opcional)"
             value={scheduleCity}
             onChange={(event) => setScheduleCity(event.target.value)}
             list="fv-schedule-city-list"

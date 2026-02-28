@@ -102,3 +102,31 @@ def test_scraper_schedules_crud_endpoints(monkeypatch):
     delete_response = client.delete("/api/scraper/schedules/2")
     assert delete_response.status_code == 200
     assert delete_response.json()["status"] == "ok"
+
+
+def test_scraper_schedule_create_accepts_state_only(monkeypatch):
+    monkeypatch.setattr(
+        scraper_api,
+        "create_scraper_schedule",
+        lambda payload: {
+            "id": 9,
+            "state": payload["state"],
+            "city": payload.get("city") or payload["state"],
+            "is_active": True,
+        },
+    )
+    client = build_client()
+    response = client.post(
+        "/api/scraper/schedules",
+        json={
+            "state": "SP",
+            "keywords": ["transporte escolar"],
+            "quantity": 50,
+            "frequency": "daily",
+            "execution_time": "09:00",
+            "is_active": True,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schedule"]["state"] == "SP"

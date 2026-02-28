@@ -35,7 +35,7 @@ class KeywordsPayload(BaseModel):
 
 class ScraperScheduleCreatePayload(BaseModel):
     state: str = Field(..., min_length=2, max_length=2)
-    city: str = Field(..., min_length=2)
+    city: str | None = Field(default=None, min_length=2)
     keywords: list[str]
     quantity: int = Field(default=50, ge=1, le=999)
     frequency: str

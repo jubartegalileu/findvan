@@ -1,7 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from ..services.leads_service import (
+    batch_soft_delete,
+    batch_update_campaign,
     delete_lead,
+    get_leads_by_ids,
     get_lead_by_id,
     get_lead_score_breakdown,
     list_leads,
@@ -78,6 +81,23 @@ class FunnelStatusRequest(BaseModel):
     author: str | None = None
 
 
+class BatchIdsRequest(BaseModel):
+    ids: list[int]
+
+
+class BatchCampaignRequest(BaseModel):
+    ids: list[int]
+    campaign_status: str
+
+
+class BatchStatusRequest(BaseModel):
+    ids: list[int]
+    new_status: str
+    loss_reason: str | None = None
+    loss_reason_other: str | None = None
+    author: str | None = None
+
+
 @router.patch("/{lead_id}/funnel-status")
 def patch_funnel_status(lead_id: int, payload: FunnelStatusRequest):
     try:
@@ -93,6 +113,21 @@ def patch_funnel_status(lead_id: int, payload: FunnelStatusRequest):
         return {"status": "ok", "lead": updated}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.patch("/{lead_id}/status")
+def patch_status_alias(lead_id: int, payload: FunnelStatusRequest):
+    # API alias to preserve compatibility with PRD naming.
+    return patch_funnel_status(lead_id, payload)
+
+
+@router.get("/{lead_id}/transitions")
+def get_transitions(lead_id: int):
+    lead = get_lead_by_id(lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    current = lead.get("funnel_status") or "novo"
+    return {"status": "ok", "current": current, "transitions": get_valid_transitions(current)}
 
 
 @router.get("/{lead_id}/interactions")
@@ -124,3 +159,51 @@ def remove_lead(lead_id: int):
 def post_recalculate_scores():
     result = recalculate_all_scores()
     return {"status": "ok", **result}
+
+
+@router.post("/batch/campaign")
+def post_batch_campaign(payload: BatchCampaignRequest):
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="Nenhum lead selecionado.")
+    result = batch_update_campaign(payload.ids, payload.campaign_status)
+    return {"status": "ok", **result}
+
+
+@router.post("/batch/delete")
+def post_batch_delete(payload: BatchIdsRequest):
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="Nenhum lead selecionado.")
+    result = batch_soft_delete(payload.ids)
+    return {"status": "ok", **result}
+
+
+@router.post("/batch/export")
+def post_batch_export(payload: BatchIdsRequest):
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="Nenhum lead selecionado.")
+    leads = get_leads_by_ids(payload.ids)
+    return {"status": "ok", "leads": leads}
+
+
+@router.post("/batch/status")
+def post_batch_status(payload: BatchStatusRequest):
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="Nenhum lead selecionado.")
+    updated = 0
+    errors: list[dict] = []
+    for lead_id in payload.ids:
+        try:
+            result = change_status(
+                lead_id=lead_id,
+                new_status=payload.new_status,
+                loss_reason=payload.loss_reason,
+                loss_reason_other=payload.loss_reason_other,
+                author=payload.author or "batch",
+            )
+            if result:
+                updated += 1
+            else:
+                errors.append({"id": lead_id, "error": "Lead not found"})
+        except ValueError as exc:
+            errors.append({"id": lead_id, "error": str(exc)})
+    return {"status": "ok", "updated": updated, "errors": errors}

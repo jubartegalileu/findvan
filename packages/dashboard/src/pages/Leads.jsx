@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout.jsx';
 import './dashboard.css';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_BASE } from '../lib/apiBase.js';
 
 const statusClass = {
   Novo: 'novo',
@@ -64,6 +63,28 @@ const scoreRanges = [
   { value: 'weak', label: '< 50 (Fraco)' },
 ];
 
+const SESSION_FILTER_KEY = 'findvan.leads.filters.v1';
+
+const toCsv = (rows) => {
+  const headers = [
+    'id',
+    'name',
+    'company_name',
+    'city',
+    'state',
+    'phone',
+    'email',
+    'address',
+    'source',
+    'score',
+    'funnel_status',
+    'captured_at',
+  ];
+  const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const lines = rows.map((row) => headers.map((key) => escape(row[key])).join(','));
+  return [headers.join(','), ...lines].join('\n');
+};
+
 const mapLead = (lead) => ({
   id: lead.id,
   source: lead.source || 'google_maps',
@@ -108,7 +129,12 @@ export default function Leads({ onNavigate, activePath }) {
   const [search, setSearch] = useState('');
   const [selectedScoreRange, setSelectedScoreRange] = useState('all');
   const [selectedFunnels, setSelectedFunnels] = useState([]);
+  const [selectedSource, setSelectedSource] = useState('');
+  const [capturedDateFrom, setCapturedDateFrom] = useState('');
+  const [capturedDateTo, setCapturedDateTo] = useState('');
   const [scoreSort, setScoreSort] = useState('desc');
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [batchBusy, setBatchBusy] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [activeLead, setActiveLead] = useState(null);
   const [formLead, setFormLead] = useState(null);
@@ -138,6 +164,33 @@ export default function Leads({ onNavigate, activePath }) {
   };
 
   useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(SESSION_FILTER_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setSelectedState(parsed.selectedState || '');
+        setSelectedCity(parsed.selectedCity || '');
+        setSearch(parsed.search || '');
+        setSelectedScoreRange(parsed.selectedScoreRange || 'all');
+        setSelectedFunnels(Array.isArray(parsed.selectedFunnels) ? parsed.selectedFunnels : []);
+        setSelectedSource(parsed.selectedSource || '');
+        setCapturedDateFrom(parsed.capturedDateFrom || '');
+        setCapturedDateTo(parsed.capturedDateTo || '');
+        setScoreSort(parsed.scoreSort || 'desc');
+      }
+    } catch (error) {
+      // no-op
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const funnel = params.get('funnel');
+    if (funnel) {
+      const values = funnel
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => funnelStatusOptions.some((option) => option.value === item));
+      setSelectedFunnels(values);
+    }
     loadLeads();
     const onLeadsUpdated = () => loadLeads();
     const onStorage = (event) => {
@@ -153,6 +206,37 @@ export default function Leads({ onNavigate, activePath }) {
     };
   }, []);
 
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        SESSION_FILTER_KEY,
+        JSON.stringify({
+          selectedState,
+          selectedCity,
+          search,
+          selectedScoreRange,
+          selectedFunnels,
+          selectedSource,
+          capturedDateFrom,
+          capturedDateTo,
+          scoreSort,
+        })
+      );
+    } catch (error) {
+      // no-op
+    }
+  }, [
+    selectedState,
+    selectedCity,
+    search,
+    selectedScoreRange,
+    selectedFunnels,
+    selectedSource,
+    capturedDateFrom,
+    capturedDateTo,
+    scoreSort,
+  ]);
+
   const stateOptions = useMemo(
     () => [...new Set(leads.map((lead) => lead.state).filter(Boolean))].sort(),
     [leads]
@@ -167,15 +251,30 @@ export default function Leads({ onNavigate, activePath }) {
     );
   }, [leads, selectedState]);
 
+  const sourceOptions = useMemo(
+    () => [...new Set(leads.map((lead) => lead.source).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [leads]
+  );
+
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
       if (selectedState && lead.state !== selectedState) return false;
       if (selectedCity && lead.city !== selectedCity) return false;
       if (selectedFunnels.length > 0 && !selectedFunnels.includes(lead.funnel_status)) return false;
+      if (selectedSource && lead.source !== selectedSource) return false;
       if (selectedScoreRange === 'excellent' && !(lead.score >= 90)) return false;
       if (selectedScoreRange === 'good' && !(lead.score >= 70 && lead.score <= 89)) return false;
       if (selectedScoreRange === 'regular' && !(lead.score >= 50 && lead.score <= 69)) return false;
       if (selectedScoreRange === 'weak' && !(lead.score < 50)) return false;
+      const capturedDate = lead.captured_at || lead.created_at;
+      if (capturedDateFrom) {
+        const from = new Date(`${capturedDateFrom}T00:00:00`);
+        if (!capturedDate || new Date(capturedDate) < from) return false;
+      }
+      if (capturedDateTo) {
+        const to = new Date(`${capturedDateTo}T23:59:59`);
+        if (!capturedDate || new Date(capturedDate) > to) return false;
+      }
       if (search.trim()) {
         const term = search.trim().toLowerCase();
         const haystack = [
@@ -196,7 +295,17 @@ export default function Leads({ onNavigate, activePath }) {
       }
       return true;
     });
-  }, [leads, selectedState, selectedCity, selectedFunnels, selectedScoreRange, search]);
+  }, [
+    leads,
+    selectedState,
+    selectedCity,
+    selectedFunnels,
+    selectedSource,
+    selectedScoreRange,
+    capturedDateFrom,
+    capturedDateTo,
+    search,
+  ]);
 
   const sortedLeads = useMemo(() => {
     const copy = [...filteredLeads];
@@ -215,11 +324,27 @@ export default function Leads({ onNavigate, activePath }) {
 
   useEffect(() => {
     setPage(1);
-  }, [selectedState, selectedCity, selectedFunnels, selectedScoreRange, scoreSort, search]);
+    setSelectedLeadIds([]);
+  }, [
+    selectedState,
+    selectedCity,
+    selectedFunnels,
+    selectedSource,
+    selectedScoreRange,
+    capturedDateFrom,
+    capturedDateTo,
+    scoreSort,
+    search,
+  ]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
+
+  useEffect(() => {
+    const visibleIds = new Set(leads.map((lead) => lead.id));
+    setSelectedLeadIds((prev) => prev.filter((id) => visibleIds.has(id)));
+  }, [leads]);
 
   const openLeadModal = (lead) => {
     setActiveLead(lead);
@@ -364,6 +489,144 @@ export default function Leads({ onNavigate, activePath }) {
     }
   };
 
+  const clearFilters = () => {
+    setSelectedState('');
+    setSelectedCity('');
+    setSearch('');
+    setSelectedScoreRange('all');
+    setSelectedFunnels([]);
+    setSelectedSource('');
+    setCapturedDateFrom('');
+    setCapturedDateTo('');
+    setScoreSort('desc');
+  };
+
+  const toggleLeadSelection = (leadId, checked) => {
+    if (checked) {
+      setSelectedLeadIds((prev) => (prev.includes(leadId) ? prev : [...prev, leadId]));
+    } else {
+      setSelectedLeadIds((prev) => prev.filter((id) => id !== leadId));
+    }
+  };
+
+  const toggleSelectCurrentPage = (checked) => {
+    const pageIds = paginatedLeads.map((lead) => lead.id).filter(Boolean);
+    if (checked) {
+      setSelectedLeadIds((prev) => [...new Set([...prev, ...pageIds])]);
+    } else {
+      setSelectedLeadIds((prev) => prev.filter((id) => !pageIds.includes(id)));
+    }
+  };
+
+  const exportSelectedLeads = async () => {
+    if (selectedLeadIds.length === 0) return;
+    try {
+      setBatchBusy(true);
+      const response = await fetch(`${API_BASE}/api/leads/batch/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedLeadIds }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.detail || 'Falha ao exportar leads.');
+      const csv = toCsv(payload?.leads || []);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `findvan-leads-batch-${Date.now()}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setModalMessage(error?.message || 'Erro ao exportar lote.');
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const batchUpdateStatus = async () => {
+    if (selectedLeadIds.length === 0) return;
+    const newStatus = window.prompt('Novo status do funil (novo/contactado/respondeu/interessado/convertido/perdido):', 'contactado');
+    if (!newStatus) return;
+    let lossReason = null;
+    if (newStatus === 'perdido') {
+      lossReason = window.prompt('Motivo de perda (sem_interesse/ja_tem_fornecedor/preco_alto/sem_resposta_3_tentativas/numero_invalido_ou_bloqueado/outro):', 'sem_interesse');
+      if (!lossReason) return;
+    }
+    try {
+      setBatchBusy(true);
+      const response = await fetch(`${API_BASE}/api/leads/batch/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: selectedLeadIds,
+          new_status: newStatus,
+          loss_reason: lossReason,
+          author: 'dashboard-batch',
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.detail || 'Falha ao atualizar status em lote.');
+      setModalMessage(`Status atualizado em ${payload.updated || 0} leads.`);
+      setSelectedLeadIds([]);
+      await loadLeads();
+    } catch (error) {
+      setModalMessage(error?.message || 'Erro no batch de status.');
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const batchUpdateCampaign = async () => {
+    if (selectedLeadIds.length === 0) return;
+    const campaignStatus = window.prompt('Status/campanha para os leads selecionados:', 'Campanha Wave 1');
+    if (!campaignStatus) return;
+    try {
+      setBatchBusy(true);
+      const response = await fetch(`${API_BASE}/api/leads/batch/campaign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: selectedLeadIds,
+          campaign_status: campaignStatus,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.detail || 'Falha ao atualizar campanha em lote.');
+      setModalMessage(`Campanha atualizada em ${payload.updated || 0} leads.`);
+      await loadLeads();
+    } catch (error) {
+      setModalMessage(error?.message || 'Erro no batch de campanha.');
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const batchDeleteLeads = async () => {
+    if (selectedLeadIds.length === 0) return;
+    const confirmed = window.confirm(`Excluir (soft delete) ${selectedLeadIds.length} leads selecionados?`);
+    if (!confirmed) return;
+    try {
+      setBatchBusy(true);
+      const response = await fetch(`${API_BASE}/api/leads/batch/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedLeadIds }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.detail || 'Falha ao excluir leads em lote.');
+      setModalMessage(`${payload.deleted || 0} leads removidos.`);
+      setSelectedLeadIds([]);
+      await loadLeads();
+    } catch (error) {
+      setModalMessage(error?.message || 'Erro no batch de exclusão.');
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
   return (
     <Layout onNavigate={onNavigate} activePath={activePath}>
       <header className="fv-header">
@@ -450,6 +713,33 @@ export default function Leads({ onNavigate, activePath }) {
               </label>
             ))}
           </div>
+          <select
+            className="fv-input fv-select"
+            value={selectedSource}
+            onChange={(event) => setSelectedSource(event.target.value)}
+          >
+            <option value="">Todas as fontes</option>
+            {sourceOptions.map((source) => (
+              <option key={source} value={source}>
+                {source}
+              </option>
+            ))}
+          </select>
+          <input
+            className="fv-input fv-select"
+            type="date"
+            value={capturedDateFrom}
+            onChange={(event) => setCapturedDateFrom(event.target.value)}
+          />
+          <input
+            className="fv-input fv-select"
+            type="date"
+            value={capturedDateTo}
+            onChange={(event) => setCapturedDateTo(event.target.value)}
+          />
+          <button className="fv-ghost small" type="button" onClick={clearFilters}>
+            Limpar filtros
+          </button>
           <div className="fv-row-sub">
             {sortedLeads.length} leads • Atualizado as {lastUpdatedAt || '--:--:--'}
           </div>
@@ -460,38 +750,68 @@ export default function Leads({ onNavigate, activePath }) {
         <div className="fv-panel">
           <div className="fv-panel-header">
             <h2>Pipeline</h2>
+            <label className="fv-check-label">
+              <input
+                type="checkbox"
+                checked={paginatedLeads.length > 0 && paginatedLeads.every((lead) => selectedLeadIds.includes(lead.id))}
+                onChange={(event) => toggleSelectCurrentPage(event.target.checked)}
+              />
+              Selecionar página
+            </label>
           </div>
+          {selectedLeadIds.length > 0 && (
+            <div className="fv-batch-bar">
+              <div className="fv-row-sub">{selectedLeadIds.length} selecionados</div>
+              <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={batchUpdateStatus}>
+                Alterar status
+              </button>
+              <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={batchUpdateCampaign}>
+                Adicionar campanha
+              </button>
+              <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={exportSelectedLeads}>
+                Exportar CSV
+              </button>
+              <button className="fv-primary" type="button" disabled={batchBusy} onClick={batchDeleteLeads}>
+                Excluir
+              </button>
+            </div>
+          )}
           <div className="fv-table">
             {paginatedLeads.map((lead, index) => (
-              <React.Fragment key={`${lead.id || lead.name}-${lead.city}-${index}`}>
-              <button
-                type="button"
-                className="fv-row fv-row-button"
-                onClick={() => openLeadModal(lead)}
-              >
-                <div className="fv-row-main">
-                  <div className="fv-row-title">{lead.name}</div>
-                  <div className="fv-row-sub">
-                    {lead.company_name || lead.name}
+              <div key={`${lead.id || lead.name}-${lead.city}-${index}`} className="fv-row fv-row-selectable">
+                <input
+                  type="checkbox"
+                  checked={selectedLeadIds.includes(lead.id)}
+                  onChange={(event) => toggleLeadSelection(lead.id, event.target.checked)}
+                />
+                <button
+                  type="button"
+                  className="fv-row fv-row-button fv-row-button-inline"
+                  onClick={() => openLeadModal(lead)}
+                >
+                  <div className="fv-row-main">
+                    <div className="fv-row-title">{lead.name}</div>
+                    <div className="fv-row-sub">
+                      {lead.company_name || lead.name}
+                    </div>
+                    <div className="fv-row-sub">
+                      {lead.city || 'Cidade não informada'}
+                      {lead.state ? ` • ${lead.state}` : ''} • {lead.phone || 'Sem telefone'}
+                      {lead.email ? ` • ${lead.email}` : ''}
+                    </div>
+                    <div className="fv-row-sub">
+                      {lead.address || 'Endereço não informado'} • Fonte {lead.source}
+                    </div>
                   </div>
-                  <div className="fv-row-sub">
-                    {lead.city || 'Cidade não informada'}
-                    {lead.state ? ` • ${lead.state}` : ''} • {lead.phone || 'Sem telefone'}
-                    {lead.email ? ` • ${lead.email}` : ''}
+                  <div className={`fv-dot ${lead.prospect_status || 'nao_contatado'}`} />
+                  <div className={`fv-row-chip ${getScoreMeta(lead.score).className}`}>
+                    Score {lead.score} • {getScoreMeta(lead.score).label}
                   </div>
-                  <div className="fv-row-sub">
-                    {lead.address || 'Endereço não informado'} • Fonte {lead.source}
+                  <div className={`fv-status ${getFunnelClass(lead.funnel_status)}`}>
+                    {funnelStatusOptions.find((f) => f.value === lead.funnel_status)?.label || 'Novo'}
                   </div>
-                </div>
-                <div className={`fv-dot ${lead.prospect_status || 'nao_contatado'}`} />
-                <div className={`fv-row-chip ${getScoreMeta(lead.score).className}`}>
-                  Score {lead.score} • {getScoreMeta(lead.score).label}
-                </div>
-                <div className={`fv-status ${getFunnelClass(lead.funnel_status)}`}>
-                  {funnelStatusOptions.find((f) => f.value === lead.funnel_status)?.label || 'Novo'}
-                </div>
-              </button>
-              </React.Fragment>
+                </button>
+              </div>
             ))}
             {paginatedLeads.length === 0 && (
               <div className="fv-row-sub">Nenhum lead encontrado com os filtros atuais.</div>

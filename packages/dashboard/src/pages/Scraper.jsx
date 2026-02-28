@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout.jsx';
 import './dashboard.css';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_BASE } from '../lib/apiBase.js';
 const ESTADOS_URL =
   'https://raw.githubusercontent.com/leogermani/estados-e-municipios-ibge/master/estados.json';
 const MUNICIPIOS_URL =
@@ -22,7 +21,10 @@ export default function Scraper({ onNavigate, activePath }) {
   const [city, setCity] = useState('');
   const [stateCode, setStateCode] = useState('');
   const [count, setCount] = useState(50);
+  const [keywordsInput, setKeywordsInput] = useState('transporte escolar');
+  const [keywordsHint, setKeywordsHint] = useState('Keywords padrão');
   const [message, setMessage] = useState('');
+  const [intelligentFeedback, setIntelligentFeedback] = useState(null);
   const [loadingRun, setLoadingRun] = useState(false);
   const [progress, setProgress] = useState(0);
   const [states, setStates] = useState([]);
@@ -106,6 +108,14 @@ export default function Scraper({ onNavigate, activePath }) {
   const findCityMatch = (value) =>
     cityOptions.find((option) => normalize(option) === normalize(value));
 
+  const parseKeywords = () => {
+    const values = keywordsInput
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return values.length > 0 ? values : ['transporte escolar'];
+  };
+
   const refreshScraperData = async () => {
     try {
       const fetchWithFallback = async (primaryUrl, fallbackUrl) => {
@@ -134,8 +144,9 @@ export default function Scraper({ onNavigate, activePath }) {
           state: run.state || '',
           status: run.status === 'completed' ? 'Concluído' : 'Falhou',
           captured: run.total_count ?? 0,
+          valid: (run.unique_count ?? 0) + (run.duplicate_count ?? 0),
           inserted: run.inserted_count ?? 0,
-          duplicates: run.db_duplicate_count ?? 0,
+          duplicates: (run.db_duplicate_count ?? 0) + (run.duplicate_count ?? 0),
           target: run.target_count ?? 0,
           lastRun: new Date(run.created_at).toLocaleTimeString('pt-BR'),
         }));
@@ -149,6 +160,34 @@ export default function Scraper({ onNavigate, activePath }) {
   useEffect(() => {
     refreshScraperData();
   }, []);
+
+  useEffect(() => {
+    const selectedState = states.find((item) => item.sigla === stateCode);
+    const trimmedCity = city.trim();
+    const cityForProfile = trimmedCity || selectedState?.nome || '';
+    if (!stateCode || !cityForProfile) {
+      setKeywordsHint('Keywords padrão');
+      return;
+    }
+    let cancelled = false;
+    const loadKeywords = async () => {
+      try {
+        const params = new URLSearchParams({ state: stateCode, city: cityForProfile });
+        const response = await fetch(`${API_BASE}/api/scraper/keywords?${params.toString()}`);
+        const payload = await response.json();
+        if (!cancelled && response.ok && payload?.profile?.keywords?.length) {
+          setKeywordsInput(payload.profile.keywords.join(', '));
+          setKeywordsHint(payload.profile.source === 'saved' ? 'Keywords salvas para esta cidade' : 'Keywords padrão');
+        }
+      } catch (error) {
+        // no-op
+      }
+    };
+    loadKeywords();
+    return () => {
+      cancelled = true;
+    };
+  }, [city, stateCode, states]);
 
   useEffect(() => {
     if (!loadingRun) return undefined;
@@ -181,9 +220,11 @@ export default function Scraper({ onNavigate, activePath }) {
 
     setLoadingRun(true);
     setProgress(0);
+    setIntelligentFeedback(null);
     setMessage('Iniciando coleta real via backend...');
 
     try {
+      const selectedKeywords = parseKeywords();
       const response = await fetch(`${API_BASE}/api/scraper/google-maps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -191,6 +232,7 @@ export default function Scraper({ onNavigate, activePath }) {
           city: resolvedCity || selectedState?.nome,
           state: stateCode,
           max_results: count || 50,
+          keywords: selectedKeywords,
         }),
       });
       const payload = await response.json();
@@ -207,19 +249,27 @@ export default function Scraper({ onNavigate, activePath }) {
       const dbDuplicates = Number(result.db_duplicates || 0);
       if (inserted === 0 && dbDuplicates > 0) {
         setMessage(
-          `Coleta concluída: ${result.unique ?? 0} capturados, 0 novos em ${searchLabel}. ${dbDuplicates} já existiam no banco.`
+          `Coleta concluída: ${result.total ?? 0} encontrados, 0 novos em ${searchLabel}. ${dbDuplicates} já existiam no banco.`
         );
       } else {
         setMessage(
-          `Coleta concluída: ${result.unique ?? 0} capturados, ${inserted} novos inseridos (${searchLabel}).`
+          `Coleta concluída: ${result.total ?? 0} encontrados, ${inserted} novos inseridos (${searchLabel}).`
         );
+      }
+      if (result.feedback?.show) {
+        setIntelligentFeedback(result.feedback);
       }
       await refreshScraperData();
       setProgress(100);
       localStorage.setItem('findvan.leads.lastRefresh', String(Date.now()));
       window.dispatchEvent(new CustomEvent('findvan:leads-updated'));
     } catch (error) {
-      setMessage(error?.message || 'Erro ao executar scraper.');
+      const message = String(error?.message || '');
+      if (message.toLowerCase().includes('failed to fetch')) {
+        setMessage(`Não foi possível conectar ao backend (${API_BASE}). Verifique se a API está rodando na porta 8000.`);
+      } else {
+        setMessage(error?.message || 'Erro ao executar scraper.');
+      }
       setProgress(0);
     } finally {
       setLoadingRun(false);
@@ -294,6 +344,13 @@ export default function Scraper({ onNavigate, activePath }) {
             ))}
           </datalist>
           <input
+            className="fv-input"
+            placeholder="Keywords (separadas por vírgula)"
+            value={keywordsInput}
+            onChange={(event) => setKeywordsInput(event.target.value)}
+          />
+          <div className="fv-row-sub">{keywordsHint}</div>
+          <input
             className="fv-input fv-input-number"
             type="number"
             min={1}
@@ -312,6 +369,33 @@ export default function Scraper({ onNavigate, activePath }) {
           </button>
         </div>
         {message && <div className="fv-message">{message}</div>}
+        {intelligentFeedback?.show && (
+          <div className="fv-feedback-banner">
+            <div className="fv-feedback-title">{intelligentFeedback.message}</div>
+            {intelligentFeedback.insights?.map((item, index) => (
+              <div key={`${item}-${index}`} className="fv-row-sub">
+                {item}
+              </div>
+            ))}
+            <div className="fv-row-sub">
+              Execuções consecutivas sem novos: {intelligentFeedback.streak_zero_results || 0}
+            </div>
+            {Array.isArray(intelligentFeedback.suggestions) && intelligentFeedback.suggestions.length > 0 && (
+              <div className="fv-feedback-suggestions">
+                {intelligentFeedback.suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    className="fv-ghost small"
+                    onClick={() => setKeywordsInput(suggestion)}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <div className="fv-progress-row" aria-label="Progresso da coleta">
           <div className="fv-progress-track">
             <div className="fv-progress-fill" style={{ width: `${progress}%` }} />
@@ -339,10 +423,19 @@ export default function Scraper({ onNavigate, activePath }) {
                 {job.captured}/{job.target ?? 320} capturados
               </div>
               <div className="fv-row-chip">
+                {job.valid} válidos
+              </div>
+              <div className="fv-row-chip">
                 {job.inserted} novos
               </div>
               <div className="fv-row-chip fv-row-chip-light">
                 {job.duplicates} duplicados
+              </div>
+              <div className="fv-scraper-pipeline" title={`Encontrados ${job.captured} > Válidos ${job.valid} > Duplicados ${job.duplicates} > Novos ${job.inserted}`}>
+                <span className="found" style={{ width: `${Math.min(100, Math.round((job.captured / Math.max(1, job.target || 1)) * 100))}%` }} />
+                <span className="valid" style={{ width: `${Math.min(100, Math.round((job.valid / Math.max(1, job.captured || 1)) * 100))}%` }} />
+                <span className="duplicates" style={{ width: `${Math.min(100, Math.round((job.duplicates / Math.max(1, job.captured || 1)) * 100))}%` }} />
+                <span className="new" style={{ width: `${Math.min(100, Math.round((job.inserted / Math.max(1, job.captured || 1)) * 100))}%` }} />
               </div>
               <div className={`fv-status ${statusClass[job.status] || ''}`}>
                 {job.status}

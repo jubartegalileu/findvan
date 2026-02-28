@@ -7,13 +7,14 @@ if (!globalThis.File) {
   globalThis.File = File;
 }
 
-const [, , cityArg, maxArg] = process.argv;
+const [, , cityArg, maxArg, keywordArg] = process.argv;
 const city = cityArg || 'São Paulo';
 const maxResults = Number.parseInt(maxArg || '100', 10);
+const keyword = (keywordArg || 'transporte escolar').trim();
 
 const { scrapeGoogleMaps } = await import('../src/scrapers/google-maps.js');
 
-const result = await scrapeGoogleMaps({ city, maxResults });
+const result = await scrapeGoogleMaps({ city, maxResults, keyword });
 
 if (!result?.success) {
   console.error('\n❌ Scraper failed!');

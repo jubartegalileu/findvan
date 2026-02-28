@@ -2,8 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout.jsx';
 import Icon from '../components/Icon.jsx';
 import './dashboard.css';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_BASE } from '../lib/apiBase.js';
+const funnelMeta = {
+  novo: { label: 'Novo', className: 'funnel-novo' },
+  contactado: { label: 'Contactado', className: 'funnel-contactado' },
+  respondeu: { label: 'Respondeu', className: 'funnel-respondeu' },
+  interessado: { label: 'Interessado', className: 'funnel-interessado' },
+  convertido: { label: 'Convertido', className: 'funnel-convertido' },
+  perdido: { label: 'Perdido', className: 'funnel-perdido' },
+};
 
 const statusClass = {
   Novo: 'novo',
@@ -19,6 +26,8 @@ const formatNumber = (value) => {
   const amount = Number(value || 0);
   return amount.toLocaleString('pt-BR');
 };
+
+const formatPercent = (value) => `${Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
 
 const formatStatusFromLead = (lead) => {
   if (lead?.is_duplicate) return 'Em contato';
@@ -68,11 +77,22 @@ export default function Dashboard({ onNavigate, activePath }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [lastRefresh, setLastRefresh] = useState(null);
   const [leads, setLeads] = useState([]);
-  const [scraperStats, setScraperStats] = useState({
+  const [dashboardKpis, setDashboardKpis] = useState({
+    valid_leads: 0,
     jobs_today: 0,
-    completed_today: 0,
     leads_24h: 0,
-    validation_rate: null,
+    contacted_leads: 0,
+    reply_rate: 0,
+    monthly_conversions: 0,
+  });
+  const [funnelSummary, setFunnelSummary] = useState({
+    total: 0,
+    conversion_rate: 0,
+    stages: [],
+  });
+  const [urgentActions, setUrgentActions] = useState({
+    alerts: [],
+    all_clear: true,
   });
   const [scraperRuns, setScraperRuns] = useState([]);
 
@@ -87,19 +107,29 @@ export default function Dashboard({ onNavigate, activePath }) {
         return fetch(fallbackUrl);
       };
 
-      const [leadsRes, statsRes, runsRes] = await Promise.all([
+      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes] = await Promise.all([
         fetch(`${API_BASE}/api/leads/?limit=120`),
-        fetchWithFallback(`${API_BASE}/api/scraper/stats`, `${API_BASE}/api/scraper/stats/`),
         fetchWithFallback(
           `${API_BASE}/api/scraper/runs?limit=10`,
           `${API_BASE}/api/scraper/runs/?limit=10`
         ),
+        fetchWithFallback(`${API_BASE}/api/dashboard/kpis`, `${API_BASE}/api/dashboard/kpis/`),
+        fetchWithFallback(
+          `${API_BASE}/api/dashboard/funnel-summary`,
+          `${API_BASE}/api/dashboard/funnel-summary/`
+        ),
+        fetchWithFallback(
+          `${API_BASE}/api/dashboard/urgent-actions`,
+          `${API_BASE}/api/dashboard/urgent-actions/`
+        ),
       ]);
 
-      const [leadsPayload, statsPayload, runsPayload] = await Promise.all([
+      const [leadsPayload, runsPayload, kpisPayload, funnelPayload, urgentPayload] = await Promise.all([
         leadsRes.json(),
-        statsRes.json(),
         runsRes.json(),
+        kpisRes.json(),
+        funnelRes.json(),
+        urgentRes.json(),
       ]);
 
       if (!leadsRes.ok) {
@@ -108,11 +138,17 @@ export default function Dashboard({ onNavigate, activePath }) {
       if (Array.isArray(leadsPayload?.leads)) {
         setLeads(leadsPayload.leads);
       }
-      if (statsRes.ok && statsPayload?.stats) {
-        setScraperStats(statsPayload.stats);
-      }
       if (runsRes.ok && Array.isArray(runsPayload?.runs)) {
         setScraperRuns(runsPayload.runs);
+      }
+      if (kpisRes.ok && kpisPayload?.kpis) {
+        setDashboardKpis(kpisPayload.kpis);
+      }
+      if (funnelRes.ok && funnelPayload?.summary) {
+        setFunnelSummary(funnelPayload.summary);
+      }
+      if (urgentRes.ok && urgentPayload?.urgent_actions) {
+        setUrgentActions(urgentPayload.urgent_actions);
       }
 
       setLastRefresh(new Date());
@@ -144,34 +180,47 @@ export default function Dashboard({ onNavigate, activePath }) {
   const recentLeads = useMemo(() => leads.slice(0, 6), [leads]);
 
   const dashboardStats = useMemo(() => {
-    const validCount = leads.filter((lead) => !!lead.is_valid).length;
+    const repliedLeads = leads.filter((lead) => lead.funnel_status === 'respondeu').length;
     const uniqueCityCount = new Set(leads.map((lead) => lead.city).filter(Boolean)).size;
-    const activeRuns = scraperRuns.filter((run) => run.status !== 'failed').length;
-
     return [
       {
         label: 'Leads válidos',
-        value: formatNumber(validCount),
+        value: formatNumber(dashboardKpis.valid_leads),
         delta: `${uniqueCityCount} cidades ativas`,
         icon: 'leads',
       },
       {
         label: 'Coletas hoje',
-        value: formatNumber(scraperStats.jobs_today || 0),
-        delta: `${formatNumber(scraperStats.completed_today || 0)} concluídas`,
+        value: formatNumber(dashboardKpis.jobs_today),
+        delta: `Última atualização ${lastRefresh ? formatRelativeDate(lastRefresh.toISOString()) : '--'}`,
         icon: 'scraper',
       },
       {
         label: 'Leads capturados (24h)',
-        value: formatNumber(scraperStats.leads_24h || 0),
-        delta:
-          scraperStats.validation_rate !== null
-            ? `${scraperStats.validation_rate}% taxa de validação`
-            : `${activeRuns} execuções recentes`,
+        value: formatNumber(dashboardKpis.leads_24h),
+        delta: `${formatNumber(repliedLeads)} responderam`,
         icon: 'recent',
       },
+      {
+        label: 'Leads contactados',
+        value: formatNumber(dashboardKpis.contacted_leads),
+        delta: 'Status diferente de Novo',
+        icon: 'activity',
+      },
+      {
+        label: 'Taxa de resposta',
+        value: formatPercent(dashboardKpis.reply_rate),
+        delta: 'Respondeu / Contactado',
+        icon: 'whatsapp',
+      },
+      {
+        label: 'Conversões do mês',
+        value: formatNumber(dashboardKpis.monthly_conversions),
+        delta: 'Leads em Convertido',
+        icon: 'campaigns',
+      },
     ];
-  }, [leads, scraperRuns, scraperStats]);
+  }, [dashboardKpis, leads, lastRefresh]);
 
   const activity = useMemo(() => {
     const runItems = scraperRuns.slice(0, 3).map((run) => ({
@@ -208,9 +257,18 @@ export default function Dashboard({ onNavigate, activePath }) {
   };
 
   const goTo = (path) => {
-    if (path === activePath) return;
+    const targetPath = path.split('?')[0];
+    if (targetPath === activePath && !path.includes('?')) return;
     window.history.pushState({}, '', path);
-    onNavigate(path);
+    onNavigate(window.location.pathname);
+  };
+
+  const openLeadsWithFunnel = (funnelStatus) => {
+    if (!funnelStatus) {
+      goTo('/leads');
+      return;
+    }
+    goTo(`/leads?funnel=${encodeURIComponent(funnelStatus)}`);
   };
 
   return (
@@ -247,8 +305,16 @@ export default function Dashboard({ onNavigate, activePath }) {
 
       {errorMessage && <div className="fv-message">{errorMessage}</div>}
 
-      <section className="fv-grid">
-        {dashboardStats.map((item) => (
+      <section className="fv-grid fv-grid-kpis">
+        {(loading && !lastRefresh
+          ? Array.from({ length: 6 }).map((_, index) => ({
+              label: `Carregando-${index}`,
+              value: '...',
+              delta: 'Aguardando dados',
+              icon: 'dashboard',
+            }))
+          : dashboardStats
+        ).map((item) => (
           <div key={item.label} className="fv-card">
             <div className="fv-card-label fv-icon-label">
               <Icon name={item.icon} />
@@ -258,6 +324,78 @@ export default function Dashboard({ onNavigate, activePath }) {
             <div className="fv-card-meta">{item.delta}</div>
           </div>
         ))}
+      </section>
+
+      <section className="fv-columns fv-columns-dashboard">
+        <div className="fv-panel">
+          <div className="fv-panel-header">
+            <h2 className="fv-icon-label">
+              <Icon name="activity" />
+              Mini-funil
+            </h2>
+            <button className="fv-ghost small" type="button" onClick={() => goTo('/leads')}>
+              Ver funil completo
+            </button>
+          </div>
+          <div className="fv-funnel-widget">
+            {(funnelSummary.stages || []).map((stage) => {
+              const meta = funnelMeta[stage.status] || { label: stage.status, className: '' };
+              return (
+                <button
+                  key={stage.status}
+                  className="fv-funnel-stage"
+                  type="button"
+                  onClick={() => openLeadsWithFunnel(stage.status)}
+                >
+                  <div className="fv-funnel-stage-head">
+                    <span className={`fv-status ${meta.className}`}>{meta.label}</span>
+                    <span className="fv-row-sub">
+                      {formatNumber(stage.count)} ({formatPercent(stage.percentage)})
+                    </span>
+                  </div>
+                  <div className="fv-funnel-track">
+                    <div
+                      className={`fv-funnel-fill ${meta.className}`}
+                      style={{ width: `${Math.max(3, Number(stage.percentage || 0))}%` }}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+            <div className="fv-row-sub">
+              Taxa de conversão geral: <strong>{formatPercent(funnelSummary.conversion_rate)}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="fv-panel">
+          <div className="fv-panel-header">
+            <h2 className="fv-icon-label">
+              <Icon name="recent" />
+              Ações urgentes
+            </h2>
+            <button className="fv-primary" type="button" onClick={() => goTo('/leads')}>
+              Abrir SDR
+            </button>
+          </div>
+          {urgentActions.all_clear ? (
+            <div className="fv-urgent-empty">Tudo em dia!</div>
+          ) : (
+            <div className="fv-urgent-list">
+              {urgentActions.alerts.map((alert) => (
+                <button
+                  key={alert.id}
+                  type="button"
+                  className={`fv-urgent-item ${alert.color}`}
+                  onClick={() => openLeadsWithFunnel(alert.funnel)}
+                >
+                  <span>{alert.label}</span>
+                  <span className="fv-row-chip">{formatNumber(alert.count)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="fv-columns">

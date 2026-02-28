@@ -110,6 +110,7 @@ def list_leads(limit: int = 50) -> list[dict]:
         SELECT id, source, name, phone, email, address, city, state, company_name,
                cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
         FROM leads
+        WHERE deleted_at IS NULL
         ORDER BY created_at DESC
         LIMIT %s;
     """
@@ -151,7 +152,7 @@ def get_lead_by_id(lead_id: int) -> dict | None:
         SELECT id, source, name, phone, email, address, city, state, company_name,
                cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
         FROM leads
-        WHERE id = %s;
+        WHERE id = %s AND deleted_at IS NULL;
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -328,3 +329,76 @@ def recalculate_all_scores() -> dict:
 
     avg_score = round(score_sum / updated, 2) if updated else 0
     return {"updated": updated, "avg_score": avg_score}
+
+
+def batch_update_campaign(lead_ids: list[int], campaign_status: str) -> dict:
+    if not lead_ids:
+        return {"updated": 0}
+    query = """
+        UPDATE leads
+        SET campaign_status = %s, updated_at = NOW()
+        WHERE id = ANY(%s::bigint[]) AND deleted_at IS NULL;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (campaign_status, lead_ids))
+            updated = cur.rowcount or 0
+        conn.commit()
+    return {"updated": updated}
+
+
+def batch_soft_delete(lead_ids: list[int]) -> dict:
+    if not lead_ids:
+        return {"deleted": 0}
+    query = """
+        UPDATE leads
+        SET deleted_at = NOW(), updated_at = NOW()
+        WHERE id = ANY(%s::bigint[]) AND deleted_at IS NULL;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (lead_ids,))
+            deleted = cur.rowcount or 0
+        conn.commit()
+    return {"deleted": deleted}
+
+
+def get_leads_by_ids(lead_ids: list[int]) -> list[dict]:
+    if not lead_ids:
+        return []
+    query = """
+        SELECT id, source, name, phone, email, address, city, state, company_name,
+               cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
+        FROM leads
+        WHERE id = ANY(%s::bigint[]) AND deleted_at IS NULL
+        ORDER BY created_at DESC;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (lead_ids,))
+            rows = cur.fetchall()
+    keys = [
+        "id",
+        "source",
+        "name",
+        "phone",
+        "email",
+        "address",
+        "city",
+        "state",
+        "company_name",
+        "cnpj",
+        "url",
+        "score",
+        "funnel_status",
+        "loss_reason",
+        "prospect_status",
+        "prospect_notes",
+        "campaign_status",
+        "captured_at",
+        "is_valid",
+        "is_duplicate",
+        "created_at",
+        "updated_at",
+    ]
+    return [dict(zip(keys, row)) for row in rows]

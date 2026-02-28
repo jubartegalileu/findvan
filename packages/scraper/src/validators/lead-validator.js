@@ -19,8 +19,8 @@ export const validatePhone = (phone) => {
     cleaned = cleaned.slice(2);
   }
 
-  // Accept 10 or 11 digits in Brazil local format
-  return (cleaned.length === 10 || cleaned.length === 11) && /^\d+$/.test(cleaned);
+  // Accept only 11 digits in Brazil local format
+  return cleaned.length === 11 && /^\d+$/.test(cleaned);
 };
 
 /**
@@ -41,7 +41,7 @@ export const validateEmail = (email) => {
  * @returns {boolean} true if non-empty
  */
 export const validateAddress = (address) => {
-  if (!address) return true; // optional in practice
+  if (!address) return false;
   return address.trim().length > 0;
 };
 
@@ -97,8 +97,8 @@ export const normalizePhone = (phone) => {
     cleaned = cleaned.slice(2);
   }
 
-  // Accept 10 or 11 digits
-  if (cleaned.length === 11 || cleaned.length === 10) {
+  // Accept only 11 digits
+  if (cleaned.length === 11) {
     return cleaned;
   }
 

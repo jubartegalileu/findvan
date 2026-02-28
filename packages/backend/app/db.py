@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS leads (
   score INTEGER DEFAULT 0,
   funnel_status VARCHAR(20) DEFAULT 'novo',
   loss_reason VARCHAR(100),
+  next_action_date TIMESTAMP,
+  next_action_description TEXT,
+  deleted_at TIMESTAMP,
   prospect_status TEXT DEFAULT 'nao_contatado',
   prospect_notes TEXT,
   campaign_status TEXT,
@@ -33,6 +36,9 @@ ALTER TABLE leads ADD COLUMN IF NOT EXISTS state VARCHAR(2);
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS funnel_status VARCHAR(20) DEFAULT 'novo';
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS loss_reason VARCHAR(100);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_action_date TIMESTAMP;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_action_description TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS prospect_status TEXT DEFAULT 'nao_contatado';
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS prospect_notes TEXT;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS campaign_status TEXT;
@@ -42,6 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_leads_source ON leads(source);
 CREATE INDEX IF NOT EXISTS idx_leads_valid ON leads(is_valid);
 CREATE INDEX IF NOT EXISTS idx_leads_score ON leads(score DESC);
 CREATE INDEX IF NOT EXISTS idx_leads_funnel_status ON leads(funnel_status);
+CREATE INDEX IF NOT EXISTS idx_leads_deleted_at ON leads(deleted_at);
 """
 
 SCRAPER_RUNS_TABLE_SQL = """
@@ -62,6 +69,18 @@ CREATE TABLE IF NOT EXISTS scraper_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_scraper_runs_created ON scraper_runs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_scraper_runs_city_state ON scraper_runs(city, state);
+"""
+
+SCRAPER_KEYWORD_PROFILES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS scraper_keyword_profiles (
+  id BIGSERIAL PRIMARY KEY,
+  state VARCHAR(2) NOT NULL,
+  city TEXT NOT NULL,
+  keywords TEXT[] NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(state, city)
+);
+CREATE INDEX IF NOT EXISTS idx_scraper_keyword_profiles_state_city ON scraper_keyword_profiles(state, city);
 """
 
 LEAD_INTERACTIONS_TABLE_SQL = """
@@ -93,5 +112,6 @@ def ensure_schema():
         with conn.cursor() as cur:
             cur.execute(LEADS_TABLE_SQL)
             cur.execute(SCRAPER_RUNS_TABLE_SQL)
+            cur.execute(SCRAPER_KEYWORD_PROFILES_TABLE_SQL)
             cur.execute(LEAD_INTERACTIONS_TABLE_SQL)
         conn.commit()

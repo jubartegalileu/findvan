@@ -62,6 +62,11 @@ def test_dashboard_urgent_actions_ok(monkeypatch):
 def test_dashboard_weekly_performance_ok(monkeypatch):
     monkeypatch.setattr(
         dashboard_api,
+        "dispatch_slo_alert",
+        lambda performance, source, window: {"status": "queued", "delivery": "webhook_async"},
+    )
+    monkeypatch.setattr(
+        dashboard_api,
         "get_weekly_performance",
         lambda: {
             "has_data": True,
@@ -79,3 +84,37 @@ def test_dashboard_weekly_performance_ok(monkeypatch):
     payload = response.json()
     assert payload["status"] == "ok"
     assert payload["performance"]["messages_sent"] == 42
+    assert payload["alert_dispatch"]["status"] == "queued"
+
+
+def test_dashboard_alert_status_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_alerting_status",
+        lambda: {"configured": False, "contract_version": "1.0.0"},
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/alerts/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["alerting"]["contract_version"] == "1.0.0"
+
+
+def test_dashboard_alert_dispatch_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_weekly_performance",
+        lambda: {"has_data": True, "messages_sent": 15, "delivery_rate": 62, "reply_rate": 2, "block_rate": 8},
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "dispatch_slo_alert",
+        lambda metrics, source, window: {"status": "fallback", "delivery": "local_fallback"},
+    )
+    client = build_client()
+    response = client.post("/api/dashboard/alerts/dispatch")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["dispatch"]["delivery"] == "local_fallback"

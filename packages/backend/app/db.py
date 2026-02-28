@@ -139,6 +139,27 @@ CREATE INDEX IF NOT EXISTS idx_interactions_lead_id ON lead_interactions(lead_id
 CREATE INDEX IF NOT EXISTS idx_interactions_created_at ON lead_interactions(created_at DESC);
 """
 
+MESSAGING_RECEIPTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS messaging_receipts (
+  id BIGSERIAL PRIMARY KEY,
+  version VARCHAR(10) NOT NULL DEFAULT '1.1.0',
+  event_type VARCHAR(30) NOT NULL,
+  external_id VARCHAR(255) NOT NULL,
+  provider VARCHAR(50) NOT NULL,
+  lead_id VARCHAR(100),
+  campaign_id VARCHAR(100),
+  destination VARCHAR(100),
+  occurred_at TIMESTAMP NOT NULL,
+  status_detail TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  received_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  UNIQUE(external_id, provider, event_type)
+);
+CREATE INDEX IF NOT EXISTS idx_messaging_receipts_received_at ON messaging_receipts(received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messaging_receipts_external ON messaging_receipts(external_id);
+CREATE INDEX IF NOT EXISTS idx_messaging_receipts_provider_event ON messaging_receipts(provider, event_type);
+"""
+
 
 @contextmanager
 def get_connection():
@@ -159,4 +180,5 @@ def ensure_schema():
             cur.execute(LEAD_NOTES_TABLE_SQL)
             cur.execute(LEAD_TAGS_TABLE_SQL)
             cur.execute(LEAD_INTERACTIONS_TABLE_SQL)
+            cur.execute(MESSAGING_RECEIPTS_TABLE_SQL)
         conn.commit()

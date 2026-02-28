@@ -1,7 +1,7 @@
 # Epic 10 — Wave 6 WhatsApp Functional Adoption (UI + Campaign Flow)
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Adoção Funcional)
 **Wave:** 6
 **Estimativa:** 1-2 semanas
@@ -66,10 +66,10 @@ Transformar a base de integração de mensageria (Wave 5) em fluxo funcional de 
 
 ## Definition of Done
 
-- [ ] Stories 10.1, 10.2 e 10.3 implementadas e aprovadas
-- [ ] Fluxo funcional de envio disponível na UI WhatsApp e Leads
-- [ ] Observabilidade mínima de envio disponível para operação
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 10.1, 10.2 e 10.3 implementadas e aprovadas
+- [x] Fluxo funcional de envio disponível na UI WhatsApp e Leads
+- [x] Observabilidade mínima de envio disponível para operação
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

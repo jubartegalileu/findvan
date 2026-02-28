@@ -133,6 +133,9 @@ export default function Dashboard({ onNavigate, activePath }) {
   const [sloThresholds, setSloThresholds] = useState(DEFAULT_SLO_THRESHOLDS);
   const [governanceHistory, setGovernanceHistory] = useState([]);
   const [guardrails, setGuardrails] = useState([]);
+  const [playbooks, setPlaybooks] = useState([]);
+  const [playbookExecutions, setPlaybookExecutions] = useState([]);
+  const [postmortemReadiness, setPostmortemReadiness] = useState({ template: null, critical_incidents: [] });
   const [operationalTelemetry, setOperationalTelemetry] = useState({
     metrics: {
       alerting: { fallback_count: 0, suppressed_count: 0, sent_count: 0, queued_count: 0 },
@@ -145,7 +148,7 @@ export default function Dashboard({ onNavigate, activePath }) {
     setLoading(true);
     setErrorMessage('');
     try {
-      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes, telemetryRes, guardrailsRes] = await Promise.all([
+      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes, telemetryRes, guardrailsRes, playbooksRes, executionsRes, postmortemRes] = await Promise.all([
         fetch(`${API_BASE}/api/leads/?limit=120`),
         fetchWithFallback(
           `${API_BASE}/api/scraper/runs?limit=10`,
@@ -170,6 +173,9 @@ export default function Dashboard({ onNavigate, activePath }) {
         fetchWithFallback(`${API_BASE}/api/dashboard/metrics-governance/history?limit=5`, `${API_BASE}/api/dashboard/metrics-governance/history/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/operational-telemetry?limit=5`, `${API_BASE}/api/dashboard/operational-telemetry/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/guardrails?limit=5`, `${API_BASE}/api/dashboard/guardrails/?limit=5`),
+        fetchWithFallback(`${API_BASE}/api/dashboard/playbooks?limit=5`, `${API_BASE}/api/dashboard/playbooks/?limit=5`),
+        fetchWithFallback(`${API_BASE}/api/dashboard/playbooks/executions?limit=5`, `${API_BASE}/api/dashboard/playbooks/executions/?limit=5`),
+        fetchWithFallback(`${API_BASE}/api/dashboard/postmortem-readiness?limit=5`, `${API_BASE}/api/dashboard/postmortem-readiness/?limit=5`),
       ]);
 
       const [
@@ -185,6 +191,9 @@ export default function Dashboard({ onNavigate, activePath }) {
         governanceHistoryPayload,
         telemetryPayload,
         guardrailsPayload,
+        playbooksPayload,
+        executionsPayload,
+        postmortemPayload,
       ] = await Promise.all([
         leadsRes.json(),
         runsRes.json(),
@@ -198,6 +207,9 @@ export default function Dashboard({ onNavigate, activePath }) {
         governanceHistoryRes.json(),
         telemetryRes.json(),
         guardrailsRes.json(),
+        playbooksRes.json(),
+        executionsRes.json(),
+        postmortemRes.json(),
       ]);
 
       if (!leadsRes.ok) {
@@ -245,6 +257,20 @@ export default function Dashboard({ onNavigate, activePath }) {
       }
       if (guardrailsRes.ok && Array.isArray(guardrailsPayload?.guardrails)) {
         setGuardrails(guardrailsPayload.guardrails);
+      }
+      if (playbooksRes.ok && Array.isArray(playbooksPayload?.playbooks)) {
+        setPlaybooks(playbooksPayload.playbooks);
+      }
+      if (executionsRes.ok && Array.isArray(executionsPayload?.executions)) {
+        setPlaybookExecutions(executionsPayload.executions);
+      }
+      if (postmortemRes.ok && postmortemPayload) {
+        setPostmortemReadiness({
+          template: postmortemPayload.template || null,
+          critical_incidents: Array.isArray(postmortemPayload.critical_incidents)
+            ? postmortemPayload.critical_incidents
+            : [],
+        });
       }
 
       setLastRefresh(new Date());
@@ -780,6 +806,61 @@ export default function Dashboard({ onNavigate, activePath }) {
               ))}
               {(operationalTelemetry.incidents || []).length === 0 && (
                 <div className="fv-row-sub">Sem incidentes recentes.</div>
+              )}
+            </div>
+            <div className="fv-divider" />
+            <div className="fv-panel-header">
+              <h2 className="fv-icon-label">
+                <Icon name="settings" />
+                Playbooks operacionais
+              </h2>
+            </div>
+            <div className="fv-table">
+              {(playbooks || []).slice(0, 3).map((playbook) => (
+                <div key={playbook.key} className="fv-row fv-monitoring-row">
+                  <div>
+                    <div className="fv-row-title">{playbook.title}</div>
+                    <div className="fv-row-sub">{playbook.component} • gatilho: {playbook.trigger}</div>
+                  </div>
+                  <div className="fv-row-chip">{(playbook.steps || []).length} passos</div>
+                </div>
+              ))}
+              {playbooks.length === 0 && <div className="fv-row-sub">Sem playbooks disponíveis.</div>}
+            </div>
+            <div className="fv-table">
+              <div className="fv-row-title">Evidências recentes de execução</div>
+              {(playbookExecutions || []).slice(0, 3).map((execution) => (
+                <div key={execution.id} className="fv-row fv-monitoring-row">
+                  <div>
+                    <div className="fv-row-title">{execution.playbook_key}</div>
+                    <div className="fv-row-sub">
+                      {execution.author} • {formatRelativeDate(execution.created_at)}
+                    </div>
+                    {execution.note ? <div className="fv-row-sub">{execution.note}</div> : null}
+                  </div>
+                  <div className="fv-row-chip">{execution.result || 'started'}</div>
+                </div>
+              ))}
+              {playbookExecutions.length === 0 && <div className="fv-row-sub">Sem execuções de playbook registradas.</div>}
+            </div>
+            <div className="fv-table">
+              <div className="fv-row-title">Postmortem readiness</div>
+              <div className="fv-row-sub">
+                Campos obrigatórios: {(postmortemReadiness.template?.required_fields || []).join(', ') || 'não disponível'}
+              </div>
+              {(postmortemReadiness.critical_incidents || []).slice(0, 2).map((item) => (
+                <div key={item.incident_id} className="fv-row fv-monitoring-row">
+                  <div>
+                    <div className="fv-row-title">{item.title}</div>
+                    <div className="fv-row-sub">
+                      {item.component || 'component n/d'} • {formatRelativeDate(item.created_at)}
+                    </div>
+                  </div>
+                  <div className={`fv-row-chip fv-alert-${item.severity || 'medium'}`}>{item.severity || 'medium'}</div>
+                </div>
+              ))}
+              {(postmortemReadiness.critical_incidents || []).length === 0 && (
+                <div className="fv-row-sub">Sem incidentes críticos pendentes de pós-mortem.</div>
               )}
             </div>
           </>

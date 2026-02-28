@@ -259,6 +259,37 @@ CREATE INDEX IF NOT EXISTS idx_operational_incidents_created ON operational_inci
 CREATE INDEX IF NOT EXISTS idx_operational_incidents_source ON operational_incidents(source);
 """
 
+OPERATIONAL_PLAYBOOKS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS operational_playbooks (
+  id BIGSERIAL PRIMARY KEY,
+  key VARCHAR(120) NOT NULL UNIQUE,
+  title VARCHAR(255) NOT NULL,
+  component VARCHAR(50) NOT NULL,
+  trigger TEXT NOT NULL,
+  preconditions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  steps JSONB NOT NULL DEFAULT '[]'::jsonb,
+  rollback JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_operational_playbooks_component ON operational_playbooks(component);
+"""
+
+OPERATIONAL_PLAYBOOK_EXECUTIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS operational_playbook_executions (
+  id BIGSERIAL PRIMARY KEY,
+  playbook_key VARCHAR(120) NOT NULL,
+  incident_id BIGINT,
+  author VARCHAR(100) NOT NULL DEFAULT 'system',
+  result VARCHAR(30) NOT NULL DEFAULT 'started',
+  note TEXT,
+  evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_playbook_exec_playbook ON operational_playbook_executions(playbook_key, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_playbook_exec_incident ON operational_playbook_executions(incident_id);
+"""
+
 
 @contextmanager
 def get_connection():
@@ -287,4 +318,6 @@ def ensure_schema():
             cur.execute(METRICS_GOVERNANCE_STATE_TABLE_SQL)
             cur.execute(METRICS_GOVERNANCE_AUDIT_TABLE_SQL)
             cur.execute(OPERATIONAL_INCIDENTS_TABLE_SQL)
+            cur.execute(OPERATIONAL_PLAYBOOKS_TABLE_SQL)
+            cur.execute(OPERATIONAL_PLAYBOOK_EXECUTIONS_TABLE_SQL)
         conn.commit()

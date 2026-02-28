@@ -8,7 +8,15 @@ from ..services.dashboard_service import (
 )
 from ..services.alerts_service import dispatch_slo_alert, get_alerting_status
 from ..services.metrics_governance_service import get_active_thresholds, get_threshold_history, update_thresholds
-from ..services.operational_telemetry_service import INCIDENT_CLASSIFIER_VERSION, build_guardrails, list_incidents
+from ..services.operational_telemetry_service import (
+    INCIDENT_CLASSIFIER_VERSION,
+    build_guardrails,
+    build_postmortem_readiness,
+    list_incidents,
+    list_playbook_executions,
+    list_playbooks,
+    register_playbook_execution,
+)
 from ..services.retention_jobs_service import get_retention_job_status
 
 
@@ -18,6 +26,15 @@ router = APIRouter()
 class ThresholdsUpdatePayload(BaseModel):
     author: str = Field(default="system", min_length=1, max_length=80)
     thresholds: dict = Field(default_factory=dict)
+
+
+class PlaybookExecutionPayload(BaseModel):
+    playbook_key: str = Field(..., min_length=2, max_length=120)
+    author: str = Field(default="system", min_length=1, max_length=100)
+    incident_id: int | None = None
+    result: str = Field(default="started", min_length=3, max_length=30)
+    note: str | None = Field(default=None, max_length=2000)
+    evidence: dict = Field(default_factory=dict)
 
 
 @router.get("/kpis")
@@ -152,6 +169,69 @@ def dashboard_guardrails(limit: int = Query(default=10, ge=1, le=50), offset: in
             "applied_offset": offset,
             "classifier_version": INCIDENT_CLASSIFIER_VERSION,
         }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/playbooks")
+def dashboard_playbooks(
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+    component: str | None = Query(default=None),
+):
+    try:
+        playbooks = list_playbooks(limit=limit, offset=offset, component=component)
+        return {
+            "status": "ok",
+            "playbooks": playbooks,
+            "applied_limit": limit,
+            "applied_offset": offset,
+            "component": component,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/playbooks/executions")
+def dashboard_playbook_executions(
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+    playbook_key: str | None = Query(default=None),
+):
+    try:
+        executions = list_playbook_executions(limit=limit, offset=offset, playbook_key=playbook_key)
+        return {
+            "status": "ok",
+            "executions": executions,
+            "applied_limit": limit,
+            "applied_offset": offset,
+            "playbook_key": playbook_key,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/playbooks/executions")
+def dashboard_playbook_execution_create(payload: PlaybookExecutionPayload):
+    try:
+        execution = register_playbook_execution(
+            playbook_key=payload.playbook_key,
+            author=payload.author,
+            incident_id=payload.incident_id,
+            result=payload.result,
+            note=payload.note,
+            evidence=payload.evidence,
+        )
+        return {"status": "ok", "execution": execution}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/postmortem-readiness")
+def dashboard_postmortem_readiness(limit: int = Query(default=10, ge=1, le=50), offset: int = Query(default=0, ge=0)):
+    try:
+        readiness = build_postmortem_readiness(limit=limit, offset=offset)
+        return {"status": "ok", **readiness}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

@@ -203,6 +203,91 @@ def test_dashboard_guardrails_ok(monkeypatch):
     assert payload["guardrails"][0]["severity"] == "high"
 
 
+def test_dashboard_playbooks_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "list_playbooks",
+        lambda limit=10, offset=0, component=None: [
+            {"key": "retention-lock-recovery", "title": "Recovery retenção", "component": "retention"}
+        ],
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/playbooks?limit=5&offset=0&component=retention")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["applied_limit"] == 5
+    assert payload["applied_offset"] == 0
+    assert payload["playbooks"][0]["component"] == "retention"
+
+
+def test_dashboard_playbook_executions_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "list_playbook_executions",
+        lambda limit=10, offset=0, playbook_key=None: [
+            {"id": 1, "playbook_key": "retention-lock-recovery", "author": "qa", "result": "success"}
+        ],
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/playbooks/executions?limit=5&offset=0")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["executions"][0]["result"] == "success"
+
+
+def test_dashboard_playbook_execution_create_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "register_playbook_execution",
+        lambda playbook_key, author="system", incident_id=None, result="started", note=None, evidence=None: {
+            "id": 9,
+            "playbook_key": playbook_key,
+            "author": author,
+            "result": result,
+            "note": note,
+            "evidence": evidence or {},
+        },
+    )
+    client = build_client()
+    response = client.post(
+        "/api/dashboard/playbooks/executions",
+        json={
+            "playbook_key": "alerting-webhook-recovery",
+            "author": "qa",
+            "result": "completed",
+            "note": "executado com sucesso",
+            "evidence": {"step_count": 3},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["execution"]["playbook_key"] == "alerting-webhook-recovery"
+    assert payload["execution"]["result"] == "completed"
+
+
+def test_dashboard_postmortem_readiness_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "build_postmortem_readiness",
+        lambda limit=10, offset=0: {
+            "template": {"version": "1.0.0", "required_fields": ["incident_summary", "root_cause"]},
+            "critical_incidents": [{"incident_id": 1, "title": "Circuit open", "severity": "critical"}],
+            "applied_limit": limit,
+            "applied_offset": offset,
+        },
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/postmortem-readiness?limit=5&offset=0")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["template"]["version"] == "1.0.0"
+    assert payload["critical_incidents"][0]["severity"] == "critical"
+
+
 def test_dashboard_alert_dispatch_ok(monkeypatch):
     monkeypatch.setattr(
         dashboard_api,

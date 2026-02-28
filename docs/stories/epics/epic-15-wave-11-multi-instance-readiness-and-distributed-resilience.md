@@ -1,7 +1,7 @@
 # Epic 15 — Wave 11 Multi-Instance Readiness & Distributed Resilience
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Escalabilidade Distribuída)
 **Wave:** 11
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Preparar a operação para múltiplas instâncias com estado distribuído de job
 
 ## Definition of Done
 
-- [ ] Stories 15.1, 15.2 e 15.3 implementadas e aprovadas
-- [ ] Worker dedicado + lock distribuído em produção local/homolog
-- [ ] Estado operacional persistente para retenção/alerting disponível
-- [ ] Auditoria e telemetria de failover persistidas e consultáveis
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 15.1, 15.2 e 15.3 implementadas e aprovadas
+- [x] Worker dedicado + lock distribuído em produção local/homolog
+- [x] Estado operacional persistente para retenção/alerting disponível
+- [x] Auditoria e telemetria de failover persistidas e consultáveis
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

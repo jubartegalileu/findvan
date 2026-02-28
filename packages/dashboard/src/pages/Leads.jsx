@@ -1070,10 +1070,8 @@ export default function Leads({ onNavigate, activePath }) {
               const replied = lead.funnel_status === 'respondeu';
               const completeness = [
                 { key: 'Telefone', ok: !!lead.phone },
-                { key: 'Email', ok: !!lead.email },
                 { key: 'Endereço', ok: !!lead.address },
-                { key: 'CNPJ', ok: !!lead.cnpj },
-              ];
+              ].filter((item) => item.ok);
 
               return (
                 <div
@@ -1095,13 +1093,15 @@ export default function Leads({ onNavigate, activePath }) {
                     </div>
                     <div className="fv-row-sub">{lead.address || 'Endereço não informado'} • Fonte {lead.source}</div>
 
-                    <div className="fv-lead-completeness">
-                      {completeness.map((item) => (
-                        <span key={item.key} className={`fv-complete-item ${item.ok ? 'ok' : 'missing'}`}>
-                          {item.ok ? '✓' : '✕'} {item.key}
-                        </span>
-                      ))}
-                    </div>
+                    {completeness.length > 0 && (
+                      <div className="fv-lead-completeness">
+                        {completeness.map((item) => (
+                          <span key={item.key} className="fv-complete-item ok">
+                            ✓ {item.key}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     {lead.tags?.length > 0 && (
                       <div className="fv-lead-tags">
@@ -1121,7 +1121,6 @@ export default function Leads({ onNavigate, activePath }) {
                     <div className={`fv-status ${getFunnelClass(lead.funnel_status)}`}>
                       {funnelStatusOptions.find((f) => f.value === lead.funnel_status)?.label || 'Novo'}
                     </div>
-                    <div className={`fv-dot ${lead.prospect_status || 'nao_contatado'}`} />
                     <div className="fv-lead-actions">
                       <button className="fv-ghost small" type="button" onClick={() => handleContactLead(lead)}>
                         Contactar

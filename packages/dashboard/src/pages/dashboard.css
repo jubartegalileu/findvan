@@ -228,6 +228,15 @@ body,
   gap: 24px;
 }
 
+.fv-columns-leads {
+  grid-template-columns: minmax(0, 1fr) clamp(220px, 22vw, 320px);
+  align-items: start;
+}
+
+.fv-columns-leads .fv-panel:first-child {
+  min-width: 0;
+}
+
 .fv-panel {
   background: #f6fcf7;
   border-radius: 22px;
@@ -312,6 +321,32 @@ body,
   flex-shrink: 0;
 }
 
+.fv-row-chip.excellent {
+  background: rgba(67, 160, 71, 0.2);
+  color: #2e7d32;
+}
+
+.fv-row-chip.good {
+  background: rgba(30, 136, 229, 0.2);
+  color: #1565c0;
+}
+
+.fv-row-chip.regular {
+  background: rgba(249, 168, 37, 0.25);
+  color: #8f6100;
+}
+
+.fv-row-chip.weak {
+  background: rgba(229, 57, 53, 0.2);
+  color: #c62828;
+}
+
+.fv-row-chip-light {
+  background: #ffffff;
+  border: 1px solid rgba(32, 80, 114, 0.18);
+  color: #4c777d;
+}
+
 .fv-dot {
   width: 10px;
   height: 10px;
@@ -342,6 +377,20 @@ body,
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.fv-funnel-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fv-funnel-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #4c777d;
 }
 
 .fv-input {
@@ -384,6 +433,36 @@ body,
   color: var(--fv-c1);
 }
 
+.fv-progress-row {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fv-progress-track {
+  flex: 1;
+  height: 14px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid rgba(32, 80, 114, 0.18);
+  overflow: hidden;
+}
+
+.fv-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--fv-c2), var(--fv-c4));
+  transition: width 0.35s ease;
+}
+
+.fv-progress-value {
+  min-width: 42px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fv-c1);
+}
+
 .fv-link {
   margin-top: 6px;
   font-size: 13px;
@@ -414,6 +493,29 @@ body,
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.fv-score-breakdown {
+  background: var(--fv-bg-soft);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.fv-score-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.fv-score-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #4c777d;
 }
 
 .fv-prospect-bar {
@@ -487,6 +589,20 @@ body,
   font-family: inherit;
 }
 
+.fv-funnel-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.fv-interactions {
+  margin-bottom: 12px;
+  background: #edf9f0;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
 .fv-field {
   display: flex;
   flex-direction: column;
@@ -549,6 +665,30 @@ body,
 .fv-status.agendada,
 .fv-status.rascunho {
   color: #6f8b86;
+}
+
+.fv-status.funnel-novo {
+  color: #607d8b;
+}
+
+.fv-status.funnel-contactado {
+  color: #1e88e5;
+}
+
+.fv-status.funnel-respondeu {
+  color: #00acc1;
+}
+
+.fv-status.funnel-interessado {
+  color: #fb8c00;
+}
+
+.fv-status.funnel-convertido {
+  color: #43a047;
+}
+
+.fv-status.funnel-perdido {
+  color: #e53935;
 }
 
 .fv-scraper-list {
@@ -617,6 +757,14 @@ body,
 
   .fv-prospect-bar {
     grid-template-columns: 1fr;
+  }
+
+  .fv-funnel-row {
+    grid-template-columns: 1fr;
+  }
+
+  .fv-score-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .fv-modal-title-wrap {

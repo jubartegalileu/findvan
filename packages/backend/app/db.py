@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS leads (
   company_name TEXT,
   cnpj VARCHAR(20),
   url TEXT,
+  score INTEGER DEFAULT 0,
+  funnel_status VARCHAR(20) DEFAULT 'novo',
+  loss_reason VARCHAR(100),
   prospect_status TEXT DEFAULT 'nao_contatado',
   prospect_notes TEXT,
   campaign_status TEXT,
@@ -27,6 +30,9 @@ CREATE TABLE IF NOT EXISTS leads (
   UNIQUE(phone, source)
 );
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS state VARCHAR(2);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS funnel_status VARCHAR(20) DEFAULT 'novo';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS loss_reason VARCHAR(100);
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS prospect_status TEXT DEFAULT 'nao_contatado';
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS prospect_notes TEXT;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS campaign_status TEXT;
@@ -34,6 +40,8 @@ CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone);
 CREATE INDEX IF NOT EXISTS idx_leads_city ON leads(city);
 CREATE INDEX IF NOT EXISTS idx_leads_source ON leads(source);
 CREATE INDEX IF NOT EXISTS idx_leads_valid ON leads(is_valid);
+CREATE INDEX IF NOT EXISTS idx_leads_score ON leads(score DESC);
+CREATE INDEX IF NOT EXISTS idx_leads_funnel_status ON leads(funnel_status);
 """
 
 SCRAPER_RUNS_TABLE_SQL = """
@@ -56,6 +64,20 @@ CREATE INDEX IF NOT EXISTS idx_scraper_runs_created ON scraper_runs(created_at D
 CREATE INDEX IF NOT EXISTS idx_scraper_runs_city_state ON scraper_runs(city, state);
 """
 
+LEAD_INTERACTIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS lead_interactions (
+  id BIGSERIAL PRIMARY KEY,
+  lead_id BIGINT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  type VARCHAR(30) NOT NULL,
+  content TEXT,
+  metadata JSONB,
+  author VARCHAR(100),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_interactions_lead_id ON lead_interactions(lead_id);
+CREATE INDEX IF NOT EXISTS idx_interactions_created_at ON lead_interactions(created_at DESC);
+"""
+
 
 @contextmanager
 def get_connection():
@@ -71,4 +93,5 @@ def ensure_schema():
         with conn.cursor() as cur:
             cur.execute(LEADS_TABLE_SQL)
             cur.execute(SCRAPER_RUNS_TABLE_SQL)
+            cur.execute(LEAD_INTERACTIONS_TABLE_SQL)
         conn.commit()

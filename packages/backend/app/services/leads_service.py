@@ -1,6 +1,7 @@
 from typing import Iterable
 from psycopg import sql
 from ..db import get_connection
+from .score_service import calculate_lead_score
 
 
 LEAD_COLUMNS = (
@@ -14,6 +15,9 @@ LEAD_COLUMNS = (
     "company_name",
     "cnpj",
     "url",
+    "score",
+    "funnel_status",
+    "loss_reason",
     "prospect_status",
     "prospect_notes",
     "campaign_status",
@@ -39,6 +43,9 @@ def insert_leads(leads: Iterable[dict]) -> dict:
             lead.get("company_name"),
             lead.get("cnpj"),
             lead.get("url"),
+            calculate_lead_score(lead).get("total", 0),
+            lead.get("funnel_status", "novo"),
+            lead.get("loss_reason"),
             lead.get("prospect_status", "nao_contatado"),
             lead.get("prospect_notes"),
             lead.get("campaign_status"),
@@ -63,6 +70,9 @@ def insert_leads(leads: Iterable[dict]) -> dict:
           company_name = EXCLUDED.company_name,
           cnpj = EXCLUDED.cnpj,
           url = EXCLUDED.url,
+          score = EXCLUDED.score,
+          funnel_status = COALESCE(leads.funnel_status, EXCLUDED.funnel_status),
+          loss_reason = COALESCE(leads.loss_reason, EXCLUDED.loss_reason),
           prospect_status = COALESCE(leads.prospect_status, EXCLUDED.prospect_status),
           prospect_notes = COALESCE(leads.prospect_notes, EXCLUDED.prospect_notes),
           campaign_status = COALESCE(leads.campaign_status, EXCLUDED.campaign_status),
@@ -98,7 +108,7 @@ def insert_leads(leads: Iterable[dict]) -> dict:
 def list_leads(limit: int = 50) -> list[dict]:
     query = """
         SELECT id, source, name, phone, email, address, city, state, company_name,
-               cnpj, url, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
+               cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
         FROM leads
         ORDER BY created_at DESC
         LIMIT %s;
@@ -121,6 +131,9 @@ def list_leads(limit: int = 50) -> list[dict]:
         "company_name",
         "cnpj",
         "url",
+        "score",
+        "funnel_status",
+        "loss_reason",
         "prospect_status",
         "prospect_notes",
         "campaign_status",
@@ -136,7 +149,7 @@ def list_leads(limit: int = 50) -> list[dict]:
 def get_lead_by_id(lead_id: int) -> dict | None:
     query = """
         SELECT id, source, name, phone, email, address, city, state, company_name,
-               cnpj, url, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
+               cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
         FROM leads
         WHERE id = %s;
     """
@@ -158,6 +171,9 @@ def get_lead_by_id(lead_id: int) -> dict | None:
         "company_name",
         "cnpj",
         "url",
+        "score",
+        "funnel_status",
+        "loss_reason",
         "prospect_status",
         "prospect_notes",
         "campaign_status",
@@ -171,6 +187,11 @@ def get_lead_by_id(lead_id: int) -> dict | None:
 
 
 def update_lead(lead_id: int, data: dict) -> dict | None:
+    current = get_lead_by_id(lead_id)
+    if not current:
+        return None
+    score_payload = {**current, **data}
+    score = calculate_lead_score(score_payload).get("total", 0)
     query = """
         UPDATE leads
         SET
@@ -183,6 +204,9 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
           state = %s,
           cnpj = %s,
           url = %s,
+          score = %s,
+          funnel_status = %s,
+          loss_reason = %s,
           prospect_status = %s,
           prospect_notes = %s,
           campaign_status = %s,
@@ -191,7 +215,7 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
           updated_at = NOW()
         WHERE id = %s
         RETURNING id, source, name, phone, email, address, city, state, company_name,
-                  cnpj, url, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at;
+                  cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at;
     """
     values = (
         data.get("name"),
@@ -203,6 +227,9 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
         data.get("state"),
         data.get("cnpj"),
         data.get("url"),
+        score,
+        data.get("funnel_status", current.get("funnel_status", "novo")),
+        data.get("loss_reason"),
         data.get("prospect_status", "nao_contatado"),
         data.get("prospect_notes"),
         data.get("campaign_status"),
@@ -229,6 +256,9 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
         "company_name",
         "cnpj",
         "url",
+        "score",
+        "funnel_status",
+        "loss_reason",
         "prospect_status",
         "prospect_notes",
         "campaign_status",
@@ -249,3 +279,52 @@ def delete_lead(lead_id: int) -> bool:
             deleted = cur.rowcount > 0
         conn.commit()
     return deleted
+
+
+def get_lead_score_breakdown(lead_id: int) -> dict | None:
+    lead = get_lead_by_id(lead_id)
+    if not lead:
+        return None
+    score_data = calculate_lead_score(lead)
+    return {
+        "lead_id": lead_id,
+        "score": score_data["total"],
+        "breakdown": score_data["breakdown"],
+    }
+
+
+def recalculate_all_scores() -> dict:
+    select_query = """
+        SELECT id, source, name, phone, email, address, city, state, company_name, cnpj, url
+        FROM leads;
+    """
+    update_query = "UPDATE leads SET score = %s, updated_at = NOW() WHERE id = %s;"
+
+    updated = 0
+    score_sum = 0
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(select_query)
+            rows = cur.fetchall()
+            for row in rows:
+                lead = {
+                    "id": row[0],
+                    "source": row[1],
+                    "name": row[2],
+                    "phone": row[3],
+                    "email": row[4],
+                    "address": row[5],
+                    "city": row[6],
+                    "state": row[7],
+                    "company_name": row[8],
+                    "cnpj": row[9],
+                    "url": row[10],
+                }
+                score = calculate_lead_score(lead).get("total", 0)
+                cur.execute(update_query, (score, lead["id"]))
+                updated += 1
+                score_sum += score
+        conn.commit()
+
+    avg_score = round(score_sum / updated, 2) if updated else 0
+    return {"updated": updated, "avg_score": avg_score}

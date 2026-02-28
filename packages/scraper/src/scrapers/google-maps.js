@@ -74,40 +74,28 @@ async function scrapeGoogleMaps(options = {}) {
     });
 
     // Scroll to load more results
-    let previousHeight = 0;
+    let previousSignature = '';
+    let stagnantRounds = 0;
     let scrollCount = 0;
-    const maxScrolls = 12;
+    const maxScrolls = Math.max(30, Math.ceil(maxResults / 3));
 
     logger.info('📜 Scrolling to load results');
 
     while (scrollCount < maxScrolls && leads.length < maxResults) {
-      // Scroll down in results panel
-      const scrollHeight = await page.evaluate(
-        () => {
-          const panel =
-            document.querySelector('[role="feed"]') ||
-            document.querySelector('[role="region"][aria-label*="Result"]') ||
-            document.querySelector('div[role="main"]');
-          return panel?.scrollHeight || 0;
-        }
-      );
+      const panelMetricsBefore = await page.evaluate(() => {
+        const panel =
+          document.querySelector('[role="feed"]') ||
+          document.querySelector('[role="region"][aria-label*="Result"]') ||
+          document.querySelector('div[role="main"]');
+        if (!panel) return null;
+        return {
+          top: panel.scrollTop || 0,
+          height: panel.scrollHeight || 0,
+          client: panel.clientHeight || 0,
+        };
+      });
+      if (!panelMetricsBefore) break;
 
-      if (scrollHeight === previousHeight && scrollCount > 0) {
-        logger.info('✓ Reached end of results list');
-        break;
-      }
-
-      await page.evaluate(
-        () => {
-          const resultsPanel =
-            document.querySelector('[role="feed"]') ||
-            document.querySelector('[role="region"][aria-label*="Result"]') ||
-            document.querySelector('div[role="main"]');
-          if (resultsPanel) resultsPanel.scrollBy(0, 500);
-        }
-      );
-
-      previousHeight = scrollHeight;
       scrollCount++;
 
       // Wait between scrolls
@@ -179,6 +167,7 @@ async function scrapeGoogleMaps(options = {}) {
         return leads;
       }, city);
 
+      let addedThisRound = 0;
       // Add new leads (avoid duplicates from same fetch)
       for (const lead of newLeads) {
         const exists = leads.some((l) => {
@@ -199,10 +188,45 @@ async function scrapeGoogleMaps(options = {}) {
             is_valid: false,
             is_duplicate: false
           });
+          addedThisRound++;
           if (leads.length % 10 === 0) {
             logger.info(`✓ Extracted ${leads.length} leads so far`);
           }
         }
+      }
+
+      await page.evaluate(() => {
+        const resultsPanel =
+          document.querySelector('[role="feed"]') ||
+          document.querySelector('[role="region"][aria-label*="Result"]') ||
+          document.querySelector('div[role="main"]');
+        if (resultsPanel) {
+          const jump = Math.max(resultsPanel.clientHeight || 700, 700);
+          resultsPanel.scrollBy(0, jump);
+        }
+      });
+
+      const panelMetricsAfter = await page.evaluate(() => {
+        const panel =
+          document.querySelector('[role="feed"]') ||
+          document.querySelector('[role="region"][aria-label*="Result"]') ||
+          document.querySelector('div[role="main"]');
+        if (!panel) return null;
+        return {
+          top: panel.scrollTop || 0,
+          height: panel.scrollHeight || 0,
+        };
+      });
+      const signature = `${panelMetricsAfter?.top || 0}:${panelMetricsAfter?.height || 0}`;
+      if (signature === previousSignature && addedThisRound === 0) {
+        stagnantRounds++;
+      } else {
+        stagnantRounds = 0;
+      }
+      previousSignature = signature;
+      if (stagnantRounds >= 4) {
+        logger.info('✓ Reached end of results list (stagnant scroll)');
+        break;
       }
     }
 

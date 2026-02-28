@@ -24,6 +24,7 @@ export default function Scraper({ onNavigate, activePath }) {
   const [count, setCount] = useState(50);
   const [message, setMessage] = useState('');
   const [loadingRun, setLoadingRun] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [states, setStates] = useState([]);
   const [citiesByUf, setCitiesByUf] = useState({});
   const [loading, setLoading] = useState(true);
@@ -132,7 +133,9 @@ export default function Scraper({ onNavigate, activePath }) {
           city: run.city,
           state: run.state || '',
           status: run.status === 'completed' ? 'Concluído' : 'Falhou',
-          leads: run.inserted_count ?? 0,
+          captured: run.total_count ?? 0,
+          inserted: run.inserted_count ?? 0,
+          duplicates: run.db_duplicate_count ?? 0,
           target: run.target_count ?? 0,
           lastRun: new Date(run.created_at).toLocaleTimeString('pt-BR'),
         }));
@@ -146,6 +149,18 @@ export default function Scraper({ onNavigate, activePath }) {
   useEffect(() => {
     refreshScraperData();
   }, []);
+
+  useEffect(() => {
+    if (!loadingRun) return undefined;
+    const timer = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 92) return prev;
+        const step = prev < 40 ? 6 : prev < 75 ? 4 : 2;
+        return Math.min(92, prev + step);
+      });
+    }, 600);
+    return () => clearInterval(timer);
+  }, [loadingRun]);
 
   const handleStart = async () => {
     const trimmed = city.trim();
@@ -165,6 +180,7 @@ export default function Scraper({ onNavigate, activePath }) {
     }
 
     setLoadingRun(true);
+    setProgress(0);
     setMessage('Iniciando coleta real via backend...');
 
     try {
@@ -191,18 +207,20 @@ export default function Scraper({ onNavigate, activePath }) {
       const dbDuplicates = Number(result.db_duplicates || 0);
       if (inserted === 0 && dbDuplicates > 0) {
         setMessage(
-          `Coleta concluída: nenhum novo lead em ${searchLabel}. ${dbDuplicates} já existiam no banco.`
+          `Coleta concluída: ${result.unique ?? 0} capturados, 0 novos em ${searchLabel}. ${dbDuplicates} já existiam no banco.`
         );
       } else {
         setMessage(
-          `Coleta concluída: ${inserted} leads inseridos (${searchLabel}).`
+          `Coleta concluída: ${result.unique ?? 0} capturados, ${inserted} novos inseridos (${searchLabel}).`
         );
       }
       await refreshScraperData();
+      setProgress(100);
       localStorage.setItem('findvan.leads.lastRefresh', String(Date.now()));
       window.dispatchEvent(new CustomEvent('findvan:leads-updated'));
     } catch (error) {
       setMessage(error?.message || 'Erro ao executar scraper.');
+      setProgress(0);
     } finally {
       setLoadingRun(false);
     }
@@ -294,6 +312,12 @@ export default function Scraper({ onNavigate, activePath }) {
           </button>
         </div>
         {message && <div className="fv-message">{message}</div>}
+        <div className="fv-progress-row" aria-label="Progresso da coleta">
+          <div className="fv-progress-track">
+            <div className="fv-progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+          <div className="fv-progress-value">{progress}%</div>
+        </div>
       </section>
 
       <section className="fv-panel">
@@ -312,7 +336,13 @@ export default function Scraper({ onNavigate, activePath }) {
                 <div className="fv-row-sub">Última execução: {job.lastRun}</div>
               </div>
               <div className="fv-row-chip">
-                {job.leads}/{job.target ?? 320} leads
+                {job.captured}/{job.target ?? 320} capturados
+              </div>
+              <div className="fv-row-chip">
+                {job.inserted} novos
+              </div>
+              <div className="fv-row-chip fv-row-chip-light">
+                {job.duplicates} duplicados
               </div>
               <div className={`fv-status ${statusClass[job.status] || ''}`}>
                 {job.status}

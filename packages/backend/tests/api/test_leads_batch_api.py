@@ -89,3 +89,28 @@ def test_lead_notes_endpoints(monkeypatch):
     post_response = client.post("/api/leads/7/notes", json={"content": "Nova nota", "author": "dev"})
     assert post_response.status_code == 200
     assert post_response.json()["note"]["content"] == "Nova nota"
+
+
+def test_lead_tags_endpoints(monkeypatch):
+    monkeypatch.setattr(
+        leads_api,
+        "get_lead_by_id",
+        lambda lead_id: {"id": lead_id, "funnel_status": "novo"} if lead_id == 9 else None,
+    )
+    monkeypatch.setattr(leads_api, "add_lead_tag", lambda lead_id, tag: ["prioridade alta", tag])
+    monkeypatch.setattr(leads_api, "remove_lead_tag", lambda lead_id, tag: ["prioridade alta"])
+    monkeypatch.setattr(leads_api, "batch_add_tag", lambda ids, tag: {"updated": len(ids), "tag": tag})
+
+    client = build_client()
+
+    add_response = client.post("/api/leads/9/tags", json={"tag": "grande frota"})
+    assert add_response.status_code == 200
+    assert "grande frota" in add_response.json()["tags"]
+
+    remove_response = client.delete("/api/leads/9/tags/grande%20frota")
+    assert remove_response.status_code == 200
+    assert remove_response.json()["tags"] == ["prioridade alta"]
+
+    batch_response = client.post("/api/leads/batch/tag", json={"ids": [9, 10], "tag": "indicacao"})
+    assert batch_response.status_code == 200
+    assert batch_response.json()["updated"] == 2

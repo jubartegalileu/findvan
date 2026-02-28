@@ -152,7 +152,8 @@ def list_leads(limit: int = 50) -> list[dict]:
         "created_at",
         "updated_at",
     ]
-    return [dict(zip(keys, row)) for row in rows]
+    leads = [dict(zip(keys, row)) for row in rows]
+    return _attach_tags_to_leads(leads)
 
 
 def get_lead_by_id(lead_id: int) -> dict | None:
@@ -194,7 +195,8 @@ def get_lead_by_id(lead_id: int) -> dict | None:
         "created_at",
         "updated_at",
     ]
-    return dict(zip(keys, row))
+    lead = dict(zip(keys, row))
+    return _attach_tags_to_leads([lead])[0]
 
 
 def update_lead(lead_id: int, data: dict) -> dict | None:
@@ -285,7 +287,8 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
         "created_at",
         "updated_at",
     ]
-    return dict(zip(keys, row))
+    updated = dict(zip(keys, row))
+    return _attach_tags_to_leads([updated])[0]
 
 
 def delete_lead(lead_id: int) -> bool:
@@ -419,7 +422,34 @@ def get_leads_by_ids(lead_ids: list[int]) -> list[dict]:
         "created_at",
         "updated_at",
     ]
-    return [dict(zip(keys, row)) for row in rows]
+    leads = [dict(zip(keys, row)) for row in rows]
+    return _attach_tags_to_leads(leads)
+
+
+def _attach_tags_to_leads(leads: list[dict]) -> list[dict]:
+    if not leads:
+        return leads
+    lead_ids = [lead["id"] for lead in leads if lead.get("id") is not None]
+    if not lead_ids:
+        for lead in leads:
+            lead["tags"] = []
+        return leads
+    query = """
+        SELECT lead_id, tag
+        FROM lead_tags
+        WHERE lead_id = ANY(%s::bigint[])
+        ORDER BY tag ASC;
+    """
+    tags_map: dict[int, list[str]] = {int(lead_id): [] for lead_id in lead_ids}
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (lead_ids,))
+            rows = cur.fetchall()
+    for lead_id, tag in rows:
+        tags_map.setdefault(int(lead_id), []).append(str(tag))
+    for lead in leads:
+        lead["tags"] = tags_map.get(int(lead["id"]), [])
+    return leads
 
 
 def list_lead_notes(lead_id: int, limit: int = 50) -> list[dict]:
@@ -456,3 +486,78 @@ def add_lead_note(lead_id: int, content: str, author: str | None = None) -> dict
         conn.commit()
     keys = ["id", "lead_id", "content", "author", "created_at"]
     return dict(zip(keys, row))
+
+
+def add_lead_tag(lead_id: int, tag: str) -> list[str]:
+    clean_tag = tag.strip().lower()
+    if not clean_tag:
+        return list_lead_tags(lead_id)
+    query = """
+        INSERT INTO lead_tags (lead_id, tag)
+        VALUES (%s, %s)
+        ON CONFLICT (lead_id, tag) DO NOTHING;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (lead_id, clean_tag))
+        conn.commit()
+    return list_lead_tags(lead_id)
+
+
+def remove_lead_tag(lead_id: int, tag: str) -> list[str]:
+    clean_tag = tag.strip().lower()
+    query = """
+        DELETE FROM lead_tags
+        WHERE lead_id = %s AND tag = %s;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (lead_id, clean_tag))
+        conn.commit()
+    return list_lead_tags(lead_id)
+
+
+def list_lead_tags(lead_id: int) -> list[str]:
+    query = """
+        SELECT tag
+        FROM lead_tags
+        WHERE lead_id = %s
+        ORDER BY tag ASC;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (lead_id,))
+            rows = cur.fetchall()
+    return [str(row[0]) for row in rows]
+
+
+def list_all_tags() -> list[str]:
+    query = """
+        SELECT DISTINCT tag
+        FROM lead_tags
+        ORDER BY tag ASC;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            rows = cur.fetchall()
+    return [str(row[0]) for row in rows]
+
+
+def batch_add_tag(lead_ids: list[int], tag: str) -> dict:
+    clean_tag = tag.strip().lower()
+    if not lead_ids or not clean_tag:
+        return {"updated": 0}
+    query = """
+        INSERT INTO lead_tags (lead_id, tag)
+        SELECT id, %s
+        FROM leads
+        WHERE id = ANY(%s::bigint[]) AND deleted_at IS NULL
+        ON CONFLICT (lead_id, tag) DO NOTHING;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (clean_tag, lead_ids))
+            updated = cur.rowcount or 0
+        conn.commit()
+    return {"updated": updated, "tag": clean_tag}

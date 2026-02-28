@@ -465,6 +465,11 @@ body,
   margin-top: 8px;
 }
 
+.fv-tag-remove {
+  border: 1px solid rgba(32, 80, 114, 0.18);
+  cursor: pointer;
+}
+
 .fv-lead-right {
   display: grid;
   justify-items: end;

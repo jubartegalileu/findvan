@@ -113,6 +113,18 @@ CREATE INDEX IF NOT EXISTS idx_lead_notes_lead_id ON lead_notes(lead_id);
 CREATE INDEX IF NOT EXISTS idx_lead_notes_created_at ON lead_notes(created_at DESC);
 """
 
+LEAD_TAGS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS lead_tags (
+  id BIGSERIAL PRIMARY KEY,
+  lead_id BIGINT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  tag VARCHAR(50) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(lead_id, tag)
+);
+CREATE INDEX IF NOT EXISTS idx_lead_tags_lead_id ON lead_tags(lead_id);
+CREATE INDEX IF NOT EXISTS idx_lead_tags_tag ON lead_tags(tag);
+"""
+
 LEAD_INTERACTIONS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS lead_interactions (
   id BIGSERIAL PRIMARY KEY,
@@ -145,5 +157,6 @@ def ensure_schema():
             cur.execute(SCRAPER_KEYWORD_PROFILES_TABLE_SQL)
             cur.execute(SCRAPER_SCHEDULES_TABLE_SQL)
             cur.execute(LEAD_NOTES_TABLE_SQL)
+            cur.execute(LEAD_TAGS_TABLE_SQL)
             cur.execute(LEAD_INTERACTIONS_TABLE_SQL)
         conn.commit()

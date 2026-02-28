@@ -165,6 +165,7 @@ export default function Leads({ onNavigate, activePath }) {
   const [selectedScoreRange, setSelectedScoreRange] = useState('all');
   const [selectedFunnels, setSelectedFunnels] = useState([]);
   const [selectedSource, setSelectedSource] = useState('');
+  const [selectedTag, setSelectedTag] = useState('');
   const [capturedDateFrom, setCapturedDateFrom] = useState('');
   const [capturedDateTo, setCapturedDateTo] = useState('');
   const [scoreSort, setScoreSort] = useState('desc');
@@ -182,6 +183,7 @@ export default function Leads({ onNavigate, activePath }) {
   const [noteDraft, setNoteDraft] = useState('');
   const [notesBusy, setNotesBusy] = useState(false);
   const [activeTab, setActiveTab] = useState('dados');
+  const [tagDraft, setTagDraft] = useState('');
   const [requestedLeadId, setRequestedLeadId] = useState(null);
   const [page, setPage] = useState(1);
   const pageSize = 12;
@@ -214,6 +216,7 @@ export default function Leads({ onNavigate, activePath }) {
         setSelectedScoreRange(parsed.selectedScoreRange || 'all');
         setSelectedFunnels(Array.isArray(parsed.selectedFunnels) ? parsed.selectedFunnels : []);
         setSelectedSource(parsed.selectedSource || '');
+        setSelectedTag(parsed.selectedTag || '');
         setCapturedDateFrom(parsed.capturedDateFrom || '');
         setCapturedDateTo(parsed.capturedDateTo || '');
         setScoreSort(parsed.scoreSort || 'desc');
@@ -272,6 +275,7 @@ export default function Leads({ onNavigate, activePath }) {
           selectedScoreRange,
           selectedFunnels,
           selectedSource,
+          selectedTag,
           capturedDateFrom,
           capturedDateTo,
           scoreSort,
@@ -287,6 +291,7 @@ export default function Leads({ onNavigate, activePath }) {
     selectedScoreRange,
     selectedFunnels,
     selectedSource,
+    selectedTag,
     capturedDateFrom,
     capturedDateTo,
     scoreSort,
@@ -312,12 +317,21 @@ export default function Leads({ onNavigate, activePath }) {
     [leads]
   );
 
+  const tagOptions = useMemo(
+    () =>
+      [...new Set(leads.flatMap((lead) => (Array.isArray(lead.tags) ? lead.tags : [])))]
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [leads]
+  );
+
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
       if (selectedState && lead.state !== selectedState) return false;
       if (selectedCity && lead.city !== selectedCity) return false;
       if (selectedFunnels.length > 0 && !selectedFunnels.includes(lead.funnel_status)) return false;
       if (selectedSource && lead.source !== selectedSource) return false;
+      if (selectedTag && !(lead.tags || []).includes(selectedTag)) return false;
       if (selectedScoreRange === 'excellent' && !(lead.score >= 90)) return false;
       if (selectedScoreRange === 'good' && !(lead.score >= 70 && lead.score <= 89)) return false;
       if (selectedScoreRange === 'regular' && !(lead.score >= 50 && lead.score <= 69)) return false;
@@ -360,6 +374,7 @@ export default function Leads({ onNavigate, activePath }) {
     selectedCity,
     selectedFunnels,
     selectedSource,
+    selectedTag,
     selectedScoreRange,
     capturedDateFrom,
     capturedDateTo,
@@ -448,6 +463,7 @@ export default function Leads({ onNavigate, activePath }) {
     selectedCity,
     selectedFunnels,
     selectedSource,
+    selectedTag,
     selectedScoreRange,
     capturedDateFrom,
     capturedDateTo,
@@ -663,6 +679,7 @@ export default function Leads({ onNavigate, activePath }) {
     setSelectedScoreRange('all');
     setSelectedFunnels([]);
     setSelectedSource('');
+    setSelectedTag('');
     setCapturedDateFrom('');
     setCapturedDateTo('');
     setScoreSort('desc');
@@ -802,6 +819,69 @@ export default function Leads({ onNavigate, activePath }) {
     }
   };
 
+  const batchApplyTag = async () => {
+    if (selectedLeadIds.length === 0) return;
+    const tag = window.prompt('Tag para aplicar nos leads selecionados:', 'prioridade alta');
+    if (!tag || !tag.trim()) return;
+    try {
+      setBatchBusy(true);
+      const response = await fetch(`${API_BASE}/api/leads/batch/tag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedLeadIds, tag: tag.trim() }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.detail || 'Falha ao aplicar tag em lote.');
+      setModalMessage(`Tag aplicada em ${payload.updated || 0} leads.`);
+      await loadLeads();
+    } catch (error) {
+      setModalMessage(error?.message || 'Erro ao aplicar tag em lote.');
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const addTagToActiveLead = async () => {
+    if (!activeLead?.id || !tagDraft.trim()) return;
+    try {
+      const response = await fetch(`${API_BASE}/api/leads/${activeLead.id}/tags`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag: tagDraft.trim() }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.detail || 'Falha ao adicionar tag.');
+      setTagDraft('');
+      setFormLead((prev) => ({ ...prev, tags: payload.tags || [] }));
+      setLeads((prev) =>
+        prev.map((lead) =>
+          lead.id === activeLead.id ? { ...lead, tags: payload.tags || [] } : lead
+        )
+      );
+    } catch (error) {
+      setModalMessage(error?.message || 'Erro ao adicionar tag.');
+    }
+  };
+
+  const removeTagFromActiveLead = async (tag) => {
+    if (!activeLead?.id || !tag) return;
+    try {
+      const response = await fetch(`${API_BASE}/api/leads/${activeLead.id}/tags/${encodeURIComponent(tag)}`, {
+        method: 'DELETE',
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.detail || 'Falha ao remover tag.');
+      setFormLead((prev) => ({ ...prev, tags: payload.tags || [] }));
+      setLeads((prev) =>
+        prev.map((lead) =>
+          lead.id === activeLead.id ? { ...lead, tags: payload.tags || [] } : lead
+        )
+      );
+    } catch (error) {
+      setModalMessage(error?.message || 'Erro ao remover tag.');
+    }
+  };
+
   const handleAlertFilter = (type) => {
     if (type === 'respondeu') {
       setSelectedFunnels(['respondeu']);
@@ -922,6 +1002,19 @@ export default function Leads({ onNavigate, activePath }) {
             ))}
           </select>
 
+          <select
+            className="fv-input fv-select"
+            value={selectedTag}
+            onChange={(event) => setSelectedTag(event.target.value)}
+          >
+            <option value="">Todas as tags</option>
+            {tagOptions.map((tag) => (
+              <option key={tag} value={tag}>
+                {tag}
+              </option>
+            ))}
+          </select>
+
           <input className="fv-input fv-select" type="date" value={capturedDateFrom} onChange={(event) => setCapturedDateFrom(event.target.value)} />
           <input className="fv-input fv-select" type="date" value={capturedDateTo} onChange={(event) => setCapturedDateTo(event.target.value)} />
 
@@ -957,6 +1050,9 @@ export default function Leads({ onNavigate, activePath }) {
               </button>
               <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={batchUpdateCampaign}>
                 Adicionar campanha
+              </button>
+              <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={batchApplyTag}>
+                Tagear
               </button>
               <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={exportSelectedLeads}>
                 Exportar CSV
@@ -1194,6 +1290,40 @@ export default function Leads({ onNavigate, activePath }) {
                       onChange={(event) => setFormLead((prev) => ({ ...prev, prospect_notes: event.target.value }))}
                     />
                   </label>
+                </div>
+
+                <div className="fv-field fv-field-full">
+                  <span>Tags</span>
+                  <div className="fv-lead-tags">
+                    {(formLead.tags || []).map((tag) => (
+                      <button
+                        key={`tag-${tag}`}
+                        type="button"
+                        className="fv-row-chip fv-row-chip-light fv-tag-remove"
+                        onClick={() => removeTagFromActiveLead(tag)}
+                      >
+                        #{tag} ✕
+                      </button>
+                    ))}
+                    {(formLead.tags || []).length === 0 && <span className="fv-row-sub">Sem tags.</span>}
+                  </div>
+                  <div className="fv-inline-form">
+                    <input
+                      className="fv-input"
+                      list="fv-tag-options"
+                      placeholder="Adicionar tag..."
+                      value={tagDraft}
+                      onChange={(event) => setTagDraft(event.target.value)}
+                    />
+                    <datalist id="fv-tag-options">
+                      {tagOptions.map((tag) => (
+                        <option key={`tag-opt-${tag}`} value={tag} />
+                      ))}
+                    </datalist>
+                    <button className="fv-ghost small" type="button" onClick={addTagToActiveLead}>
+                      Adicionar tag
+                    </button>
+                  </div>
                 </div>
 
                 <div className="fv-funnel-row">

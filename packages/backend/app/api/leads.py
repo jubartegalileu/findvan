@@ -1,11 +1,14 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from ..services.leads_service import (
+    add_lead_tag,
     add_lead_note,
+    batch_add_tag,
     batch_soft_delete,
     batch_update_campaign,
     delete_lead,
     list_lead_notes,
+    remove_lead_tag,
     get_leads_by_ids,
     get_lead_by_id,
     get_lead_score_breakdown,
@@ -107,6 +110,15 @@ class LeadNoteRequest(BaseModel):
     author: str | None = None
 
 
+class LeadTagRequest(BaseModel):
+    tag: str = Field(..., min_length=1, max_length=50)
+
+
+class BatchTagRequest(BaseModel):
+    ids: list[int]
+    tag: str = Field(..., min_length=1, max_length=50)
+
+
 @router.patch("/{lead_id}/funnel-status")
 def patch_funnel_status(lead_id: int, payload: FunnelStatusRequest):
     try:
@@ -162,6 +174,24 @@ def post_note(lead_id: int, payload: LeadNoteRequest):
         raise HTTPException(status_code=404, detail="Lead not found")
     note = add_lead_note(lead_id, payload.content.strip(), payload.author)
     return {"status": "ok", "note": note}
+
+
+@router.post("/{lead_id}/tags")
+def post_tag(lead_id: int, payload: LeadTagRequest):
+    lead = get_lead_by_id(lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    tags = add_lead_tag(lead_id, payload.tag)
+    return {"status": "ok", "tags": tags}
+
+
+@router.delete("/{lead_id}/tags/{tag}")
+def delete_tag(lead_id: int, tag: str):
+    lead = get_lead_by_id(lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    tags = remove_lead_tag(lead_id, tag)
+    return {"status": "ok", "tags": tags}
 
 
 @router.get("/funnel/meta")
@@ -233,3 +263,11 @@ def post_batch_status(payload: BatchStatusRequest):
         except ValueError as exc:
             errors.append({"id": lead_id, "error": str(exc)})
     return {"status": "ok", "updated": updated, "errors": errors}
+
+
+@router.post("/batch/tag")
+def post_batch_tag(payload: BatchTagRequest):
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="Nenhum lead selecionado.")
+    result = batch_add_tag(payload.ids, payload.tag)
+    return {"status": "ok", **result}

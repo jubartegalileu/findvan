@@ -494,21 +494,6 @@ def _count_active_schedules(exclude_id: int | None = None) -> int:
     return int(row[0] or 0)
 
 
-def _log_schedule_event(city: str, state: str, quantity: int, note: str) -> None:
-    _record_scraper_run(
-        city=city,
-        state=state,
-        target_count=quantity,
-        total_count=0,
-        unique_count=0,
-        duplicate_count=0,
-        inserted_count=0,
-        db_duplicate_count=0,
-        status="scheduled",
-        error_message=note[:300],
-    )
-
-
 def list_scraper_schedules() -> list[dict]:
     query = """
         SELECT id, state, city, keywords, quantity, frequency, day_of_week, execution_time, is_active, created_at, updated_at
@@ -562,9 +547,6 @@ def create_scraper_schedule(payload: dict) -> dict:
             )
             row = cur.fetchone()
         conn.commit()
-
-    if row[8]:
-        _log_schedule_event(row[2], row[1], row[4], f"Agendamento criado ({row[5]})")
 
     keys = [
         "id",
@@ -627,9 +609,6 @@ def update_scraper_schedule(schedule_id: int, payload: dict) -> dict | None:
 
     if not row:
         return None
-    if row[8]:
-        _log_schedule_event(row[2], row[1], row[4], f"Agendamento atualizado ({row[5]})")
-
     keys = [
         "id",
         "state",

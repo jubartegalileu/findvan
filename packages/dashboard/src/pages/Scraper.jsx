@@ -201,10 +201,18 @@ export default function Scraper({ onNavigate, activePath }) {
       }
 
       if (runsRes.ok && Array.isArray(runsPayload?.runs)) {
+        const mapRunStatus = (status) => {
+          const normalized = String(status || '').toLowerCase();
+          if (normalized === 'completed') return 'Concluído';
+          if (normalized === 'failed') return 'Falhou';
+          if (normalized === 'scheduled') return 'Agendado';
+          if (normalized === 'running') return 'Em execução';
+          return status || 'Agendado';
+        };
         const mappedRuns = runsPayload.runs.map((run) => ({
           city: run.city,
           state: run.state || '',
-          status: run.status === 'completed' ? 'Concluído' : 'Falhou',
+          status: mapRunStatus(run.status),
           captured: run.total_count ?? 0,
           valid: (run.unique_count ?? 0) + (run.duplicate_count ?? 0),
           inserted: run.inserted_count ?? 0,

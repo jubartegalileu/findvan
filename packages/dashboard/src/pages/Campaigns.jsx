@@ -114,6 +114,34 @@ export default function Campaigns({ onNavigate, activePath }) {
           ))}
         </div>
       </section>
+
+      <section className="fv-panel">
+        <div className="fv-panel-header">
+          <h2>Reconciliação de status</h2>
+          <div className="fv-row-sub">
+            Críticas: {monitoring.reconciliation?.totals?.critical || 0} • Transitórias:{' '}
+            {monitoring.reconciliation?.totals?.warning || 0}
+          </div>
+        </div>
+
+        <div className="fv-table">
+          {(!monitoring.reconciliation?.items || monitoring.reconciliation.items.length === 0) && (
+            <div className="fv-row-sub">Sem divergências de reconciliação no momento.</div>
+          )}
+          {(monitoring.reconciliation?.items || []).slice(0, 12).map((item) => (
+            <div key={`${item.leadId}-${item.localStatus}-${item.providerStatus}`} className="fv-row fv-monitoring-row">
+              <div>
+                <div className="fv-row-title">{item.leadName}</div>
+                <div className="fv-row-sub">Campanha: {item.campaign}</div>
+                <div className="fv-row-sub">
+                  Local: {item.localStatus} • Provider: {item.providerStatus}
+                </div>
+              </div>
+              <div className={`fv-row-chip fv-reconciliation-chip ${item.severity.key}`}>{item.severity.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
     </Layout>
   );
 }

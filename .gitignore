@@ -63,6 +63,7 @@ dist/
 # Project Data
 # ============================================================
 data/raw-leads/
+packages/scraper/data/raw-leads/
 data/backups/
 
 # ============================================================

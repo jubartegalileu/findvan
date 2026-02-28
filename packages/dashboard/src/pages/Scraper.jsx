@@ -56,6 +56,16 @@ export default function Scraper({ onNavigate, activePath }) {
   const [scheduleActive, setScheduleActive] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleMessage, setScheduleMessage] = useState('');
+  const [editingSchedule, setEditingSchedule] = useState(null);
+  const [editScheduleState, setEditScheduleState] = useState('');
+  const [editScheduleCity, setEditScheduleCity] = useState('');
+  const [editScheduleKeywords, setEditScheduleKeywords] = useState('transporte escolar');
+  const [editScheduleQuantity, setEditScheduleQuantity] = useState(50);
+  const [editScheduleFrequency, setEditScheduleFrequency] = useState('daily');
+  const [editScheduleDayOfWeek, setEditScheduleDayOfWeek] = useState(1);
+  const [editScheduleExecutionTime, setEditScheduleExecutionTime] = useState('09:00');
+  const [editScheduleActive, setEditScheduleActive] = useState(true);
+  const [editScheduleLoading, setEditScheduleLoading] = useState(false);
 
   const normalize = (value) =>
     value
@@ -146,6 +156,11 @@ export default function Scraper({ onNavigate, activePath }) {
     if (!scheduleState) return [];
     return citiesByUf[scheduleState] || [];
   }, [citiesByUf, scheduleState]);
+
+  const editScheduleCityOptions = useMemo(() => {
+    if (!editScheduleState) return [];
+    return citiesByUf[editScheduleState] || [];
+  }, [citiesByUf, editScheduleState]);
 
   const findCityMatch = (value) =>
     cityOptions.find((option) => normalize(option) === normalize(value));
@@ -339,6 +354,14 @@ export default function Scraper({ onNavigate, activePath }) {
     return values.length > 0 ? values : ['transporte escolar'];
   };
 
+  const parseEditScheduleKeywords = () => {
+    const values = editScheduleKeywords
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return values.length > 0 ? values : ['transporte escolar'];
+  };
+
   const resetScheduleForm = () => {
     setScheduleState('');
     setScheduleCity('');
@@ -419,6 +442,62 @@ export default function Scraper({ onNavigate, activePath }) {
       await refreshScraperData();
     } catch (error) {
       setScheduleMessage(String(error?.message || 'Falha ao remover agendamento.'));
+    }
+  };
+
+  const openEditScheduleModal = (schedule) => {
+    setEditingSchedule(schedule);
+    setEditScheduleState(schedule.state || '');
+    setEditScheduleCity(schedule.city || '');
+    setEditScheduleKeywords(Array.isArray(schedule.keywords) ? schedule.keywords.join(', ') : 'transporte escolar');
+    setEditScheduleQuantity(Number(schedule.quantity || 50));
+    setEditScheduleFrequency(schedule.frequency || 'daily');
+    setEditScheduleDayOfWeek(Number.isFinite(Number(schedule.day_of_week)) ? Number(schedule.day_of_week) : 1);
+    setEditScheduleExecutionTime(String(schedule.execution_time || '09:00').slice(0, 5));
+    setEditScheduleActive(!!schedule.is_active);
+  };
+
+  const closeEditScheduleModal = () => {
+    setEditingSchedule(null);
+    setEditScheduleLoading(false);
+  };
+
+  const handleSaveEditedSchedule = async () => {
+    if (!editingSchedule?.id) return;
+    if (!editScheduleState) {
+      setScheduleMessage('Selecione o estado para editar o agendamento.');
+      return;
+    }
+
+    const scheduleStateMeta = states.find((item) => item.sigla === editScheduleState);
+    const resolvedCity = editScheduleCity.trim() || scheduleStateMeta?.nome || editScheduleState;
+
+    try {
+      setEditScheduleLoading(true);
+      const response = await fetch(`${API_BASE}/api/scraper/schedules/${editingSchedule.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          state: editScheduleState,
+          city: resolvedCity,
+          keywords: parseEditScheduleKeywords(),
+          quantity: Number(editScheduleQuantity || 50),
+          frequency: editScheduleFrequency,
+          day_of_week: editScheduleFrequency === 'weekly' ? Number(editScheduleDayOfWeek) : null,
+          execution_time: editScheduleExecutionTime,
+          is_active: editScheduleActive,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao editar agendamento.');
+      }
+      setScheduleMessage('Agendamento atualizado com sucesso.');
+      closeEditScheduleModal();
+      await refreshScraperData();
+    } catch (error) {
+      setScheduleMessage(String(error?.message || 'Falha ao editar agendamento.'));
+      setEditScheduleLoading(false);
     }
   };
 
@@ -708,6 +787,9 @@ export default function Scraper({ onNavigate, activePath }) {
               <button className="fv-ghost small" type="button" onClick={() => toggleScheduleActive(schedule)}>
                 {schedule.is_active ? 'Desativar' : 'Ativar'}
               </button>
+              <button className="fv-ghost small" type="button" onClick={() => openEditScheduleModal(schedule)}>
+                Editar
+              </button>
               <button className="fv-ghost small" type="button" onClick={() => removeSchedule(schedule)}>
                 Remover
               </button>
@@ -760,6 +842,123 @@ export default function Scraper({ onNavigate, activePath }) {
           )}
         </div>
       </section>
+
+      {editingSchedule && (
+        <div className="fv-modal-backdrop" onClick={closeEditScheduleModal}>
+          <div className="fv-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="fv-panel-header">
+              <h2>Editar agendamento</h2>
+              <button className="fv-ghost small" type="button" onClick={closeEditScheduleModal}>
+                ✕ Fechar
+              </button>
+            </div>
+
+            <div className="fv-inline-form">
+              <select
+                className="fv-input fv-input-state fv-select"
+                value={editScheduleState}
+                onChange={(event) => {
+                  setEditScheduleState(event.target.value);
+                  setEditScheduleCity('');
+                }}
+              >
+                <option value="">Estado</option>
+                {states.map((state) => (
+                  <option key={`edit-schedule-${state.sigla}`} value={state.sigla}>
+                    {state.nome}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                className="fv-input"
+                placeholder="Cidade (opcional)"
+                value={editScheduleCity}
+                onChange={(event) => setEditScheduleCity(event.target.value)}
+                list="fv-edit-schedule-city-list"
+                disabled={!editScheduleState}
+              />
+              <datalist id="fv-edit-schedule-city-list">
+                {editScheduleCityOptions.map((option, index) => (
+                  <option key={`edit-city-${editScheduleState}-${option}-${index}`} value={option} />
+                ))}
+              </datalist>
+
+              <input
+                className="fv-input"
+                placeholder="Keywords (vírgula)"
+                value={editScheduleKeywords}
+                onChange={(event) => setEditScheduleKeywords(event.target.value)}
+              />
+
+              <input
+                className="fv-input fv-input-number"
+                type="number"
+                min={1}
+                max={999}
+                value={editScheduleQuantity}
+                onChange={(event) => setEditScheduleQuantity(Number(event.target.value || 50))}
+              />
+
+              <select
+                className="fv-input fv-select"
+                value={editScheduleFrequency}
+                onChange={(event) => setEditScheduleFrequency(event.target.value)}
+              >
+                <option value="daily">Diária</option>
+                <option value="weekly">Semanal</option>
+                <option value="monthly">Mensal</option>
+              </select>
+
+              {editScheduleFrequency === 'weekly' && (
+                <select
+                  className="fv-input fv-select"
+                  value={editScheduleDayOfWeek}
+                  onChange={(event) => setEditScheduleDayOfWeek(Number(event.target.value))}
+                >
+                  <option value={0}>Domingo</option>
+                  <option value={1}>Segunda</option>
+                  <option value={2}>Terça</option>
+                  <option value={3}>Quarta</option>
+                  <option value={4}>Quinta</option>
+                  <option value={5}>Sexta</option>
+                  <option value={6}>Sábado</option>
+                </select>
+              )}
+
+              <input
+                className="fv-input"
+                type="time"
+                value={editScheduleExecutionTime}
+                onChange={(event) => setEditScheduleExecutionTime(event.target.value)}
+              />
+
+              <label className="fv-funnel-check">
+                <input
+                  type="checkbox"
+                  checked={editScheduleActive}
+                  onChange={(event) => setEditScheduleActive(event.target.checked)}
+                />
+                Ativo
+              </label>
+            </div>
+
+            <div className="fv-actions fv-modal-actions">
+              <button className="fv-ghost" type="button" onClick={closeEditScheduleModal}>
+                Cancelar
+              </button>
+              <button
+                className="fv-primary"
+                type="button"
+                onClick={handleSaveEditedSchedule}
+                disabled={editScheduleLoading}
+              >
+                {editScheduleLoading ? 'Salvando...' : 'Salvar agendamento'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

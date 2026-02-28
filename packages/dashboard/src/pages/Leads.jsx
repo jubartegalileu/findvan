@@ -182,6 +182,7 @@ export default function Leads({ onNavigate, activePath }) {
   const [notes, setNotes] = useState([]);
   const [noteDraft, setNoteDraft] = useState('');
   const [notesBusy, setNotesBusy] = useState(false);
+  const [messagingBusy, setMessagingBusy] = useState(false);
   const [activeTab, setActiveTab] = useState('dados');
   const [tagDraft, setTagDraft] = useState('');
   const [requestedLeadId, setRequestedLeadId] = useState(null);
@@ -896,9 +897,59 @@ export default function Leads({ onNavigate, activePath }) {
     }
   };
 
-  const handleContactLead = (lead) => {
+  const sendMessageForLead = async (lead) => {
+    if (!lead) return;
+
+    if (!lead.phone) {
+      setModalMessage('Este lead não possui telefone para envio de mensagem.');
+      return;
+    }
+
+    const modeInput = window.prompt('Modo de envio (dry_run/live):', 'dry_run');
+    if (!modeInput) return;
+    const normalizedMode = modeInput.trim().toLowerCase();
+    if (normalizedMode !== 'dry_run' && normalizedMode !== 'live') {
+      setModalMessage('Modo inválido. Use dry_run ou live.');
+      return;
+    }
+
+    const defaultText = `Olá, ${lead.name || lead.company_name || 'tudo bem'}? Podemos ajudar sua operação de transporte escolar.`;
+    const content = window.prompt('Mensagem a ser enviada:', defaultText);
+    if (!content || !content.trim()) return;
+
+    try {
+      setMessagingBusy(true);
+      setModalMessage('');
+      const response = await fetch(`${API_BASE}/api/integrations/messaging/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_id: String(lead.id),
+          to: lead.phone,
+          content: content.trim(),
+          dry_run: normalizedMode === 'dry_run',
+          provider: 'twilio',
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao enviar mensagem para o lead.');
+      }
+
+      setModalMessage(
+        `Mensagem ${payload.mode === 'dry_run' ? 'simulada' : 'enviada'} via ${payload.provider}. Status: ${payload.receipt?.status || 'n/d'}.`
+      );
+    } catch (error) {
+      setModalMessage(error?.message || 'Erro de envio para o lead.');
+    } finally {
+      setMessagingBusy(false);
+    }
+  };
+
+  const handleContactLead = async (lead) => {
     openLeadModal(lead);
-    setModalMessage('Envio de mensagem disponível via módulo WhatsApp.');
+    await sendMessageForLead(lead);
   };
 
   return (
@@ -1243,12 +1294,10 @@ export default function Leads({ onNavigate, activePath }) {
                 <button
                   className="fv-ghost small"
                   type="button"
-                  onClick={() => {
-                    if (typeof onNavigate === 'function') onNavigate('/whatsapp');
-                    setModalMessage('Módulo WhatsApp aberto para envio.');
-                  }}
+                  disabled={messagingBusy}
+                  onClick={() => sendMessageForLead(formLead || activeLead)}
                 >
-                  Enviar mensagem
+                  {messagingBusy ? 'Enviando...' : 'Enviar mensagem'}
                 </button>
                 <button className="fv-ghost small" type="button" onClick={closeLeadModal}>
                   ✕ Fechar

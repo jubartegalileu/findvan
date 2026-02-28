@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout.jsx';
+import { API_BASE } from '../lib/apiBase.js';
 import './dashboard.css';
 
 const campaigns = [
@@ -20,7 +21,113 @@ const statusClass = {
   Rascunho: 'rascunho',
 };
 
+const defaultMessage =
+  'Olá, tudo bem? Somos da FindVan e podemos ajudar com captação de novos alunos para transporte escolar.';
+
+const getInitialLeadId = () => {
+  try {
+    return new URLSearchParams(window.location.search).get('leadId') || '';
+  } catch {
+    return '';
+  }
+};
+
 export default function WhatsApp({ onNavigate, activePath }) {
+  const [contracts, setContracts] = useState(null);
+  const [contractsLoading, setContractsLoading] = useState(true);
+  const [contractsError, setContractsError] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
+  const [sendResult, setSendResult] = useState(null);
+
+  const [form, setForm] = useState({
+    lead_id: getInitialLeadId(),
+    to: '',
+    content: defaultMessage,
+    provider: '',
+    dry_run: true,
+  });
+
+  const providers = useMemo(() => {
+    const list = contracts?.readiness?.available_messaging_providers;
+    if (!Array.isArray(list) || list.length === 0) return ['noop', 'twilio'];
+    return list;
+  }, [contracts]);
+
+  const loadContracts = async () => {
+    setContractsLoading(true);
+    setContractsError('');
+
+    try {
+      const response = await fetch(`${API_BASE}/api/integrations/contracts`);
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao carregar status da integração.');
+      }
+
+      setContracts(payload);
+      setForm((prev) => ({
+        ...prev,
+        provider: prev.provider || payload?.readiness?.requested_messaging_provider || 'noop',
+      }));
+    } catch (error) {
+      setContractsError(error.message || 'Falha de conexão com backend.');
+    } finally {
+      setContractsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadContracts();
+  }, []);
+
+  const onChangeField = (field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const sendMessage = async () => {
+    if (!form.lead_id.trim() || !form.to.trim() || !form.content.trim()) {
+      setSendError('Preencha lead, número e mensagem antes de enviar.');
+      return;
+    }
+
+    setSendError('');
+    setSendResult(null);
+    setSending(true);
+
+    try {
+      const payload = {
+        lead_id: form.lead_id.trim(),
+        to: form.to.trim(),
+        content: form.content.trim(),
+        dry_run: Boolean(form.dry_run),
+        provider: form.provider || undefined,
+      };
+
+      const response = await fetch(`${API_BASE}/api/integrations/messaging/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body?.detail || 'Falha ao enviar mensagem.');
+      }
+
+      setSendResult(body);
+    } catch (error) {
+      setSendError(error.message || 'Falha de conexão com backend.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const providerLabel = contracts?.readiness?.messaging_provider || 'noop';
+  const requestedProviderLabel = contracts?.readiness?.requested_messaging_provider || 'noop';
+  const fallbackActive = Boolean(contracts?.readiness?.messaging_fallback_active);
+
   return (
     <Layout onNavigate={onNavigate} activePath={activePath}>
       <header className="fv-header">
@@ -29,27 +136,170 @@ export default function WhatsApp({ onNavigate, activePath }) {
           <p>Gerencie campanhas, templates e entrega de mensagens.</p>
         </div>
         <div className="fv-actions">
-          <button className="fv-ghost">Conectar API</button>
-          <button className="fv-primary">Nova campanha</button>
+          <button className="fv-ghost" type="button" onClick={loadContracts} disabled={contractsLoading}>
+            {contractsLoading ? 'Carregando...' : 'Atualizar status API'}
+          </button>
+          <button className="fv-primary" type="button" onClick={sendMessage} disabled={sending}>
+            {sending ? 'Enviando...' : 'Enviar mensagem'}
+          </button>
         </div>
       </header>
 
       <section className="fv-columns">
         <div className="fv-panel">
           <div className="fv-panel-header">
+            <h2>Envio rápido</h2>
+            <div className={`fv-status ${form.dry_run ? 'agendada' : 'em-execucao'}`}>
+              {form.dry_run ? 'Modo dry run' : 'Modo live'}
+            </div>
+          </div>
+
+          <div className="fv-table">
+            <label className="fv-field">
+              <span>Lead ID</span>
+              <input
+                className="fv-input"
+                value={form.lead_id}
+                onChange={(event) => onChangeField('lead_id', event.target.value)}
+                placeholder="Ex.: 123"
+              />
+            </label>
+
+            <label className="fv-field">
+              <span>Número destino (WhatsApp)</span>
+              <input
+                className="fv-input"
+                value={form.to}
+                onChange={(event) => onChangeField('to', event.target.value)}
+                placeholder="Ex.: +5511999999999"
+              />
+            </label>
+
+            <label className="fv-field">
+              <span>Mensagem</span>
+              <textarea
+                className="fv-input fv-textarea"
+                value={form.content}
+                onChange={(event) => onChangeField('content', event.target.value)}
+              />
+            </label>
+
+            <div className="fv-funnel-row">
+              <label className="fv-field">
+                <span>Provider</span>
+                <select
+                  className="fv-input fv-select"
+                  value={form.provider}
+                  onChange={(event) => onChangeField('provider', event.target.value)}
+                >
+                  {providers.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="fv-field">
+                <span>Modo</span>
+                <select
+                  className="fv-input fv-select"
+                  value={form.dry_run ? 'dry_run' : 'live'}
+                  onChange={(event) => onChangeField('dry_run', event.target.value === 'dry_run')}
+                >
+                  <option value="dry_run">dry_run (seguro)</option>
+                  <option value="live">live (envio real)</option>
+                </select>
+              </label>
+
+              <label className="fv-field">
+                <span>Ação</span>
+                <button className="fv-primary" type="button" onClick={sendMessage} disabled={sending}>
+                  {sending ? 'Enviando...' : 'Enviar agora'}
+                </button>
+              </label>
+            </div>
+          </div>
+
+          {sendError && <div className="fv-message">{sendError}</div>}
+
+          {sendResult && (
+            <div className="fv-feedback-banner">
+              <div className="fv-feedback-title">Envio processado</div>
+              <div className="fv-row-sub">
+                Provider: <strong>{sendResult.provider}</strong> • Modo: <strong>{sendResult.mode}</strong>
+              </div>
+              <div className="fv-row-sub">
+                Status: <strong>{sendResult.receipt?.status || 'n/d'}</strong> • ID: {sendResult.receipt?.external_id || 'n/d'}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="fv-panel">
+          <div className="fv-panel-header">
+            <h2>Conexão & compatibilidade</h2>
+            <button className="fv-ghost small" type="button" onClick={loadContracts} disabled={contractsLoading}>
+              Revalidar
+            </button>
+          </div>
+
+          {contractsError && <div className="fv-message">{contractsError}</div>}
+
+          {!contractsError && (
+            <div className="fv-table">
+              <div className="fv-row">
+                <div>
+                  <div className="fv-row-title">Provider solicitado</div>
+                  <div className="fv-row-sub">{requestedProviderLabel}</div>
+                </div>
+                <div className={`fv-status ${fallbackActive ? 'agendada' : 'ativo'}`}>
+                  {fallbackActive ? 'Fallback ativo' : 'Direto'}
+                </div>
+              </div>
+
+              <div className="fv-row">
+                <div>
+                  <div className="fv-row-title">Provider efetivo</div>
+                  <div className="fv-row-sub">{providerLabel}</div>
+                </div>
+                <div className={`fv-status ${providerLabel === 'twilio' ? 'ativo' : 'agendada'}`}>
+                  {providerLabel === 'twilio' ? 'Twilio ativo' : 'noop ativo'}
+                </div>
+              </div>
+
+              <div className="fv-row">
+                <div>
+                  <div className="fv-row-title">Versão de contrato</div>
+                  <div className="fv-row-sub">
+                    default {contracts?.default_version || '1.0.0'} • latest {contracts?.latest_version || '1.1.0'}
+                  </div>
+                </div>
+                <div className="fv-row-chip">Compatível</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="fv-columns fv-scraper-section">
+        <div className="fv-panel">
+          <div className="fv-panel-header">
             <h2>Campanhas</h2>
-            <button className="fv-ghost small">Ver todas</button>
+            <button className="fv-ghost small" type="button">
+              Ver todas
+            </button>
           </div>
           <div className="fv-table">
             {campaigns.map((item) => (
               <div key={item.name} className="fv-row">
                 <div>
                   <div className="fv-row-title">{item.name}</div>
-                  <div className="fv-row-sub">{item.sent} enviadas • {item.delivered} entregues</div>
+                  <div className="fv-row-sub">
+                    {item.sent} enviadas • {item.delivered} entregues
+                  </div>
                 </div>
-                <div className={`fv-status ${statusClass[item.status] || ''}`}>
-                  {item.status}
-                </div>
+                <div className={`fv-status ${statusClass[item.status] || ''}`}>{item.status}</div>
               </div>
             ))}
           </div>
@@ -58,7 +308,9 @@ export default function WhatsApp({ onNavigate, activePath }) {
         <div className="fv-panel">
           <div className="fv-panel-header">
             <h2>Templates</h2>
-            <button className="fv-ghost small">Criar template</button>
+            <button className="fv-ghost small" type="button">
+              Criar template
+            </button>
           </div>
           <div className="fv-table">
             {templates.map((item) => (
@@ -67,9 +319,7 @@ export default function WhatsApp({ onNavigate, activePath }) {
                   <div className="fv-row-title">{item.title}</div>
                   <div className="fv-row-sub">Variáveis: {'{{nome}}'}, {'{{cidade}}'}</div>
                 </div>
-                <div className={`fv-row-chip ${statusClass[item.status] || ''}`}>
-                  {item.status}
-                </div>
+                <div className={`fv-row-chip ${statusClass[item.status] || ''}`}>{item.status}</div>
               </div>
             ))}
           </div>

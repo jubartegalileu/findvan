@@ -1,7 +1,7 @@
 # Epic 7 — Wave 3 P2 Polish: Dashboard Quick Actions, Scraper Coverage, Leads Tags
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P2 (Could Have)
 **Wave:** 3
 **Estimativa:** 1 semana
@@ -52,10 +52,10 @@ Entregar os itens P2 da Wave 3 para aumentar produtividade operacional e refinam
 
 ## Definition of Done
 
-- [ ] Stories 7.1, 7.2 e 7.3 implementadas e aprovadas
-- [ ] RF P2 da Wave 3 atendidos
-- [ ] QA/Arquitetura/PO aprovados
-- [ ] `npm run lint`, `npm run typecheck`, `npm test` verdes
+- [x] Stories 7.1, 7.2 e 7.3 implementadas e aprovadas
+- [x] RF P2 da Wave 3 atendidos
+- [x] QA/Arquitetura/PO aprovados
+- [x] `npm run lint`, `npm run typecheck`, `npm test` verdes
 
 ## Exit Criteria
 

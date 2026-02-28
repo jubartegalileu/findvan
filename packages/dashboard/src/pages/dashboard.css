@@ -1,30 +1,41 @@
+:root {
+  --fv-c1: #205072;
+  --fv-c2: #329d9c;
+  --fv-c3: #56c596;
+  --fv-c4: #7be495;
+  --fv-c5: #cff4d2;
+  --fv-bg: #f3fbf4;
+  --fv-bg-soft: #ecf8ef;
+  --fv-text: #205072;
+}
+
 html,
 body,
 #root {
   height: 100%;
   margin: 0;
-  background: #e3f3f0;
+  background: var(--fv-bg);
 }
 
 .fv-app {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 280px 1fr;
-  background: linear-gradient(135deg, #e3f3f0, #f0faf8);
-  color: #0c1f1c;
+  background: linear-gradient(135deg, var(--fv-bg), var(--fv-c5));
+  color: var(--fv-text);
   font-family: 'DM Sans', 'Poppins', system-ui, -apple-system, sans-serif;
 }
 
 .fv-sidebar {
-  background: #0f3d35;
-  color: #e3f7f3;
+  background: #205072;
+  color: #e8f7ea;
   padding: 32px 24px;
   display: flex;
   flex-direction: column;
   gap: 28px;
   border-top-right-radius: 28px;
   border-bottom-right-radius: 28px;
-  box-shadow: 20px 0 50px rgba(9, 40, 35, 0.3);
+  box-shadow: 20px 0 50px rgba(32, 80, 114, 0.3);
 }
 
 .fv-brand {
@@ -34,23 +45,24 @@ body,
 }
 
 .fv-logo {
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
+  width: 62px;
+  height: 62px;
+  border-radius: 21px;
   display: grid;
   place-items: center;
   font-weight: 700;
+  font-size: 22px;
   background: rgba(255, 255, 255, 0.18);
   letter-spacing: 1px;
 }
 
 .fv-brand-title {
-  font-size: 18px;
+  font-size: 23px;
   font-weight: 600;
 }
 
 .fv-brand-subtitle {
-  font-size: 12px;
+  font-size: 17px;
   opacity: 0.7;
 }
 
@@ -67,7 +79,7 @@ body,
   padding: 12px 14px;
   border-radius: 12px;
   text-align: left;
-  font-size: 14px;
+  font-size: 18px;
   cursor: pointer;
   transition: all 0.2s ease;
   text-decoration: none;
@@ -127,7 +139,23 @@ body,
 
 .fv-header p {
   margin: 0;
-  color: #4b6b64;
+  color: #4c777d;
+}
+
+.fv-icon-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fv-icon {
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.fv-sidebar .fv-icon {
+  width: 24px;
+  height: 24px;
 }
 
 .fv-actions {
@@ -145,8 +173,8 @@ body,
 }
 
 .fv-primary {
-  background: #0f3d35;
-  color: #e9fffb;
+  background: var(--fv-c1);
+  color: #eaf9ee;
 }
 
 .fv-primary:disabled {
@@ -155,9 +183,9 @@ body,
 }
 
 .fv-ghost {
-  background: rgba(255, 255, 255, 0.55);
-  color: #0f3d35;
-  box-shadow: 0 12px 30px rgba(10, 53, 47, 0.12);
+  background: rgba(207, 244, 210, 0.55);
+  color: var(--fv-c1);
+  box-shadow: 0 12px 30px rgba(32, 80, 114, 0.12);
 }
 
 .fv-ghost.small {
@@ -173,15 +201,15 @@ body,
 }
 
 .fv-card {
-  background: #eaf6f3;
+  background: var(--fv-bg-soft);
   padding: 18px 20px;
   border-radius: 18px;
-  box-shadow: 0 20px 40px rgba(10, 53, 47, 0.12);
+  box-shadow: 0 20px 40px rgba(32, 80, 114, 0.12);
 }
 
 .fv-card-label {
-  font-size: 12px;
-  color: #5f7d77;
+  font-size: 13px;
+  color: #4c777d;
 }
 
 .fv-card-value {
@@ -190,8 +218,8 @@ body,
 }
 
 .fv-card-meta {
-  font-size: 12px;
-  color: #0f3d35;
+  font-size: 13px;
+  color: var(--fv-c1);
 }
 
 .fv-columns {
@@ -201,10 +229,11 @@ body,
 }
 
 .fv-panel {
-  background: #f4fbf9;
+  background: #f6fcf7;
   border-radius: 22px;
   padding: 22px;
-  box-shadow: 0 20px 40px rgba(10, 53, 47, 0.1);
+  box-shadow: 0 20px 40px rgba(32, 80, 114, 0.1);
+  overflow: hidden;
 }
 
 .fv-panel-compact {
@@ -221,7 +250,7 @@ body,
 
 .fv-panel h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 19px;
 }
 
 .fv-table {
@@ -237,40 +266,50 @@ body,
   gap: 12px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: #eaf6f3;
+  background: var(--fv-bg-soft);
 }
 
 .fv-row-button {
   border: none;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   text-align: left;
   cursor: pointer;
 }
 
 .fv-row-button:hover {
-  background: #dff1ec;
+  background: #e1f6e5;
 }
 
 .fv-row-main {
+  flex: 1;
   min-width: 0;
 }
 
 .fv-row-title {
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fv-row-sub {
-  font-size: 12px;
-  color: #56706a;
+  font-size: 13px;
+  color: #4c777d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fv-row-chip {
-  background: #d5efe7;
-  color: #0f3d35;
+  background: rgba(123, 228, 149, 0.26);
+  color: var(--fv-c1);
   padding: 6px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .fv-inline-form {
@@ -285,9 +324,9 @@ body,
   min-width: 220px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(15, 61, 53, 0.12);
+  border: 1px solid rgba(32, 80, 114, 0.18);
   background: #ffffff;
-  color: #0c1f1c;
+  color: var(--fv-text);
   font-size: 14px;
 }
 
@@ -310,14 +349,14 @@ body,
 }
 
 .fv-input:focus {
-  outline: 2px solid rgba(15, 61, 53, 0.2);
+  outline: 2px solid rgba(50, 157, 156, 0.35);
   border-color: transparent;
 }
 
 .fv-message {
   margin-top: 10px;
   font-size: 13px;
-  color: #0f3d35;
+  color: var(--fv-c1);
 }
 
 .fv-modal-backdrop {
@@ -333,10 +372,10 @@ body,
   width: min(860px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
   overflow: auto;
-  background: #f4fbf9;
+  background: #f6fcf7;
   border-radius: 16px;
   padding: 20px;
-  box-shadow: 0 24px 48px rgba(6, 29, 24, 0.28);
+  box-shadow: 0 24px 48px rgba(32, 80, 114, 0.28);
 }
 
 .fv-modal-grid {
@@ -353,7 +392,7 @@ body,
 
 .fv-field span {
   font-size: 12px;
-  color: #56706a;
+  color: #4c777d;
 }
 
 .fv-check-label {
@@ -361,7 +400,7 @@ body,
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #274842;
+  color: var(--fv-c1);
 }
 
 .fv-field-full {
@@ -374,18 +413,20 @@ body,
 }
 
 .fv-status {
-  font-size: 12px;
+  font-size: 13px;
   padding: 6px 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .fv-status.novo {
-  color: #1a6f63;
+  color: #2a8a86;
 }
 
 .fv-status.qualificado {
-  color: #0f5e4d;
+  color: #2f9e6f;
 }
 
 .fv-status.em-contato {
@@ -398,7 +439,7 @@ body,
 }
 
 .fv-status.em-execucao {
-  color: #1a6f63;
+  color: #2a8a86;
 }
 
 .fv-status.agendado,
@@ -414,7 +455,7 @@ body,
 
 .fv-divider {
   height: 1px;
-  background: #d7ebe6;
+  background: #d9efdc;
   margin: 18px 0;
 }
 
@@ -424,7 +465,7 @@ body,
 }
 
 .fv-activity-item {
-  background: #eef7f5;
+  background: #edf9f0;
   padding: 12px 14px;
   border-radius: 14px;
 }
@@ -435,7 +476,7 @@ body,
 
 .fv-activity-time {
   font-size: 12px;
-  color: #6b857f;
+  color: #5b8386;
   margin-top: 6px;
 }
 

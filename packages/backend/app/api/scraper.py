@@ -11,16 +11,19 @@ router = APIRouter()
 
 
 class ScraperRequest(BaseModel):
-    city: str = Field(..., min_length=2)
-    state: str | None = Field(default=None, min_length=2, max_length=2)
-    max_results: int = Field(default=100, ge=1, le=999)
+    city: str | None = Field(default=None, min_length=2)
+    state: str = Field(..., min_length=2, max_length=2)
+    max_results: int = Field(default=50, ge=1, le=999)
 
 
 @router.post("/google-maps")
 def run_google_maps(payload: ScraperRequest):
     try:
+        city = payload.city.strip() if payload.city else None
+        if not payload.state:
+            raise HTTPException(status_code=400, detail="Estado é obrigatório.")
         result = run_google_maps_scraper(
-            city=payload.city,
+            city=city,
             max_results=payload.max_results,
             state=payload.state,
         )

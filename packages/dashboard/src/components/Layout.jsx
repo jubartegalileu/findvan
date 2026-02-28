@@ -1,13 +1,14 @@
 import React from 'react';
 import '../pages/dashboard.css';
+import Icon from './Icon.jsx';
 
 const navItems = [
-  { label: 'Dashboard', to: '/' },
-  { label: 'Scraper', to: '/scraper' },
-  { label: 'Leads', to: '/leads' },
-  { label: 'WhatsApp', to: '/whatsapp' },
-  { label: 'Campanhas', to: '/campanhas' },
-  { label: 'Configurações', to: '/configuracoes' },
+  { label: 'Dashboard', to: '/', icon: 'dashboard' },
+  { label: 'Scraper', to: '/scraper', icon: 'scraper' },
+  { label: 'Leads', to: '/leads', icon: 'leads' },
+  { label: 'WhatsApp', to: '/whatsapp', icon: 'whatsapp' },
+  { label: 'Campanhas', to: '/campanhas', icon: 'campaigns' },
+  { label: 'Configurações', to: '/configuracoes', icon: 'settings' },
 ];
 
 export default function Layout({ children, onNavigate, activePath }) {
@@ -36,7 +37,10 @@ export default function Layout({ children, onNavigate, activePath }) {
               className={`fv-nav-item${activePath === item.to ? ' active' : ''}`}
               onClick={() => handleNavigate(item.to)}
             >
-              {item.label}
+              <span className="fv-icon-label">
+                <Icon name={item.icon} />
+                {item.label}
+              </span>
             </button>
           ))}
         </nav>

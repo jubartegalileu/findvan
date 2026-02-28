@@ -21,7 +21,7 @@ export default function Scraper({ onNavigate, activePath }) {
   const [jobs, setJobs] = useState([]);
   const [city, setCity] = useState('');
   const [stateCode, setStateCode] = useState('');
-  const [count, setCount] = useState(100);
+  const [count, setCount] = useState(50);
   const [message, setMessage] = useState('');
   const [loadingRun, setLoadingRun] = useState(false);
   const [states, setStates] = useState([]);
@@ -156,7 +156,10 @@ export default function Scraper({ onNavigate, activePath }) {
       return;
     }
 
-    if (!trimmed || !match) {
+    const selectedState = states.find((item) => item.sigla === stateCode);
+    const resolvedCity = trimmed ? match : null;
+
+    if (trimmed && !resolvedCity) {
       setMessage('Selecione uma cidade válida na lista para iniciar a coleta.');
       return;
     }
@@ -169,9 +172,9 @@ export default function Scraper({ onNavigate, activePath }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          city: match,
+          city: resolvedCity || selectedState?.nome,
           state: stateCode,
-          max_results: count,
+          max_results: count || 50,
         }),
       });
       const payload = await response.json();
@@ -182,10 +185,19 @@ export default function Scraper({ onNavigate, activePath }) {
       const result = payload.result || {};
       setCity('');
       setStateCode('');
-      const stateName = states.find((item) => item.sigla === stateCode)?.nome;
-      setMessage(
-        `Coleta concluída: ${result.inserted ?? 0} leads inseridos (${match}/${stateName || stateCode}).`
-      );
+      const stateName = selectedState?.nome;
+      const searchLabel = resolvedCity || stateName || stateCode;
+      const inserted = Number(result.inserted || 0);
+      const dbDuplicates = Number(result.db_duplicates || 0);
+      if (inserted === 0 && dbDuplicates > 0) {
+        setMessage(
+          `Coleta concluída: nenhum novo lead em ${searchLabel}. ${dbDuplicates} já existiam no banco.`
+        );
+      } else {
+        setMessage(
+          `Coleta concluída: ${inserted} leads inseridos (${searchLabel}).`
+        );
+      }
       await refreshScraperData();
       localStorage.setItem('findvan.leads.lastRefresh', String(Date.now()));
       window.dispatchEvent(new CustomEvent('findvan:leads-updated'));
@@ -252,7 +264,7 @@ export default function Scraper({ onNavigate, activePath }) {
           </select>
           <input
             className="fv-input"
-            placeholder={loading ? 'Carregando cidades...' : 'Cidade'}
+            placeholder={loading ? 'Carregando cidades...' : 'Cidade (opcional)'}
             value={city}
             onChange={(event) => setCity(event.target.value)}
             list="fv-city-list"
@@ -270,7 +282,7 @@ export default function Scraper({ onNavigate, activePath }) {
             max={999}
             step={1}
             value={count}
-            onChange={(event) => setCount(Number(event.target.value || 0))}
+            onChange={(event) => setCount(Number(event.target.value || 50))}
           />
           <button
             className="fv-primary"

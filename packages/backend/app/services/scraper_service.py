@@ -82,11 +82,15 @@ def _record_scraper_run(
         conn.commit()
 
 
-def run_google_maps_scraper(city: str, max_results: int, state: str | None = None) -> dict:
+def run_google_maps_scraper(city: str | None, max_results: int, state: str | None = None) -> dict:
+    query_city = (city or "").strip() or (state or "").strip()
+    if not query_city:
+        raise RuntimeError("Estado é obrigatório para iniciar a coleta.")
+
     cmd = [
         SCRAPER_NODE_PATH,
         str(SCRAPER_SCRIPT),
-        city,
+        query_city,
         str(max_results),
     ]
 
@@ -120,7 +124,7 @@ def run_google_maps_scraper(city: str, max_results: int, state: str | None = Non
     if process.returncode != 0:
         error_message = process.stderr.strip() or process.stdout.strip() or "Scraper failed."
         _record_scraper_run(
-            city=city,
+            city=query_city,
             state=state,
             target_count=max_results,
             total_count=0,
@@ -145,7 +149,7 @@ def run_google_maps_scraper(city: str, max_results: int, state: str | None = Non
     insert_result = insert_leads(leads)
 
     _record_scraper_run(
-        city=city,
+        city=query_city,
         state=state,
         target_count=max_results,
         total_count=data.get("metadata", {}).get("total_leads", len(leads)),

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout.jsx';
+import Icon from '../components/Icon.jsx';
 import './dashboard.css';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -152,11 +153,13 @@ export default function Dashboard({ onNavigate, activePath }) {
         label: 'Leads válidos',
         value: formatNumber(validCount),
         delta: `${uniqueCityCount} cidades ativas`,
+        icon: 'leads',
       },
       {
         label: 'Coletas hoje',
         value: formatNumber(scraperStats.jobs_today || 0),
         delta: `${formatNumber(scraperStats.completed_today || 0)} concluídas`,
+        icon: 'scraper',
       },
       {
         label: 'Leads capturados (24h)',
@@ -165,6 +168,7 @@ export default function Dashboard({ onNavigate, activePath }) {
           scraperStats.validation_rate !== null
             ? `${scraperStats.validation_rate}% taxa de validação`
             : `${activeRuns} execuções recentes`,
+        icon: 'recent',
       },
     ];
   }, [leads, scraperRuns, scraperStats]);
@@ -213,18 +217,30 @@ export default function Dashboard({ onNavigate, activePath }) {
     <Layout onNavigate={onNavigate} activePath={activePath}>
       <header className="fv-header">
         <div>
-          <h1>Visão Geral</h1>
+          <h1 className="fv-icon-label">
+            <Icon name="dashboard" size={20} />
+            Visão Geral
+          </h1>
           <p>Centralize a operação de prospecção e SDR em um só lugar.</p>
         </div>
         <div className="fv-actions">
           <button className="fv-ghost" type="button" onClick={exportLeads}>
-            Exportar leads
+            <span className="fv-icon-label">
+              <Icon name="export" />
+              Exportar leads
+            </span>
           </button>
           <button className="fv-primary" type="button" onClick={() => goTo('/campanhas')}>
-            Criar campanha
+            <span className="fv-icon-label">
+              <Icon name="plus" />
+              Criar campanha
+            </span>
           </button>
           <button className="fv-ghost" type="button" onClick={loadDashboard}>
-            {loading ? 'Atualizando...' : 'Atualizar'}
+            <span className="fv-icon-label">
+              <Icon name="refresh" />
+              {loading ? 'Atualizando...' : 'Atualizar'}
+            </span>
           </button>
         </div>
       </header>
@@ -234,7 +250,10 @@ export default function Dashboard({ onNavigate, activePath }) {
       <section className="fv-grid">
         {dashboardStats.map((item) => (
           <div key={item.label} className="fv-card">
-            <div className="fv-card-label">{item.label}</div>
+            <div className="fv-card-label fv-icon-label">
+              <Icon name={item.icon} />
+              {item.label}
+            </div>
             <div className="fv-card-value">{item.value}</div>
             <div className="fv-card-meta">{item.delta}</div>
           </div>
@@ -244,7 +263,10 @@ export default function Dashboard({ onNavigate, activePath }) {
       <section className="fv-columns">
         <div className="fv-panel">
           <div className="fv-panel-header">
-            <h2>Leads recentes</h2>
+            <h2 className="fv-icon-label">
+              <Icon name="recent" />
+              Leads recentes
+            </h2>
             <button className="fv-ghost small" type="button" onClick={() => goTo('/leads')}>
               Ver todos
             </button>
@@ -281,9 +303,15 @@ export default function Dashboard({ onNavigate, activePath }) {
 
         <div className="fv-panel">
           <div className="fv-panel-header">
-            <h2>Scraper</h2>
+            <h2 className="fv-icon-label">
+              <Icon name="scraper" />
+              Scraper
+            </h2>
             <button className="fv-ghost small" type="button" onClick={() => goTo('/scraper')}>
-              Abrir módulo
+              <span className="fv-icon-label">
+                <Icon name="module" />
+                Abrir módulo
+              </span>
             </button>
           </div>
           <div className="fv-scraper-list">
@@ -308,7 +336,10 @@ export default function Dashboard({ onNavigate, activePath }) {
           <div className="fv-divider" />
 
           <div className="fv-panel-header">
-            <h2>Atividade</h2>
+            <h2 className="fv-icon-label">
+              <Icon name="activity" />
+              Atividade
+            </h2>
             <span className="fv-row-sub">
               Atualizado {lastRefresh ? formatRelativeDate(lastRefresh.toISOString()) : '--'}
             </span>

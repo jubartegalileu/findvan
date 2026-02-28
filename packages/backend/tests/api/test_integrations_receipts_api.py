@@ -91,6 +91,7 @@ def test_messaging_receipt_list_returns_most_recent_first():
     payload = response.json()
     assert payload["status"] == "ok"
     assert payload["applied_limit"] == 2
+    assert payload["retention_pruned"] == 0
     assert len(payload["events"]) == 2
     assert payload["events"][0]["external_id"] == "SM-002"
     assert payload["events"][1]["external_id"] == "SM-001"
@@ -172,3 +173,19 @@ def test_messaging_receipt_limit_is_capped():
     payload = response.json()
     assert payload["status"] == "ok"
     assert payload["applied_limit"] == 100
+    assert payload["retention_pruned"] == 0
+
+
+def test_messaging_retention_job_status_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        integrations_api,
+        "get_retention_job_status",
+        lambda: {"enabled": True, "running": True, "interval_seconds": 300},
+    )
+    client = build_client()
+    response = client.get("/api/integrations/messaging/retention-job")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["job"]["enabled"] is True
+    assert payload["job"]["running"] is True

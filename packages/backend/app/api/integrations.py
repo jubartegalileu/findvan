@@ -18,9 +18,9 @@ from ..integrations.registry import get_messaging_provider
 from ..services.messaging_receipts_service import (
     get_capped_receipt_limit,
     list_receipt_events,
-    prune_old_receipt_events,
     register_receipt_event,
 )
+from ..services.retention_jobs_service import get_retention_job_status
 
 
 router = APIRouter()
@@ -100,14 +100,21 @@ def post_messaging_receipt(payload: ReceiptPayload):
 @router.get("/messaging/receipts")
 def get_messaging_receipts(limit: int = Query(default=20, ge=1), retention_days: int | None = Query(default=None, ge=1)):
     try:
-        pruned = prune_old_receipt_events(retention_days=retention_days)
         applied_limit = get_capped_receipt_limit(limit)
         return {
             "status": "ok",
             "events": list_receipt_events(applied_limit),
             "applied_limit": applied_limit,
-            "retention_pruned": pruned,
+            "retention_pruned": 0,
         }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/messaging/retention-job")
+def get_messaging_retention_job_status():
+    try:
+        return {"status": "ok", "job": get_retention_job_status()}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

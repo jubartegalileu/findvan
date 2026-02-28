@@ -14,6 +14,7 @@ from .api import scraper as scraper_api
 from .api import dashboard as dashboard_api
 from .api import activity as activity_api
 from .api import integrations as integrations_api
+from .services.retention_jobs_service import get_retention_job_status, start_retention_job, stop_retention_job
 
 # Configure logging
 logging.basicConfig(
@@ -51,10 +52,16 @@ app.add_middleware(
 @app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring"""
+    retention = get_retention_job_status()
     return {
         "status": "healthy",
         "service": "findvan-backend",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "retention_job": {
+            "enabled": retention.get("enabled", False),
+            "running": retention.get("running", False),
+            "last_success_at": retention.get("last_success_at"),
+        },
     }
 
 
@@ -88,6 +95,13 @@ async def startup_event():
     """Initialize on startup"""
     logger.info("🚀 FindVan Backend starting...")
     ensure_schema()
+    retention_status = start_retention_job()
+    logger.info(
+        "♻️ Retention job enabled=%s running=%s interval=%ss",
+        retention_status.get("enabled"),
+        retention_status.get("running"),
+        retention_status.get("interval_seconds"),
+    )
     logger.info("✅ Backend ready")
 
 
@@ -95,6 +109,7 @@ async def startup_event():
 async def shutdown_event():
     """Cleanup on shutdown"""
     logger.info("⛔ FindVan Backend shutting down...")
+    stop_retention_job()
     # TODO: Close database connection
     # TODO: Close Redis connection
     logger.info("✅ Shutdown complete")

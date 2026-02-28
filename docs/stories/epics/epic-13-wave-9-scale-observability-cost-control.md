@@ -1,7 +1,7 @@
 # Epic 13 — Wave 9 Scale, Observability & Cost Control
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Escala Operacional)
 **Wave:** 9
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Consolidar a operação de mensageria e campanhas em escala, com observabilidade
 
 ## Definition of Done
 
-- [ ] Stories 13.1, 13.2 e 13.3 implementadas e aprovadas
-- [ ] Observabilidade operacional com SLO e alertas por threshold
-- [ ] Retenção/limites aplicados sem regressão de contrato
-- [ ] Insights de custo e throughput disponíveis para operação
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 13.1, 13.2 e 13.3 implementadas e aprovadas
+- [x] Observabilidade operacional com SLO e alertas por threshold
+- [x] Retenção/limites aplicados sem regressão de contrato
+- [x] Insights de custo e throughput disponíveis para operação
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

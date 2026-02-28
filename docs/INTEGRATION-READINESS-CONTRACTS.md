@@ -37,6 +37,7 @@ Arquivo: `packages/backend/app/integrations/contracts.py`
 Arquivos:
 - `packages/backend/app/integrations/registry.py`
 - `packages/backend/app/integrations/providers/noop_messaging.py`
+- `packages/backend/app/integrations/providers/twilio_messaging.py`
 - `packages/backend/app/integrations/providers/noop_osint.py`
 
 Comportamento:
@@ -44,11 +45,18 @@ Comportamento:
   - `FINDVAN_MESSAGING_PROVIDER`
   - `FINDVAN_OSINT_PROVIDER`
 - Fallback seguro para `noop`/`manual`.
+- Provider real incremental disponível: `twilio` (com fallback para `noop` quando credenciais não estão configuradas).
 
 ## Endpoint de contrato
 
 - `GET /api/integrations/contracts`
 - Versionamento: ver `docs/INTEGRATION-CONTRACT-VERSIONING.md`
+
+## Endpoint de envio incremental
+
+- `POST /api/integrations/messaging/send`
+- `dry_run=true` por padrão para rollout seguro.
+- `dry_run=false` usa provider ativo (`twilio` quando configurado, senão `noop`).
 
 Retorno:
 - versão de contrato

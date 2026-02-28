@@ -1,7 +1,7 @@
 # Epic 14 — Wave 10 Production Hardening, Alerting & Metrics Governance
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Hardening de Produção)
 **Wave:** 10
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Elevar a plataforma para operação mais resiliente em produção, retirando tar
 
 ## Definition of Done
 
-- [ ] Stories 14.1, 14.2 e 14.3 implementadas e aprovadas
-- [ ] Expurgo assíncrono ativo sem regressão de contrato
-- [ ] Alertas externos críticos disponíveis com fallback
-- [ ] Governança de thresholds com trilha de auditoria funcional
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 14.1, 14.2 e 14.3 implementadas e aprovadas
+- [x] Expurgo assíncrono ativo sem regressão de contrato
+- [x] Alertas externos críticos disponíveis com fallback
+- [x] Governança de thresholds com trilha de auditoria funcional
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

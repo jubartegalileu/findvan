@@ -74,3 +74,37 @@ def test_worker_run_once_skips_cycle_when_lock_not_acquired(monkeypatch):
     status = service.run_retention_worker(run_once=True)
     assert calls["cycles"] == 0
     assert status["running"] is False
+
+
+def test_run_retention_cycle_triggers_recovery_and_succeeds(monkeypatch):
+    monkeypatch.setenv("RETENTION_SELF_HEALING_ENABLED", "1")
+    monkeypatch.setenv("RETENTION_RECOVERY_BACKOFF_SECONDS", "1")
+    monkeypatch.setattr(service.time, "sleep", lambda *_args, **_kwargs: None)
+
+    calls = {"receipts": 0}
+
+    def _prune_receipts(*_args, **_kwargs):
+        calls["receipts"] += 1
+        if calls["receipts"] == 1:
+            raise RuntimeError("simulated retention failure")
+        return 2
+
+    monkeypatch.setattr(service, "prune_old_receipt_events", _prune_receipts)
+    monkeypatch.setattr(service, "prune_old_activity_events", lambda *_args, **_kwargs: 1)
+
+    result = service.run_retention_cycle(receipts_retention_days=10, activity_retention_days=20, owner_id="worker-a")
+    assert result["status"] == "ok"
+    assert result.get("recovered") is True
+
+    status = service.get_retention_job_status()
+    assert status["self_healing"]["enabled"] is True
+    assert status["self_healing"]["last_success_at"] is not None
+
+
+def test_run_retention_cycle_without_self_healing_returns_error(monkeypatch):
+    monkeypatch.setenv("RETENTION_SELF_HEALING_ENABLED", "0")
+    monkeypatch.setattr(service, "prune_old_receipt_events", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(service, "prune_old_activity_events", lambda *_args, **_kwargs: 0)
+
+    result = service.run_retention_cycle(receipts_retention_days=10, activity_retention_days=20, owner_id="worker-a")
+    assert result["status"] == "error"

@@ -82,6 +82,22 @@ def dashboard_alert_status():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.get("/recovery-policies")
+def dashboard_recovery_policies():
+    try:
+        alerting = get_alerting_status()
+        retention = get_retention_job_status()
+        return {
+            "status": "ok",
+            "policies": {
+                "alerting": alerting.get("self_healing") or {},
+                "retention": retention.get("self_healing") or {},
+            },
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.get("/operational-telemetry")
 def dashboard_operational_telemetry(limit: int = Query(default=10, ge=1, le=50)):
     try:
@@ -94,12 +110,14 @@ def dashboard_operational_telemetry(limit: int = Query(default=10, ge=1, le=50))
                 "suppressed_count": int(alerting.get("suppressed_count") or 0),
                 "sent_count": int(alerting.get("sent_count") or 0),
                 "queued_count": int(alerting.get("queued_count") or 0),
+                "self_healing": alerting.get("self_healing") or {},
             },
             "retention": {
                 "run_count": int(retention.get("run_count") or 0),
                 "fail_count": int(retention.get("fail_count") or 0),
                 "last_error": retention.get("last_error"),
                 "owner": retention.get("owner"),
+                "self_healing": retention.get("self_healing") or {},
             },
         }
         return {"status": "ok", "metrics": metrics, "incidents": incidents, "applied_limit": limit}

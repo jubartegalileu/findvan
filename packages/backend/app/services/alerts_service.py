@@ -19,6 +19,7 @@ STATE_KEY = "global"
 
 _state_lock = threading.Lock()
 _dispatch_lock = threading.Lock()
+_recovery_lock = threading.Lock()
 
 _state = {
     "suppressed_count": 0,
@@ -31,6 +32,23 @@ _state = {
     "last_suppressed_at": None,
     "recent": [],
     "cooldown_until_by_key": {},
+}
+_recovery_state = {
+    "enabled": True,
+    "window_seconds": 900,
+    "max_attempts": 3,
+    "cooldown_seconds": 120,
+    "backoff_seconds": 3,
+    "circuit_breaker_threshold": 5,
+    "circuit_breaker_seconds": 600,
+    "attempts_in_window": 0,
+    "consecutive_failures": 0,
+    "window_started_at": None,
+    "last_attempt_at": None,
+    "last_success_at": None,
+    "last_failure_at": None,
+    "last_error": None,
+    "circuit_open_until": None,
 }
 
 
@@ -62,12 +80,76 @@ def _get_cooldown_seconds() -> int:
     return max(30, _to_int("ALERT_COOLDOWN_SECONDS", 300))
 
 
+def _get_self_healing_enabled() -> bool:
+    return str(os.getenv("ALERT_SELF_HEALING_ENABLED", "1")).strip().lower() in {"1", "true", "yes", "on", "y"}
+
+
+def _get_recovery_window_seconds() -> int:
+    return max(60, _to_int("ALERT_RECOVERY_WINDOW_SECONDS", 900))
+
+
+def _get_recovery_max_attempts() -> int:
+    return max(1, _to_int("ALERT_RECOVERY_MAX_ATTEMPTS", 3))
+
+
+def _get_recovery_cooldown_seconds() -> int:
+    return max(5, _to_int("ALERT_RECOVERY_COOLDOWN_SECONDS", 120))
+
+
+def _get_recovery_backoff_seconds() -> int:
+    return max(1, _to_int("ALERT_RECOVERY_BACKOFF_SECONDS", 3))
+
+
+def _get_recovery_circuit_breaker_threshold() -> int:
+    return max(1, _to_int("ALERT_RECOVERY_CIRCUIT_BREAKER_THRESHOLD", 5))
+
+
+def _get_recovery_circuit_breaker_seconds() -> int:
+    return max(30, _to_int("ALERT_RECOVERY_CIRCUIT_BREAKER_SECONDS", 600))
+
+
 def _iso(value) -> str | None:
     if isinstance(value, datetime):
         return value.isoformat()
     if value is None:
         return None
     return str(value)
+
+
+def _parse_iso_to_epoch(value) -> float:
+    if not value:
+        return 0.0
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
+
+
+def _self_healing_snapshot() -> dict:
+    with _recovery_lock:
+        snapshot = deepcopy(_recovery_state)
+    snapshot["enabled"] = _get_self_healing_enabled()
+    snapshot["window_seconds"] = _get_recovery_window_seconds()
+    snapshot["max_attempts"] = _get_recovery_max_attempts()
+    snapshot["cooldown_seconds"] = _get_recovery_cooldown_seconds()
+    snapshot["backoff_seconds"] = _get_recovery_backoff_seconds()
+    snapshot["circuit_breaker_threshold"] = _get_recovery_circuit_breaker_threshold()
+    snapshot["circuit_breaker_seconds"] = _get_recovery_circuit_breaker_seconds()
+    return snapshot
+
+
+def _register_recovery_failure(error: str) -> None:
+    with _recovery_lock:
+        _recovery_state["last_failure_at"] = _utcnow_iso()
+        _recovery_state["last_error"] = str(error)
+        _recovery_state["consecutive_failures"] = int(_recovery_state.get("consecutive_failures") or 0) + 1
+
+
+def _register_recovery_success() -> None:
+    with _recovery_lock:
+        _recovery_state["last_success_at"] = _utcnow_iso()
+        _recovery_state["last_error"] = None
+        _recovery_state["consecutive_failures"] = 0
 
 
 def _read_persisted_state() -> dict | None:
@@ -277,7 +359,7 @@ def _append_recent(item: dict) -> None:
         pass
 
 
-def _store_fallback(alert_event: dict, reason: str) -> None:
+def _store_fallback(alert_event: dict, reason: str, allow_recovery: bool = True) -> None:
     fallback_item = {
         "timestamp": _utcnow_iso(),
         "delivery": "local_fallback",
@@ -297,6 +379,9 @@ def _store_fallback(alert_event: dict, reason: str) -> None:
         title="Alerta entregue em fallback local",
         details={"reason": reason, "event_type": alert_event.get("event_type"), "severity": alert_event.get("severity")},
     )
+    _register_recovery_failure(reason)
+    if allow_recovery:
+        _attempt_alert_recovery(alert_event, reason)
 
 
 def _store_sent(alert_event: dict) -> None:
@@ -314,11 +399,11 @@ def _store_sent(alert_event: dict) -> None:
     _persist_state_best_effort()
 
 
-def _send_webhook(alert_event: dict) -> None:
+def _send_webhook(alert_event: dict, allow_recovery: bool = True) -> bool:
     webhook_url = _get_alert_webhook_url()
     if not webhook_url:
-        _store_fallback(alert_event, "ALERT_WEBHOOK_URL not configured")
-        return
+        _store_fallback(alert_event, "ALERT_WEBHOOK_URL not configured", allow_recovery=allow_recovery)
+        return False
 
     payload = json.dumps(alert_event).encode("utf-8")
     timeout_seconds = _get_timeout_seconds()
@@ -337,7 +422,7 @@ def _send_webhook(alert_event: dict) -> None:
                 status_code = int(getattr(response, "status", 0) or 0)
                 if 200 <= status_code < 300:
                     _store_sent(alert_event)
-                    return
+                    return True
                 last_error = f"Webhook returned status {status_code}"
         except URLError as exc:
             last_error = str(exc)
@@ -345,7 +430,123 @@ def _send_webhook(alert_event: dict) -> None:
             last_error = str(exc)
         time.sleep(0.1)
 
-    _store_fallback(alert_event, last_error or "Unknown webhook error")
+    _store_fallback(alert_event, last_error or "Unknown webhook error", allow_recovery=allow_recovery)
+    return False
+
+
+def _attempt_alert_recovery(alert_event: dict, reason: str) -> None:
+    if not _get_self_healing_enabled():
+        return
+    if not _get_alert_webhook_url():
+        return
+
+    now = time.time()
+    window_seconds = _get_recovery_window_seconds()
+    max_attempts = _get_recovery_max_attempts()
+    cooldown_seconds = _get_recovery_cooldown_seconds()
+    backoff_seconds = _get_recovery_backoff_seconds()
+    circuit_breaker_threshold = _get_recovery_circuit_breaker_threshold()
+    circuit_breaker_seconds = _get_recovery_circuit_breaker_seconds()
+
+    with _recovery_lock:
+        _recovery_state["enabled"] = True
+        _recovery_state["window_seconds"] = window_seconds
+        _recovery_state["max_attempts"] = max_attempts
+        _recovery_state["cooldown_seconds"] = cooldown_seconds
+        _recovery_state["backoff_seconds"] = backoff_seconds
+        _recovery_state["circuit_breaker_threshold"] = circuit_breaker_threshold
+        _recovery_state["circuit_breaker_seconds"] = circuit_breaker_seconds
+
+        circuit_open_until = _parse_iso_to_epoch(_recovery_state.get("circuit_open_until"))
+        if circuit_open_until and now < circuit_open_until:
+            log_incident(
+                source="alerting",
+                event_type="alert_recovery_skipped",
+                severity="medium",
+                title="Recuperação automática de alertas bloqueada por circuit-breaker",
+                details={"reason": "circuit_open", "until": _recovery_state.get("circuit_open_until")},
+            )
+            return
+
+        window_started = _parse_iso_to_epoch(_recovery_state.get("window_started_at"))
+        if not window_started or now - window_started > window_seconds:
+            _recovery_state["window_started_at"] = _utcnow_iso()
+            _recovery_state["attempts_in_window"] = 0
+
+        last_attempt = _parse_iso_to_epoch(_recovery_state.get("last_attempt_at"))
+        if last_attempt and now - last_attempt < cooldown_seconds:
+            log_incident(
+                source="alerting",
+                event_type="alert_recovery_skipped",
+                severity="low",
+                title="Recuperação automática de alertas em cooldown",
+                details={"reason": "cooldown", "cooldown_seconds": cooldown_seconds},
+            )
+            return
+
+        attempts_in_window = int(_recovery_state.get("attempts_in_window") or 0)
+        if attempts_in_window >= max_attempts:
+            log_incident(
+                source="alerting",
+                event_type="alert_recovery_skipped",
+                severity="medium",
+                title="Recuperação automática de alertas bloqueada por budget",
+                details={"reason": "budget_exceeded", "max_attempts": max_attempts, "window_seconds": window_seconds},
+            )
+            return
+
+        consecutive_failures = int(_recovery_state.get("consecutive_failures") or 0)
+        if consecutive_failures >= circuit_breaker_threshold:
+            open_until = datetime.fromtimestamp(now + circuit_breaker_seconds, tz=timezone.utc).isoformat()
+            _recovery_state["circuit_open_until"] = open_until
+            log_incident(
+                source="alerting",
+                event_type="alert_recovery_skipped",
+                severity="high",
+                title="Circuit-breaker aberto para recuperação de alertas",
+                details={
+                    "reason": "circuit_opened",
+                    "threshold": circuit_breaker_threshold,
+                    "open_seconds": circuit_breaker_seconds,
+                    "open_until": open_until,
+                },
+            )
+            return
+
+        _recovery_state["attempts_in_window"] = attempts_in_window + 1
+        _recovery_state["last_attempt_at"] = _utcnow_iso()
+
+    log_incident(
+        source="alerting",
+        event_type="alert_recovery_attempt",
+        severity="medium",
+        title="Tentativa de recuperação automática de alerta",
+        details={"reason": reason, "backoff_seconds": backoff_seconds, "event_type": alert_event.get("event_type")},
+    )
+
+    def _recovery_worker() -> None:
+        time.sleep(backoff_seconds)
+        ok = _send_webhook(deepcopy(alert_event), allow_recovery=False)
+        if ok:
+            _register_recovery_success()
+            log_incident(
+                source="alerting",
+                event_type="alert_recovery_success",
+                severity="low",
+                title="Recuperação automática de alerta concluída",
+                details={"event_type": alert_event.get("event_type")},
+            )
+            return
+        log_incident(
+            source="alerting",
+            event_type="alert_recovery_failed",
+            severity="high",
+            title="Recuperação automática de alerta falhou",
+            details={"event_type": alert_event.get("event_type")},
+        )
+
+    thread = threading.Thread(target=_recovery_worker, daemon=True, name="alert-recovery-dispatch")
+    thread.start()
 
 
 def trigger_operational_alert(alert_event: dict) -> dict:
@@ -385,6 +586,7 @@ def get_alerting_status() -> dict:
         "retry_count": _get_retry_count(),
         "cooldown_seconds": _get_cooldown_seconds(),
     }
+    snapshot["self_healing"] = _self_healing_snapshot()
     return snapshot
 
 
@@ -400,6 +602,15 @@ def clear_alerting_state() -> None:
         _state["last_suppressed_at"] = None
         _state["recent"] = []
         _state["cooldown_until_by_key"] = {}
+    with _recovery_lock:
+        _recovery_state["attempts_in_window"] = 0
+        _recovery_state["consecutive_failures"] = 0
+        _recovery_state["window_started_at"] = None
+        _recovery_state["last_attempt_at"] = None
+        _recovery_state["last_success_at"] = None
+        _recovery_state["last_failure_at"] = None
+        _recovery_state["last_error"] = None
+        _recovery_state["circuit_open_until"] = None
 
     try:
         with get_connection() as conn:

@@ -101,16 +101,48 @@ def test_dashboard_alert_status_ok(monkeypatch):
     assert payload["alerting"]["contract_version"] == "1.0.0"
 
 
-def test_dashboard_operational_telemetry_ok(monkeypatch):
+def test_dashboard_recovery_policies_ok(monkeypatch):
     monkeypatch.setattr(
         dashboard_api,
         "get_alerting_status",
-        lambda: {"fallback_count": 2, "suppressed_count": 3, "sent_count": 5, "queued_count": 1},
+        lambda: {"self_healing": {"enabled": True, "max_attempts": 3}},
     )
     monkeypatch.setattr(
         dashboard_api,
         "get_retention_job_status",
-        lambda: {"run_count": 10, "fail_count": 1, "last_error": None, "owner": "worker-1"},
+        lambda: {"self_healing": {"enabled": True, "max_attempts": 2}},
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/recovery-policies")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["policies"]["alerting"]["enabled"] is True
+    assert payload["policies"]["retention"]["max_attempts"] == 2
+
+
+def test_dashboard_operational_telemetry_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_alerting_status",
+        lambda: {
+            "fallback_count": 2,
+            "suppressed_count": 3,
+            "sent_count": 5,
+            "queued_count": 1,
+            "self_healing": {"enabled": True, "attempts_in_window": 1},
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_retention_job_status",
+        lambda: {
+            "run_count": 10,
+            "fail_count": 1,
+            "last_error": None,
+            "owner": "worker-1",
+            "self_healing": {"enabled": True, "attempts_in_window": 2},
+        },
     )
     monkeypatch.setattr(
         dashboard_api,
@@ -124,6 +156,8 @@ def test_dashboard_operational_telemetry_ok(monkeypatch):
     assert payload["status"] == "ok"
     assert payload["metrics"]["alerting"]["fallback_count"] == 2
     assert payload["metrics"]["retention"]["run_count"] == 10
+    assert payload["metrics"]["alerting"]["self_healing"]["enabled"] is True
+    assert payload["metrics"]["retention"]["self_healing"]["enabled"] is True
     assert len(payload["incidents"]) == 1
 
 

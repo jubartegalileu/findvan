@@ -43,3 +43,10 @@ def test_trigger_operational_alert_is_suppressed_by_cooldown(monkeypatch):
     second = service.trigger_operational_alert(event)
     assert first["status"] == "fallback"
     assert second["status"] == "suppressed"
+
+
+def test_alerting_status_exposes_self_healing_snapshot(monkeypatch):
+    monkeypatch.setenv("ALERT_SELF_HEALING_ENABLED", "0")
+    status = service.get_alerting_status()
+    assert "self_healing" in status
+    assert status["self_healing"]["enabled"] is False

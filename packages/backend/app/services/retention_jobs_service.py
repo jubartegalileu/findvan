@@ -36,6 +36,24 @@ _state = {
     "owner": None,
     "thread_alive": False,
 }
+_recovery_lock = threading.Lock()
+_recovery_state = {
+    "enabled": True,
+    "window_seconds": 900,
+    "max_attempts": 3,
+    "cooldown_seconds": 120,
+    "backoff_seconds": 2,
+    "circuit_breaker_threshold": 5,
+    "circuit_breaker_seconds": 600,
+    "attempts_in_window": 0,
+    "consecutive_failures": 0,
+    "window_started_at": None,
+    "last_attempt_at": None,
+    "last_success_at": None,
+    "last_failure_at": None,
+    "last_error": None,
+    "circuit_open_until": None,
+}
 
 
 def _utcnow_iso() -> str:
@@ -96,12 +114,199 @@ def _configured_worker_id() -> str:
     return f"{socket.gethostname()}:{os.getpid()}"
 
 
+def _configured_self_healing_enabled() -> bool:
+    return _to_bool(os.getenv("RETENTION_SELF_HEALING_ENABLED", "1"), default=True)
+
+
+def _configured_recovery_window_seconds() -> int:
+    return _to_int(os.getenv("RETENTION_RECOVERY_WINDOW_SECONDS", "900"), default=900, minimum=60)
+
+
+def _configured_recovery_max_attempts() -> int:
+    return _to_int(os.getenv("RETENTION_RECOVERY_MAX_ATTEMPTS", "3"), default=3, minimum=1)
+
+
+def _configured_recovery_cooldown_seconds() -> int:
+    return _to_int(os.getenv("RETENTION_RECOVERY_COOLDOWN_SECONDS", "120"), default=120, minimum=5)
+
+
+def _configured_recovery_backoff_seconds() -> int:
+    return _to_int(os.getenv("RETENTION_RECOVERY_BACKOFF_SECONDS", "2"), default=2, minimum=1)
+
+
+def _configured_recovery_circuit_breaker_threshold() -> int:
+    return _to_int(os.getenv("RETENTION_RECOVERY_CIRCUIT_BREAKER_THRESHOLD", "5"), default=5, minimum=1)
+
+
+def _configured_recovery_circuit_breaker_seconds() -> int:
+    return _to_int(os.getenv("RETENTION_RECOVERY_CIRCUIT_BREAKER_SECONDS", "600"), default=600, minimum=30)
+
+
 def _iso(value) -> str | None:
     if isinstance(value, datetime):
         return value.isoformat()
     if value is None:
         return None
     return str(value)
+
+
+def _parse_iso_to_epoch(value) -> float:
+    if not value:
+        return 0.0
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
+
+
+def _self_healing_snapshot() -> dict:
+    with _recovery_lock:
+        snapshot = deepcopy(_recovery_state)
+    snapshot["enabled"] = _configured_self_healing_enabled()
+    snapshot["window_seconds"] = _configured_recovery_window_seconds()
+    snapshot["max_attempts"] = _configured_recovery_max_attempts()
+    snapshot["cooldown_seconds"] = _configured_recovery_cooldown_seconds()
+    snapshot["backoff_seconds"] = _configured_recovery_backoff_seconds()
+    snapshot["circuit_breaker_threshold"] = _configured_recovery_circuit_breaker_threshold()
+    snapshot["circuit_breaker_seconds"] = _configured_recovery_circuit_breaker_seconds()
+    return snapshot
+
+
+def _register_retention_failure(error: str) -> None:
+    now_iso = _utcnow_iso()
+    with _recovery_lock:
+        _recovery_state["last_failure_at"] = now_iso
+        _recovery_state["last_error"] = str(error)
+        _recovery_state["consecutive_failures"] = int(_recovery_state.get("consecutive_failures") or 0) + 1
+
+
+def _register_retention_recovery_success() -> None:
+    now_iso = _utcnow_iso()
+    with _recovery_lock:
+        _recovery_state["last_success_at"] = now_iso
+        _recovery_state["last_error"] = None
+        _recovery_state["consecutive_failures"] = 0
+
+
+def _attempt_retention_recovery(
+    owner_id: str | None,
+    receipts_retention_days: int,
+    activity_retention_days: int,
+    cause: str,
+) -> dict | None:
+    now = time.time()
+    enabled = _configured_self_healing_enabled()
+    window_seconds = _configured_recovery_window_seconds()
+    max_attempts = _configured_recovery_max_attempts()
+    cooldown_seconds = _configured_recovery_cooldown_seconds()
+    backoff_seconds = _configured_recovery_backoff_seconds()
+    circuit_breaker_threshold = _configured_recovery_circuit_breaker_threshold()
+    circuit_breaker_seconds = _configured_recovery_circuit_breaker_seconds()
+
+    if not enabled:
+        return None
+
+    with _recovery_lock:
+        _recovery_state["enabled"] = enabled
+        _recovery_state["window_seconds"] = window_seconds
+        _recovery_state["max_attempts"] = max_attempts
+        _recovery_state["cooldown_seconds"] = cooldown_seconds
+        _recovery_state["backoff_seconds"] = backoff_seconds
+        _recovery_state["circuit_breaker_threshold"] = circuit_breaker_threshold
+        _recovery_state["circuit_breaker_seconds"] = circuit_breaker_seconds
+
+        circuit_open_until = _parse_iso_to_epoch(_recovery_state.get("circuit_open_until"))
+        if circuit_open_until and now < circuit_open_until:
+            log_incident(
+                source="retention",
+                event_type="retention_recovery_skipped",
+                severity="medium",
+                title="Recuperação automática bloqueada por circuit-breaker",
+                details={"reason": "circuit_open", "until": _recovery_state.get("circuit_open_until")},
+            )
+            return None
+
+        window_started = _parse_iso_to_epoch(_recovery_state.get("window_started_at"))
+        if not window_started or now - window_started > window_seconds:
+            _recovery_state["window_started_at"] = _utcnow_iso()
+            _recovery_state["attempts_in_window"] = 0
+
+        last_attempt = _parse_iso_to_epoch(_recovery_state.get("last_attempt_at"))
+        if last_attempt and now - last_attempt < cooldown_seconds:
+            log_incident(
+                source="retention",
+                event_type="retention_recovery_skipped",
+                severity="low",
+                title="Recuperação automática em cooldown",
+                details={"reason": "cooldown", "cooldown_seconds": cooldown_seconds},
+            )
+            return None
+
+        attempts_in_window = int(_recovery_state.get("attempts_in_window") or 0)
+        if attempts_in_window >= max_attempts:
+            log_incident(
+                source="retention",
+                event_type="retention_recovery_skipped",
+                severity="medium",
+                title="Recuperação automática bloqueada por budget",
+                details={"reason": "budget_exceeded", "max_attempts": max_attempts, "window_seconds": window_seconds},
+            )
+            return None
+
+        _recovery_state["attempts_in_window"] = attempts_in_window + 1
+        _recovery_state["last_attempt_at"] = _utcnow_iso()
+        consecutive_failures = int(_recovery_state.get("consecutive_failures") or 0)
+        if consecutive_failures >= circuit_breaker_threshold:
+            open_until = datetime.fromtimestamp(now + circuit_breaker_seconds, tz=timezone.utc).isoformat()
+            _recovery_state["circuit_open_until"] = open_until
+            log_incident(
+                source="retention",
+                event_type="retention_recovery_skipped",
+                severity="high",
+                title="Circuit-breaker aberto para recuperação de retenção",
+                details={
+                    "reason": "circuit_opened",
+                    "threshold": circuit_breaker_threshold,
+                    "open_seconds": circuit_breaker_seconds,
+                    "open_until": open_until,
+                },
+            )
+            return None
+
+    log_incident(
+        source="retention",
+        event_type="retention_recovery_attempt",
+        severity="medium",
+        title="Tentativa de recuperação automática da retenção",
+        details={"cause": cause, "owner": owner_id, "backoff_seconds": backoff_seconds},
+    )
+    time.sleep(backoff_seconds)
+    recovered = run_retention_cycle(
+        receipts_retention_days=receipts_retention_days,
+        activity_retention_days=activity_retention_days,
+        owner_id=owner_id,
+        enable_recovery=False,
+    )
+    if recovered.get("status") == "ok":
+        _register_retention_recovery_success()
+        log_incident(
+            source="retention",
+            event_type="retention_recovery_success",
+            severity="low",
+            title="Recuperação automática da retenção concluída",
+            details={"cause": cause, "owner": owner_id},
+        )
+        recovered["recovered"] = True
+        return recovered
+
+    log_incident(
+        source="retention",
+        event_type="retention_recovery_failed",
+        severity="high",
+        title="Recuperação automática da retenção falhou",
+        details={"cause": cause, "owner": owner_id, "error": recovered.get("error")},
+    )
+    return recovered
 
 
 def _status_from_row(row) -> dict:
@@ -230,6 +435,7 @@ def get_retention_job_status() -> dict:
         snapshot["owner"] = lock_info.get("owner_id")
     snapshot["enabled"] = _to_bool(os.getenv("RETENTION_JOB_ENABLED", "1"), default=True)
     snapshot["thread_alive"] = False
+    snapshot["self_healing"] = _self_healing_snapshot()
     return snapshot
 
 
@@ -237,6 +443,7 @@ def run_retention_cycle(
     receipts_retention_days: int | None = None,
     activity_retention_days: int | None = None,
     owner_id: str | None = None,
+    enable_recovery: bool = True,
 ) -> dict:
     started = time.time()
     base = _read_state()
@@ -276,6 +483,7 @@ def run_retention_cycle(
         }
     except Exception as exc:
         duration_ms = int((time.time() - started) * 1000)
+        _register_retention_failure(str(exc))
         log_incident(
             source="retention",
             event_type="retention_cycle_error",
@@ -292,6 +500,15 @@ def run_retention_cycle(
             "fail_count": int(base.get("fail_count") or 0) + 1,
         }
         _merge_state_update(failed_state)
+        if enable_recovery:
+            recovered = _attempt_retention_recovery(
+                owner_id=owner_id,
+                receipts_retention_days=receipts_days,
+                activity_retention_days=activity_days,
+                cause=str(exc),
+            )
+            if isinstance(recovered, dict) and recovered.get("status") == "ok":
+                return recovered
         return {"status": "error", "error": str(exc), "duration_ms": duration_ms}
 
 
@@ -312,6 +529,15 @@ def start_retention_job() -> dict:
 
 
 def stop_retention_job() -> dict:
+    with _recovery_lock:
+        _recovery_state["attempts_in_window"] = 0
+        _recovery_state["consecutive_failures"] = 0
+        _recovery_state["window_started_at"] = None
+        _recovery_state["last_attempt_at"] = None
+        _recovery_state["last_success_at"] = None
+        _recovery_state["last_failure_at"] = None
+        _recovery_state["last_error"] = None
+        _recovery_state["circuit_open_until"] = None
     status = _merge_state_update({**_read_state(), "running": False, "thread_alive": False})
     return status
 

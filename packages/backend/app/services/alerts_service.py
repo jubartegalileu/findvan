@@ -10,6 +10,7 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from ..db import get_connection
+from .operational_telemetry_service import log_incident
 
 
 ALERT_CONTRACT_VERSION = "1.0.0"
@@ -256,6 +257,14 @@ def _should_suppress(alert_event: dict) -> bool:
             _state["cooldown_until_by_key"][key] = now + cooldown_seconds
             should_suppress = False
     _persist_state_best_effort()
+    if should_suppress:
+        log_incident(
+            source="alerting",
+            event_type="alert_suppressed",
+            severity="low",
+            title="Alerta suprimido por cooldown",
+            details={"event_type": alert_event.get("event_type"), "severity": alert_event.get("severity")},
+        )
     return should_suppress
 
 
@@ -281,6 +290,13 @@ def _store_fallback(alert_event: dict, reason: str) -> None:
         _state["last_fallback_at"] = fallback_item["timestamp"]
         _state["last_error"] = reason
     _persist_state_best_effort()
+    log_incident(
+        source="alerting",
+        event_type="alert_fallback",
+        severity="medium",
+        title="Alerta entregue em fallback local",
+        details={"reason": reason, "event_type": alert_event.get("event_type"), "severity": alert_event.get("severity")},
+    )
 
 
 def _store_sent(alert_event: dict) -> None:

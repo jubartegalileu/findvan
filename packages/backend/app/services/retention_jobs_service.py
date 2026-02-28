@@ -11,6 +11,7 @@ from ..db import get_connection
 from .dashboard_service import DEFAULT_ACTIVITY_RETENTION_DAYS, prune_old_activity_events
 from .distributed_lock_service import acquire_lock, get_lock, release_lock, renew_lock
 from .messaging_receipts_service import DEFAULT_RECEIPTS_RETENTION_DAYS, prune_old_receipt_events
+from .operational_telemetry_service import log_incident
 
 
 JOB_NAME = "retention"
@@ -275,6 +276,13 @@ def run_retention_cycle(
         }
     except Exception as exc:
         duration_ms = int((time.time() - started) * 1000)
+        log_incident(
+            source="retention",
+            event_type="retention_cycle_error",
+            severity="high",
+            title="Falha no ciclo de retenção",
+            details={"error": str(exc), "duration_ms": duration_ms, "owner": owner_id},
+        )
         failed_state = {
             **_read_state(),
             "running": True,
@@ -351,6 +359,13 @@ def run_retention_worker(run_once: bool = False, stop_event: threading.Event | N
             renew_lock(LOCK_NAME, worker_id, ttl_seconds)
         else:
             current_lock = lock.get("lock") or {}
+            log_incident(
+                source="retention",
+                event_type="retention_lock_not_acquired",
+                severity="low",
+                title="Worker em standby por lock ativo",
+                details={"owner": current_lock.get("owner_id"), "worker": worker_id},
+            )
             _merge_state_update(
                 {
                     **_read_state(),

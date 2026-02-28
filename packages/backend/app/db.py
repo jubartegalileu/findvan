@@ -223,6 +223,42 @@ CREATE INDEX IF NOT EXISTS idx_alerting_recent_events_state_created
   ON alerting_recent_events(state_key, created_at DESC, id DESC);
 """
 
+METRICS_GOVERNANCE_STATE_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS metrics_governance_state (
+  state_key VARCHAR(100) PRIMARY KEY,
+  thresholds JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+"""
+
+METRICS_GOVERNANCE_AUDIT_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS metrics_governance_audit (
+  id BIGSERIAL PRIMARY KEY,
+  state_key VARCHAR(100) NOT NULL DEFAULT 'global',
+  audit_id VARCHAR(100) NOT NULL,
+  author VARCHAR(100) NOT NULL,
+  source VARCHAR(100) NOT NULL DEFAULT 'dashboard',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  diffs JSONB NOT NULL DEFAULT '[]'::jsonb
+);
+CREATE INDEX IF NOT EXISTS idx_metrics_governance_audit_state_created
+  ON metrics_governance_audit(state_key, created_at DESC, id DESC);
+"""
+
+OPERATIONAL_INCIDENTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS operational_incidents (
+  id BIGSERIAL PRIMARY KEY,
+  source VARCHAR(100) NOT NULL,
+  event_type VARCHAR(100) NOT NULL,
+  severity VARCHAR(20) NOT NULL DEFAULT 'medium',
+  title VARCHAR(255) NOT NULL,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_operational_incidents_created ON operational_incidents(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_operational_incidents_source ON operational_incidents(source);
+"""
+
 
 @contextmanager
 def get_connection():
@@ -248,4 +284,7 @@ def ensure_schema():
             cur.execute(RETENTION_STATUS_TABLE_SQL)
             cur.execute(ALERTING_STATE_TABLE_SQL)
             cur.execute(ALERTING_RECENT_EVENTS_TABLE_SQL)
+            cur.execute(METRICS_GOVERNANCE_STATE_TABLE_SQL)
+            cur.execute(METRICS_GOVERNANCE_AUDIT_TABLE_SQL)
+            cur.execute(OPERATIONAL_INCIDENTS_TABLE_SQL)
         conn.commit()

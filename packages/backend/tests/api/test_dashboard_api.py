@@ -101,6 +101,32 @@ def test_dashboard_alert_status_ok(monkeypatch):
     assert payload["alerting"]["contract_version"] == "1.0.0"
 
 
+def test_dashboard_operational_telemetry_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_alerting_status",
+        lambda: {"fallback_count": 2, "suppressed_count": 3, "sent_count": 5, "queued_count": 1},
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_retention_job_status",
+        lambda: {"run_count": 10, "fail_count": 1, "last_error": None, "owner": "worker-1"},
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "list_incidents",
+        lambda limit=10: [{"id": 1, "source": "alerting", "severity": "medium", "title": "Fallback"}],
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/operational-telemetry?limit=5")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["metrics"]["alerting"]["fallback_count"] == 2
+    assert payload["metrics"]["retention"]["run_count"] == 10
+    assert len(payload["incidents"]) == 1
+
+
 def test_dashboard_alert_dispatch_ok(monkeypatch):
     monkeypatch.setattr(
         dashboard_api,

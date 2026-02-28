@@ -8,6 +8,8 @@ from ..services.dashboard_service import (
 )
 from ..services.alerts_service import dispatch_slo_alert, get_alerting_status
 from ..services.metrics_governance_service import get_active_thresholds, get_threshold_history, update_thresholds
+from ..services.operational_telemetry_service import list_incidents
+from ..services.retention_jobs_service import get_retention_job_status
 
 
 router = APIRouter()
@@ -76,6 +78,31 @@ def dashboard_dispatch_alert():
 def dashboard_alert_status():
     try:
         return {"status": "ok", "alerting": get_alerting_status()}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/operational-telemetry")
+def dashboard_operational_telemetry(limit: int = Query(default=10, ge=1, le=50)):
+    try:
+        alerting = get_alerting_status()
+        retention = get_retention_job_status()
+        incidents = list_incidents(limit=limit)
+        metrics = {
+            "alerting": {
+                "fallback_count": int(alerting.get("fallback_count") or 0),
+                "suppressed_count": int(alerting.get("suppressed_count") or 0),
+                "sent_count": int(alerting.get("sent_count") or 0),
+                "queued_count": int(alerting.get("queued_count") or 0),
+            },
+            "retention": {
+                "run_count": int(retention.get("run_count") or 0),
+                "fail_count": int(retention.get("fail_count") or 0),
+                "last_error": retention.get("last_error"),
+                "owner": retention.get("owner"),
+            },
+        }
+        return {"status": "ok", "metrics": metrics, "incidents": incidents, "applied_limit": limit}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

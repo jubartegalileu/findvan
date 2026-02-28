@@ -132,12 +132,19 @@ export default function Dashboard({ onNavigate, activePath }) {
   const [sloWindow, setSloWindow] = useState('24h');
   const [sloThresholds, setSloThresholds] = useState(DEFAULT_SLO_THRESHOLDS);
   const [governanceHistory, setGovernanceHistory] = useState([]);
+  const [operationalTelemetry, setOperationalTelemetry] = useState({
+    metrics: {
+      alerting: { fallback_count: 0, suppressed_count: 0, sent_count: 0, queued_count: 0 },
+      retention: { run_count: 0, fail_count: 0, last_error: null, owner: null },
+    },
+    incidents: [],
+  });
 
   const loadDashboard = async () => {
     setLoading(true);
     setErrorMessage('');
     try {
-      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes] = await Promise.all([
+      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes, telemetryRes] = await Promise.all([
         fetch(`${API_BASE}/api/leads/?limit=120`),
         fetchWithFallback(
           `${API_BASE}/api/scraper/runs?limit=10`,
@@ -160,6 +167,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         fetch(`${API_BASE}/api/integrations/messaging/receipts?limit=150`),
         fetchWithFallback(`${API_BASE}/api/dashboard/metrics-governance`, `${API_BASE}/api/dashboard/metrics-governance/`),
         fetchWithFallback(`${API_BASE}/api/dashboard/metrics-governance/history?limit=5`, `${API_BASE}/api/dashboard/metrics-governance/history/?limit=5`),
+        fetchWithFallback(`${API_BASE}/api/dashboard/operational-telemetry?limit=5`, `${API_BASE}/api/dashboard/operational-telemetry/?limit=5`),
       ]);
 
       const [
@@ -173,6 +181,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         receiptsPayload,
         governancePayload,
         governanceHistoryPayload,
+        telemetryPayload,
       ] = await Promise.all([
         leadsRes.json(),
         runsRes.json(),
@@ -184,6 +193,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         receiptsRes.json(),
         governanceRes.json(),
         governanceHistoryRes.json(),
+        telemetryRes.json(),
       ]);
 
       if (!leadsRes.ok) {
@@ -218,6 +228,16 @@ export default function Dashboard({ onNavigate, activePath }) {
       }
       if (governanceHistoryRes.ok && Array.isArray(governanceHistoryPayload?.history)) {
         setGovernanceHistory(governanceHistoryPayload.history);
+      }
+      if (telemetryRes.ok && telemetryPayload) {
+        setOperationalTelemetry({
+          metrics:
+            telemetryPayload.metrics || {
+              alerting: { fallback_count: 0, suppressed_count: 0, sent_count: 0, queued_count: 0 },
+              retention: { run_count: 0, fail_count: 0, last_error: null, owner: null },
+            },
+          incidents: Array.isArray(telemetryPayload.incidents) ? telemetryPayload.incidents : [],
+        });
       }
 
       setLastRefresh(new Date());
@@ -701,6 +721,41 @@ export default function Dashboard({ onNavigate, activePath }) {
                 </div>
               ) : (
                 <div className="fv-row-sub">Sem histórico de alterações registrado.</div>
+              )}
+            </div>
+            <div className="fv-divider" />
+            <div className="fv-panel-header">
+              <h2 className="fv-icon-label">
+                <Icon name="recent" />
+                Incidentes operacionais
+              </h2>
+            </div>
+            <div className="fv-table">
+              <div className="fv-row">
+                <div className="fv-row-title">Fallbacks de alerta</div>
+                <div className="fv-row-chip">{operationalTelemetry.metrics.alerting.fallback_count || 0}</div>
+              </div>
+              <div className="fv-row">
+                <div className="fv-row-title">Alertas suprimidos</div>
+                <div className="fv-row-chip">{operationalTelemetry.metrics.alerting.suppressed_count || 0}</div>
+              </div>
+              <div className="fv-row">
+                <div className="fv-row-title">Falhas de retenção</div>
+                <div className="fv-row-chip">{operationalTelemetry.metrics.retention.fail_count || 0}</div>
+              </div>
+              {(operationalTelemetry.incidents || []).slice(0, 3).map((incident) => (
+                <div key={incident.id} className="fv-row fv-monitoring-row">
+                  <div>
+                    <div className="fv-row-title">{incident.title}</div>
+                    <div className="fv-row-sub">
+                      {incident.source} • {formatRelativeDate(incident.created_at)}
+                    </div>
+                  </div>
+                  <div className={`fv-row-chip fv-alert-${incident.severity || 'medium'}`}>{incident.severity || 'medium'}</div>
+                </div>
+              ))}
+              {(operationalTelemetry.incidents || []).length === 0 && (
+                <div className="fv-row-sub">Sem incidentes recentes.</div>
               )}
             </div>
           </>

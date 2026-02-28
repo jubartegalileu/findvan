@@ -1,6 +1,10 @@
 from app.services import metrics_governance_service as service
 
 
+def setup_function():
+    service.clear_metrics_governance_state()
+
+
 def test_get_active_thresholds_has_defaults():
     thresholds = service.get_active_thresholds()
     assert "delivery_rate_critical_lt" in thresholds

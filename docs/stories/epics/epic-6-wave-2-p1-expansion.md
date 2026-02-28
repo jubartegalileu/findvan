@@ -1,7 +1,7 @@
 # Epic 6 — Wave 2 P1 Expansion: Dashboard Analytics, Scraper Automação, Leads UX
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md
-**Status:** Planned
+**Status:** In Progress
 **Prioridade:** P1 (Should Have)
 **Wave:** 2
 **Estimativa:** 2-3 semanas

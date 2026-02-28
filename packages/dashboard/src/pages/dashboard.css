@@ -237,6 +237,10 @@ body,
   margin-bottom: 24px;
 }
 
+.fv-columns-analytics {
+  margin-bottom: 24px;
+}
+
 .fv-columns-leads {
   grid-template-columns: minmax(0, 1fr) clamp(220px, 22vw, 320px);
   align-items: start;
@@ -876,16 +880,85 @@ body,
   background: #edf9f0;
   padding: 12px 14px;
   border-radius: 14px;
+  border-left: 4px solid transparent;
 }
 
 .fv-activity-title {
   font-weight: 600;
 }
 
+.fv-activity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .fv-activity-time {
   font-size: 12px;
   color: #5b8386;
-  margin-top: 6px;
+}
+
+.fv-activity-item.scraper {
+  border-left-color: #329d9c;
+}
+
+.fv-activity-item.msg-sent {
+  border-left-color: #1e88e5;
+}
+
+.fv-activity-item.msg-received {
+  border-left-color: #56c596;
+}
+
+.fv-activity-item.status-change {
+  border-left-color: #fb8c00;
+}
+
+.fv-activity-item.campaign {
+  border-left-color: #8e24aa;
+}
+
+.fv-weekly-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.fv-weekly-kpi {
+  background: #edf9f0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.fv-weekly-kpi span {
+  font-size: 12px;
+  color: #4c777d;
+}
+
+.fv-weekly-kpi strong {
+  font-size: 16px;
+  color: #205072;
+}
+
+.fv-weekly-kpi strong.danger {
+  color: #c62828;
+}
+
+.fv-weekly-chart {
+  height: 180px;
+}
+
+.fv-alert-pill {
+  background: rgba(229, 57, 53, 0.18);
+  color: #b71c1c;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .fv-pagination {
@@ -933,6 +1006,10 @@ body,
 
   .fv-grid-kpis {
     grid-template-columns: 1fr;
+  }
+
+  .fv-weekly-kpis {
+    grid-template-columns: 1fr 1fr;
   }
 
   .fv-prospect-bar {

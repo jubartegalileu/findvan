@@ -12,6 +12,7 @@ from .db import ensure_schema
 from .api import leads as leads_api
 from .api import scraper as scraper_api
 from .api import dashboard as dashboard_api
+from .api import activity as activity_api
 
 # Configure logging
 logging.basicConfig(
@@ -74,6 +75,7 @@ async def root():
 app.include_router(leads_api.router, prefix="/api/leads", tags=["leads"])
 app.include_router(scraper_api.router, prefix="/api/scraper", tags=["scraper"])
 app.include_router(dashboard_api.router, prefix="/api/dashboard", tags=["dashboard"])
+app.include_router(activity_api.router, prefix="/api/activity", tags=["activity"])
 
 
 # ============================================================

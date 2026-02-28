@@ -3,6 +3,7 @@ from ..services.dashboard_service import (
     get_dashboard_kpis,
     get_funnel_summary,
     get_urgent_actions,
+    get_weekly_performance,
 )
 
 
@@ -29,5 +30,13 @@ def dashboard_funnel_summary():
 def dashboard_urgent_actions():
     try:
         return {"status": "ok", "urgent_actions": get_urgent_actions()}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/weekly-performance")
+def dashboard_weekly_performance():
+    try:
+        return {"status": "ok", "performance": get_weekly_performance()}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

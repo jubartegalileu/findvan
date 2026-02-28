@@ -1,8 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Bar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Tooltip,
+  Legend,
+} from 'chart.js';
 import Layout from '../components/Layout.jsx';
 import Icon from '../components/Icon.jsx';
 import './dashboard.css';
 import { API_BASE } from '../lib/apiBase.js';
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+
 const funnelMeta = {
   novo: { label: 'Novo', className: 'funnel-novo' },
   contactado: { label: 'Contactado', className: 'funnel-contactado' },
@@ -46,6 +58,21 @@ const formatRelativeDate = (value) => {
   const diffHours = Math.floor(diffMin / 60);
   if (diffHours < 24) return `há ${diffHours} h`;
   return date.toLocaleDateString('pt-BR');
+};
+
+const fetchWithFallback = async (primaryUrl, fallbackUrl) => {
+  const primary = await fetch(primaryUrl);
+  if (primary.status !== 404) return primary;
+  if (!fallbackUrl) return primary;
+  return fetch(fallbackUrl);
+};
+
+const activityTypeMeta = {
+  scraper: { icon: 'scraper', className: 'scraper' },
+  msg_sent: { icon: 'whatsapp', className: 'msg-sent' },
+  msg_received: { icon: 'recent', className: 'msg-received' },
+  status_change: { icon: 'activity', className: 'status-change' },
+  campaign: { icon: 'campaigns', className: 'campaign' },
 };
 
 const toCsv = (rows) => {
@@ -94,20 +121,23 @@ export default function Dashboard({ onNavigate, activePath }) {
     alerts: [],
     all_clear: true,
   });
+  const [weeklyPerformance, setWeeklyPerformance] = useState({
+    has_data: false,
+    messages_sent: 0,
+    delivery_rate: 0,
+    reply_rate: 0,
+    block_rate: 0,
+    labels: [],
+    series: [],
+  });
+  const [activityEvents, setActivityEvents] = useState([]);
   const [scraperRuns, setScraperRuns] = useState([]);
 
   const loadDashboard = async () => {
     setLoading(true);
     setErrorMessage('');
     try {
-      const fetchWithFallback = async (primaryUrl, fallbackUrl) => {
-        const primary = await fetch(primaryUrl);
-        if (primary.status !== 404) return primary;
-        if (!fallbackUrl) return primary;
-        return fetch(fallbackUrl);
-      };
-
-      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes] = await Promise.all([
+      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes] = await Promise.all([
         fetch(`${API_BASE}/api/leads/?limit=120`),
         fetchWithFallback(
           `${API_BASE}/api/scraper/runs?limit=10`,
@@ -122,14 +152,29 @@ export default function Dashboard({ onNavigate, activePath }) {
           `${API_BASE}/api/dashboard/urgent-actions`,
           `${API_BASE}/api/dashboard/urgent-actions/`
         ),
+        fetchWithFallback(
+          `${API_BASE}/api/dashboard/weekly-performance`,
+          `${API_BASE}/api/dashboard/weekly-performance/`
+        ),
+        fetchWithFallback(`${API_BASE}/api/activity?limit=20`, `${API_BASE}/api/activity/?limit=20`),
       ]);
 
-      const [leadsPayload, runsPayload, kpisPayload, funnelPayload, urgentPayload] = await Promise.all([
+      const [
+        leadsPayload,
+        runsPayload,
+        kpisPayload,
+        funnelPayload,
+        urgentPayload,
+        weeklyPayload,
+        activityPayload,
+      ] = await Promise.all([
         leadsRes.json(),
         runsRes.json(),
         kpisRes.json(),
         funnelRes.json(),
         urgentRes.json(),
+        weeklyRes.json(),
+        activityRes.json(),
       ]);
 
       if (!leadsRes.ok) {
@@ -150,6 +195,12 @@ export default function Dashboard({ onNavigate, activePath }) {
       if (urgentRes.ok && urgentPayload?.urgent_actions) {
         setUrgentActions(urgentPayload.urgent_actions);
       }
+      if (weeklyRes.ok && weeklyPayload?.performance) {
+        setWeeklyPerformance(weeklyPayload.performance);
+      }
+      if (activityRes.ok && Array.isArray(activityPayload?.events)) {
+        setActivityEvents(activityPayload.events);
+      }
 
       setLastRefresh(new Date());
     } catch (error) {
@@ -159,8 +210,32 @@ export default function Dashboard({ onNavigate, activePath }) {
     }
   };
 
+  const loadRealtimePanels = async () => {
+    try {
+      const [weeklyRes, activityRes] = await Promise.all([
+        fetchWithFallback(
+          `${API_BASE}/api/dashboard/weekly-performance`,
+          `${API_BASE}/api/dashboard/weekly-performance/`
+        ),
+        fetchWithFallback(`${API_BASE}/api/activity?limit=20`, `${API_BASE}/api/activity/?limit=20`),
+      ]);
+      const [weeklyPayload, activityPayload] = await Promise.all([weeklyRes.json(), activityRes.json()]);
+
+      if (weeklyRes.ok && weeklyPayload?.performance) {
+        setWeeklyPerformance(weeklyPayload.performance);
+      }
+      if (activityRes.ok && Array.isArray(activityPayload?.events)) {
+        setActivityEvents(activityPayload.events);
+      }
+      setLastRefresh(new Date());
+    } catch (error) {
+      // Keep dashboard stable even when background refresh fails.
+    }
+  };
+
   useEffect(() => {
     loadDashboard();
+    const pollHandle = window.setInterval(loadRealtimePanels, 30000);
 
     const onRefresh = () => loadDashboard();
     const onStorage = (event) => {
@@ -172,6 +247,7 @@ export default function Dashboard({ onNavigate, activePath }) {
     window.addEventListener('findvan:leads-updated', onRefresh);
     window.addEventListener('storage', onStorage);
     return () => {
+      window.clearInterval(pollHandle);
       window.removeEventListener('findvan:leads-updated', onRefresh);
       window.removeEventListener('storage', onStorage);
     };
@@ -222,21 +298,57 @@ export default function Dashboard({ onNavigate, activePath }) {
     ];
   }, [dashboardKpis, leads, lastRefresh]);
 
-  const activity = useMemo(() => {
-    const runItems = scraperRuns.slice(0, 3).map((run) => ({
-      title: `Scraper ${run.city}${run.state ? `/${run.state}` : ''}`,
-      description: `${run.inserted_count ?? 0}/${run.target_count ?? 0} leads inseridos (${run.status}).`,
-      time: formatRelativeDate(run.created_at),
-    }));
+  const weeklyChartData = useMemo(
+    () => ({
+      labels: weeklyPerformance.labels || [],
+      datasets: [
+        {
+          label: 'Mensagens enviadas',
+          data: weeklyPerformance.series || [],
+          borderRadius: 6,
+          backgroundColor: '#329d9c',
+        },
+      ],
+    }),
+    [weeklyPerformance]
+  );
 
-    const leadItems = leads.slice(0, 2).map((lead) => ({
-      title: `Lead ${lead.company_name || lead.name}`,
-      description: `${lead.city || 'Cidade n/d'}${lead.state ? `/${lead.state}` : ''} • ${formatStatusFromLead(lead)}`,
-      time: formatRelativeDate(lead.updated_at || lead.created_at),
-    }));
+  const weeklyChartOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { displayColors: false },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#4c777d', font: { size: 11 } },
+          grid: { display: false },
+        },
+        y: {
+          ticks: { color: '#4c777d', font: { size: 11 }, precision: 0 },
+          grid: { color: 'rgba(32, 80, 114, 0.12)' },
+          beginAtZero: true,
+        },
+      },
+    }),
+    []
+  );
 
-    return [...runItems, ...leadItems].slice(0, 5);
-  }, [scraperRuns, leads]);
+  const activity = useMemo(
+    () =>
+      activityEvents.map((item) => {
+        const meta = activityTypeMeta[item.type] || activityTypeMeta.status_change;
+        return {
+          ...item,
+          icon: meta.icon,
+          className: meta.className,
+          time: formatRelativeDate(item.created_at),
+        };
+      }),
+    [activityEvents]
+  );
 
   const exportLeads = () => {
     if (!leads.length) {
@@ -398,6 +510,76 @@ export default function Dashboard({ onNavigate, activePath }) {
         </div>
       </section>
 
+      <section className="fv-columns fv-columns-analytics">
+        <div className="fv-panel">
+          <div className="fv-panel-header">
+            <h2 className="fv-icon-label">
+              <Icon name="whatsapp" />
+              Performance semanal
+            </h2>
+            {weeklyPerformance.block_rate > 5 ? (
+              <span className="fv-alert-pill">Bloqueio alto</span>
+            ) : null}
+          </div>
+          {weeklyPerformance.has_data ? (
+            <>
+              <div className="fv-weekly-kpis">
+                <div className="fv-weekly-kpi">
+                  <span>Mensagens enviadas</span>
+                  <strong>{formatNumber(weeklyPerformance.messages_sent)}</strong>
+                </div>
+                <div className="fv-weekly-kpi">
+                  <span>Taxa de entrega</span>
+                  <strong>{formatPercent(weeklyPerformance.delivery_rate)}</strong>
+                </div>
+                <div className="fv-weekly-kpi">
+                  <span>Taxa de resposta</span>
+                  <strong>{formatPercent(weeklyPerformance.reply_rate)}</strong>
+                </div>
+                <div className="fv-weekly-kpi">
+                  <span>Taxa de bloqueio</span>
+                  <strong className={weeklyPerformance.block_rate > 5 ? 'danger' : ''}>
+                    {formatPercent(weeklyPerformance.block_rate)}
+                  </strong>
+                </div>
+              </div>
+              <div className="fv-weekly-chart">
+                <Bar data={weeklyChartData} options={weeklyChartOptions} />
+              </div>
+            </>
+          ) : (
+            <div className="fv-row-sub">Sem dados de envio</div>
+          )}
+        </div>
+
+        <div className="fv-panel">
+          <div className="fv-panel-header">
+            <h2 className="fv-icon-label">
+              <Icon name="activity" />
+              Atividade unificada
+            </h2>
+            <button className="fv-ghost small" type="button" onClick={() => goTo('/leads')}>
+              Ver histórico
+            </button>
+          </div>
+          <div className="fv-activity">
+            {activity.map((item) => (
+              <div key={item.id} className={`fv-activity-item ${item.className}`}>
+                <div className="fv-activity-head">
+                  <span className="fv-icon-label">
+                    <Icon name={item.icon} size={16} />
+                    <span className="fv-activity-title">{item.title}</span>
+                  </span>
+                  <span className="fv-activity-time">{item.time}</span>
+                </div>
+                <div className="fv-row-sub">{item.description || 'Sem descrição'}</div>
+              </div>
+            ))}
+            {activity.length === 0 && <div className="fv-row-sub">Sem atividade recente.</div>}
+          </div>
+        </div>
+      </section>
+
       <section className="fv-columns">
         <div className="fv-panel">
           <div className="fv-panel-header">
@@ -469,28 +651,6 @@ export default function Dashboard({ onNavigate, activePath }) {
               );
             })}
             {scraperRuns.length === 0 && <div className="fv-row-sub">Sem execuções recentes.</div>}
-          </div>
-
-          <div className="fv-divider" />
-
-          <div className="fv-panel-header">
-            <h2 className="fv-icon-label">
-              <Icon name="activity" />
-              Atividade
-            </h2>
-            <span className="fv-row-sub">
-              Atualizado {lastRefresh ? formatRelativeDate(lastRefresh.toISOString()) : '--'}
-            </span>
-          </div>
-          <div className="fv-activity">
-            {activity.map((item, index) => (
-              <div key={`${item.title}-${index}`} className="fv-activity-item">
-                <div className="fv-activity-title">{item.title}</div>
-                <div className="fv-row-sub">{item.description}</div>
-                <div className="fv-activity-time">{item.time}</div>
-              </div>
-            ))}
-            {activity.length === 0 && <div className="fv-row-sub">Sem atividade recente.</div>}
           </div>
         </div>
       </section>

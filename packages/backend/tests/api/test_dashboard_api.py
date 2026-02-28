@@ -57,3 +57,25 @@ def test_dashboard_urgent_actions_ok(monkeypatch):
     response = client.get("/api/dashboard/urgent-actions")
     assert response.status_code == 200
     assert response.json()["urgent_actions"]["all_clear"] is False
+
+
+def test_dashboard_weekly_performance_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_weekly_performance",
+        lambda: {
+            "has_data": True,
+            "messages_sent": 42,
+            "delivery_rate": 95.2,
+            "reply_rate": 18.0,
+            "block_rate": 1.2,
+            "labels": ["22/02", "23/02"],
+            "series": [20, 22],
+        },
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/weekly-performance")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["performance"]["messages_sent"] == 42

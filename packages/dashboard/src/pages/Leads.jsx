@@ -182,6 +182,7 @@ export default function Leads({ onNavigate, activePath }) {
   const [noteDraft, setNoteDraft] = useState('');
   const [notesBusy, setNotesBusy] = useState(false);
   const [activeTab, setActiveTab] = useState('dados');
+  const [requestedLeadId, setRequestedLeadId] = useState(null);
   const [page, setPage] = useState(1);
   const pageSize = 12;
 
@@ -223,12 +224,16 @@ export default function Leads({ onNavigate, activePath }) {
 
     const params = new URLSearchParams(window.location.search);
     const funnel = params.get('funnel');
+    const leadId = params.get('leadId');
     if (funnel) {
       const values = funnel
         .split(',')
         .map((item) => item.trim())
         .filter((item) => funnelStatusOptions.some((option) => option.value === item));
       setSelectedFunnels(values);
+    }
+    if (leadId) {
+      setRequestedLeadId(leadId);
     }
 
     loadLeads();
@@ -246,6 +251,15 @@ export default function Leads({ onNavigate, activePath }) {
       window.removeEventListener('storage', onStorage);
     };
   }, []);
+
+  useEffect(() => {
+    if (!requestedLeadId || leads.length === 0) return;
+    const target = leads.find((lead) => String(lead.id) === String(requestedLeadId));
+    if (target) {
+      openLeadModal(target);
+    }
+    setRequestedLeadId(null);
+  }, [requestedLeadId, leads]);
 
   useEffect(() => {
     try {

@@ -343,6 +343,12 @@ body,
   min-width: 0;
 }
 
+.fv-row-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .fv-row-title {
   font-weight: 600;
   overflow: hidden;

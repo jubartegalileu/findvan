@@ -350,6 +350,22 @@ export default function Dashboard({ onNavigate, activePath }) {
     goTo(`/leads?funnel=${encodeURIComponent(funnelStatus)}`);
   };
 
+  const openLeadDetails = (lead) => {
+    if (!lead?.id) {
+      goTo('/leads');
+      return;
+    }
+    goTo(`/leads?leadId=${encodeURIComponent(String(lead.id))}`);
+  };
+
+  const contactLead = (lead) => {
+    if (!lead?.id) {
+      goTo('/whatsapp');
+      return;
+    }
+    goTo(`/whatsapp?leadId=${encodeURIComponent(String(lead.id))}`);
+  };
+
   return (
     <Layout onNavigate={onNavigate} activePath={activePath}>
       <header className="fv-header">
@@ -584,6 +600,28 @@ export default function Dashboard({ onNavigate, activePath }) {
                     <div className="fv-row-sub">
                       {lead.city || 'Cidade n/d'}
                       {lead.state ? ` • ${lead.state}` : ''} • {lead.phone || 'Sem telefone'}
+                    </div>
+                    <div className="fv-row-actions">
+                      <button
+                        className="fv-ghost small"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          contactLead(lead);
+                        }}
+                      >
+                        Contactar
+                      </button>
+                      <button
+                        className="fv-ghost small"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openLeadDetails(lead);
+                        }}
+                      >
+                        Ver
+                      </button>
                     </div>
                   </div>
                   <div className="fv-row-chip">{lead.source || 'google_maps'}</div>

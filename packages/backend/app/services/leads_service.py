@@ -14,6 +14,9 @@ LEAD_COLUMNS = (
     "company_name",
     "cnpj",
     "url",
+    "prospect_status",
+    "prospect_notes",
+    "campaign_status",
     "captured_at",
     "is_valid",
     "is_duplicate",
@@ -36,6 +39,9 @@ def insert_leads(leads: Iterable[dict]) -> dict:
             lead.get("company_name"),
             lead.get("cnpj"),
             lead.get("url"),
+            lead.get("prospect_status", "nao_contatado"),
+            lead.get("prospect_notes"),
+            lead.get("campaign_status"),
             lead.get("captured_at"),
             lead.get("is_valid", True),
             lead.get("is_duplicate", False),
@@ -57,6 +63,9 @@ def insert_leads(leads: Iterable[dict]) -> dict:
           company_name = EXCLUDED.company_name,
           cnpj = EXCLUDED.cnpj,
           url = EXCLUDED.url,
+          prospect_status = COALESCE(leads.prospect_status, EXCLUDED.prospect_status),
+          prospect_notes = COALESCE(leads.prospect_notes, EXCLUDED.prospect_notes),
+          campaign_status = COALESCE(leads.campaign_status, EXCLUDED.campaign_status),
           captured_at = EXCLUDED.captured_at,
           is_valid = EXCLUDED.is_valid,
           is_duplicate = TRUE,
@@ -89,7 +98,7 @@ def insert_leads(leads: Iterable[dict]) -> dict:
 def list_leads(limit: int = 50) -> list[dict]:
     query = """
         SELECT id, source, name, phone, email, address, city, state, company_name,
-               cnpj, url, captured_at, is_valid, is_duplicate, created_at, updated_at
+               cnpj, url, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
         FROM leads
         ORDER BY created_at DESC
         LIMIT %s;
@@ -112,6 +121,9 @@ def list_leads(limit: int = 50) -> list[dict]:
         "company_name",
         "cnpj",
         "url",
+        "prospect_status",
+        "prospect_notes",
+        "campaign_status",
         "captured_at",
         "is_valid",
         "is_duplicate",
@@ -124,7 +136,7 @@ def list_leads(limit: int = 50) -> list[dict]:
 def get_lead_by_id(lead_id: int) -> dict | None:
     query = """
         SELECT id, source, name, phone, email, address, city, state, company_name,
-               cnpj, url, captured_at, is_valid, is_duplicate, created_at, updated_at
+               cnpj, url, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
         FROM leads
         WHERE id = %s;
     """
@@ -146,6 +158,9 @@ def get_lead_by_id(lead_id: int) -> dict | None:
         "company_name",
         "cnpj",
         "url",
+        "prospect_status",
+        "prospect_notes",
+        "campaign_status",
         "captured_at",
         "is_valid",
         "is_duplicate",
@@ -168,12 +183,15 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
           state = %s,
           cnpj = %s,
           url = %s,
+          prospect_status = %s,
+          prospect_notes = %s,
+          campaign_status = %s,
           is_valid = %s,
           is_duplicate = %s,
           updated_at = NOW()
         WHERE id = %s
         RETURNING id, source, name, phone, email, address, city, state, company_name,
-                  cnpj, url, captured_at, is_valid, is_duplicate, created_at, updated_at;
+                  cnpj, url, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at;
     """
     values = (
         data.get("name"),
@@ -185,6 +203,9 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
         data.get("state"),
         data.get("cnpj"),
         data.get("url"),
+        data.get("prospect_status", "nao_contatado"),
+        data.get("prospect_notes"),
+        data.get("campaign_status"),
         data.get("is_valid", True),
         data.get("is_duplicate", False),
         lead_id,
@@ -208,6 +229,9 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
         "company_name",
         "cnpj",
         "url",
+        "prospect_status",
+        "prospect_notes",
+        "campaign_status",
         "captured_at",
         "is_valid",
         "is_duplicate",

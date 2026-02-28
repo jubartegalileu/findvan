@@ -38,6 +38,9 @@ class LeadUpdateRequest(BaseModel):
     state: str | None = Field(default=None, min_length=2, max_length=2)
     cnpj: str | None = None
     url: str | None = None
+    prospect_status: str = Field(default="nao_contatado")
+    prospect_notes: str | None = None
+    campaign_status: str | None = None
     is_valid: bool = True
     is_duplicate: bool = False
 

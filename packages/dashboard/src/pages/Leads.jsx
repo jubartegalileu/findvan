@@ -10,6 +10,16 @@ const statusClass = {
   'Em contato': 'em-contato',
 };
 
+const prospectStatusOptions = [
+  { value: 'cliente', label: 'CLIENTE', className: 'cliente' },
+  { value: 'contatado', label: 'CONTATADO', className: 'contatado' },
+  { value: 'nao_contatado', label: 'NÃO CONTATADO', className: 'nao-contatado' },
+  { value: 'fora_do_ramo', label: 'FORA DO RAMO', className: 'fora-do-ramo' },
+];
+
+const getProspectClass = (value) =>
+  prospectStatusOptions.find((option) => option.value === value)?.className || 'nao-contatado';
+
 const mapLead = (lead) => ({
   id: lead.id,
   source: lead.source || 'google_maps',
@@ -22,6 +32,9 @@ const mapLead = (lead) => ({
   address: lead.address || '',
   cnpj: lead.cnpj || '',
   url: lead.url || '',
+  prospect_status: lead.prospect_status || 'nao_contatado',
+  prospect_notes: lead.prospect_notes || '',
+  campaign_status: lead.campaign_status || '',
   captured_at: lead.captured_at || null,
   created_at: lead.created_at || null,
   updated_at: lead.updated_at || null,
@@ -167,6 +180,9 @@ export default function Leads({ onNavigate, activePath }) {
         state: formLead.state || null,
         cnpj: formLead.cnpj || null,
         url: formLead.url || null,
+        prospect_status: formLead.prospect_status || 'nao_contatado',
+        prospect_notes: formLead.prospect_notes || null,
+        campaign_status: formLead.campaign_status || null,
         is_valid: !!formLead.is_valid,
         is_duplicate: !!formLead.is_duplicate,
       };
@@ -282,8 +298,8 @@ export default function Leads({ onNavigate, activePath }) {
           </div>
           <div className="fv-table">
             {paginatedLeads.map((lead, index) => (
+              <React.Fragment key={`${lead.id || lead.name}-${lead.city}-${index}`}>
               <button
-                key={`${lead.id || lead.name}-${lead.city}-${index}`}
                 type="button"
                 className="fv-row fv-row-button"
                 onClick={() => openLeadModal(lead)}
@@ -302,9 +318,11 @@ export default function Leads({ onNavigate, activePath }) {
                     {lead.address || 'Endereço não informado'} • Fonte {lead.source}
                   </div>
                 </div>
+                <div className={`fv-dot ${lead.prospect_status || 'nao_contatado'}`} />
                 <div className="fv-row-chip">Score {lead.score}</div>
                 <div className={`fv-status ${statusClass[lead.status] || ''}`}>{lead.status}</div>
               </button>
+              </React.Fragment>
             ))}
             {paginatedLeads.length === 0 && (
               <div className="fv-row-sub">Nenhum lead encontrado com os filtros atuais.</div>
@@ -360,10 +378,51 @@ export default function Leads({ onNavigate, activePath }) {
         <div className="fv-modal-backdrop" onClick={closeLeadModal}>
           <div className="fv-modal" onClick={(event) => event.stopPropagation()}>
             <div className="fv-panel-header">
-              <h2>Detalhes do lead</h2>
+              <div className="fv-modal-title-wrap">
+                <h2 className="fv-modal-title">DETALHES DO LEAD</h2>
+                <select
+                  className={`fv-prospect-pill fv-state-inline ${getProspectClass(
+                    formLead.prospect_status
+                  )}`}
+                  value={formLead.prospect_status || 'nao_contatado'}
+                  onChange={(event) =>
+                    setFormLead((prev) => ({ ...prev, prospect_status: event.target.value }))
+                  }
+                >
+                  {prospectStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button className="fv-ghost small" type="button" onClick={closeLeadModal}>
-                Fechar
+                ✕ Fechar
               </button>
+            </div>
+            <div className="fv-prospect-bar">
+              <div className="fv-field fv-prospect-notes">
+                <span>Status de Campanha</span>
+                <textarea
+                  className="fv-input fv-textarea"
+                  placeholder="Ex: Não iniciada, Ativa, Pausada..."
+                  value={formLead.campaign_status || ''}
+                  onChange={(event) =>
+                    setFormLead((prev) => ({ ...prev, campaign_status: event.target.value }))
+                  }
+                />
+              </div>
+              <label className="fv-field fv-prospect-notes">
+                <span>Observações</span>
+                <textarea
+                  className="fv-input fv-textarea"
+                  placeholder="Adicione observações da prospecção..."
+                  value={formLead.prospect_notes || ''}
+                  onChange={(event) =>
+                    setFormLead((prev) => ({ ...prev, prospect_notes: event.target.value }))
+                  }
+                />
+              </label>
             </div>
             <div className="fv-modal-grid">
               <label className="fv-field">
@@ -433,6 +492,16 @@ export default function Leads({ onNavigate, activePath }) {
                   value={formLead.url}
                   onChange={(event) => setFormLead((prev) => ({ ...prev, url: event.target.value }))}
                 />
+                {formLead.url ? (
+                  <a
+                    className="fv-link"
+                    href={formLead.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Abrir link em nova aba
+                  </a>
+                ) : null}
               </label>
               <label className="fv-field">
                 <span>CNPJ</span>

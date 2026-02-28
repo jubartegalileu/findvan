@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS leads (
   company_name TEXT,
   cnpj VARCHAR(20),
   url TEXT,
+  prospect_status TEXT DEFAULT 'nao_contatado',
+  prospect_notes TEXT,
+  campaign_status TEXT,
   captured_at TIMESTAMP,
   is_valid BOOLEAN DEFAULT true,
   is_duplicate BOOLEAN DEFAULT false,
@@ -24,6 +27,9 @@ CREATE TABLE IF NOT EXISTS leads (
   UNIQUE(phone, source)
 );
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS state VARCHAR(2);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS prospect_status TEXT DEFAULT 'nao_contatado';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS prospect_notes TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS campaign_status TEXT;
 CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone);
 CREATE INDEX IF NOT EXISTS idx_leads_city ON leads(city);
 CREATE INDEX IF NOT EXISTS idx_leads_source ON leads(source);

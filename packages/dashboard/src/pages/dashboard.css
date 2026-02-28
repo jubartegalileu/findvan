@@ -312,6 +312,31 @@ body,
   flex-shrink: 0;
 }
 
+.fv-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border: 1px solid rgba(32, 80, 114, 0.25);
+}
+
+.fv-dot.cliente {
+  background: #56c596;
+}
+
+.fv-dot.contatado {
+  background: #f3a738;
+}
+
+.fv-dot.nao_contatado {
+  background: #ffffff;
+}
+
+.fv-dot.fora_do_ramo {
+  background: #d9534f;
+}
+
 .fv-inline-form {
   display: flex;
   gap: 12px;
@@ -359,6 +384,13 @@ body,
   color: var(--fv-c1);
 }
 
+.fv-link {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--fv-c1);
+  text-decoration: underline;
+}
+
 .fv-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -382,6 +414,77 @@ body,
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.fv-prospect-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.fv-modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.fv-modal-title {
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.fv-state-inline {
+  width: 190px;
+  min-width: 190px;
+  flex: 0 0 190px;
+  margin-top: 0;
+}
+
+.fv-prospect-pill {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  width: 100%;
+  appearance: none;
+  text-align: center;
+  text-align-last: center;
+  line-height: 1.2;
+  padding-inline: 10px;
+}
+
+.fv-prospect-pill.cliente {
+  background: rgba(86, 197, 150, 0.22);
+  color: #2a8a65;
+}
+
+.fv-prospect-pill.contatado {
+  background: rgba(243, 167, 56, 0.22);
+  color: #9c6508;
+}
+
+.fv-prospect-pill.nao-contatado {
+  background: #ffffff;
+  color: #5b8386;
+  border-color: rgba(32, 80, 114, 0.2);
+}
+
+.fv-prospect-pill.fora-do-ramo {
+  background: rgba(217, 83, 79, 0.2);
+  color: #a52c29;
+}
+
+.fv-prospect-notes {
+  min-width: 0;
+}
+
+.fv-textarea {
+  min-height: 74px;
+  resize: vertical;
+  padding-top: 10px;
+  font-family: inherit;
 }
 
 .fv-field {
@@ -510,5 +613,19 @@ body,
 
   .fv-grid {
     grid-template-columns: 1fr;
+  }
+
+  .fv-prospect-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .fv-modal-title-wrap {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .fv-state-inline {
+    min-width: 0;
+    width: 100%;
   }
 }

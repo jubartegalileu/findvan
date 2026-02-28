@@ -917,6 +917,32 @@ body,
   gap: 12px;
 }
 
+.fv-alert-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.fv-alert-btn.red {
+  background: rgba(229, 57, 53, 0.18);
+  color: #b71c1c;
+}
+
+.fv-alert-btn.yellow {
+  background: rgba(249, 168, 37, 0.22);
+  color: #8f6100;
+}
+
+.fv-alert-btn.green {
+  background: rgba(67, 160, 71, 0.2);
+  color: #2e7d32;
+}
+
 .fv-insights-panel {
   position: sticky;
   top: 20px;

@@ -1117,10 +1117,10 @@ export default function Leads({ onNavigate, activePath }) {
                   </div>
 
                   <div className="fv-lead-right">
-                    <div className={`fv-row-chip ${scoreMeta.className}`}>Score {lead.score} • {scoreMeta.label}</div>
                     <div className={`fv-status ${getFunnelClass(lead.funnel_status)}`}>
                       {funnelStatusOptions.find((f) => f.value === lead.funnel_status)?.label || 'Novo'}
                     </div>
+                    <div className={`fv-row-chip ${scoreMeta.className}`}>Score {lead.score} • {scoreMeta.label}</div>
                     <div className="fv-lead-actions">
                       <button className="fv-ghost small" type="button" onClick={() => handleContactLead(lead)}>
                         Contactar
@@ -1159,6 +1159,19 @@ export default function Leads({ onNavigate, activePath }) {
           </div>
 
           <div className="fv-activity">
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Alertas</div>
+              <button className="fv-alert-btn red" type="button" onClick={() => handleAlertFilter('respondeu')}>
+                Respostas pendentes: {insights.alerts.pendingResponses}
+              </button>
+              <button className="fv-alert-btn yellow" type="button" onClick={() => handleAlertFilter('overdue')}>
+                Follow-ups vencidos: {insights.alerts.overdueFollowups}
+              </button>
+              <button className="fv-alert-btn green" type="button" onClick={() => handleAlertFilter('novo')}>
+                Novos leads: {insights.alerts.newLeads}
+              </button>
+            </div>
+
             <div className="fv-activity-item">
               <div className="fv-activity-title">Resumo</div>
               <div className="fv-row-sub">Total: {insights.total}</div>
@@ -1203,18 +1216,6 @@ export default function Leads({ onNavigate, activePath }) {
               ))}
             </div>
 
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Alertas</div>
-              <button className="fv-ghost small" type="button" onClick={() => handleAlertFilter('respondeu')}>
-                Respostas pendentes: {insights.alerts.pendingResponses}
-              </button>
-              <button className="fv-ghost small" type="button" onClick={() => handleAlertFilter('overdue')}>
-                Follow-ups vencidos: {insights.alerts.overdueFollowups}
-              </button>
-              <button className="fv-ghost small" type="button" onClick={() => handleAlertFilter('novo')}>
-                Novos leads: {insights.alerts.newLeads}
-              </button>
-            </div>
           </div>
         </aside>
       </section>

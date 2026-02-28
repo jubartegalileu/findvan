@@ -13,6 +13,7 @@ from .api import leads as leads_api
 from .api import scraper as scraper_api
 from .api import dashboard as dashboard_api
 from .api import activity as activity_api
+from .api import integrations as integrations_api
 
 # Configure logging
 logging.basicConfig(
@@ -76,6 +77,7 @@ app.include_router(leads_api.router, prefix="/api/leads", tags=["leads"])
 app.include_router(scraper_api.router, prefix="/api/scraper", tags=["scraper"])
 app.include_router(dashboard_api.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(activity_api.router, prefix="/api/activity", tags=["activity"])
+app.include_router(integrations_api.router, prefix="/api/integrations", tags=["integrations"])
 
 
 # ============================================================

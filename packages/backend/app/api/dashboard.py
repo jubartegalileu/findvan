@@ -7,11 +7,21 @@ from ..services.dashboard_service import (
     get_weekly_performance,
 )
 from ..services.alerts_service import dispatch_slo_alert, get_alerting_status
-from ..services.metrics_governance_service import get_active_thresholds, get_threshold_history, update_thresholds
+from ..services.metrics_governance_service import (
+    GOVERNANCE_SUGGESTION_MODEL_VERSION,
+    build_threshold_suggestions,
+    get_active_thresholds,
+    get_threshold_decisions,
+    get_threshold_history,
+    list_threshold_suggestions,
+    register_threshold_decision,
+    update_thresholds,
+)
 from ..services.operational_telemetry_service import (
     INCIDENT_CLASSIFIER_VERSION,
     PREDICTIVE_RISK_MODEL_VERSION,
     build_guardrails,
+    build_playbook_readiness,
     build_predictive_risk,
     build_postmortem_readiness,
     list_incidents,
@@ -28,6 +38,13 @@ router = APIRouter()
 class ThresholdsUpdatePayload(BaseModel):
     author: str = Field(default="system", min_length=1, max_length=80)
     thresholds: dict = Field(default_factory=dict)
+
+
+class GovernanceDecisionPayload(BaseModel):
+    suggestion_id: str = Field(..., min_length=2, max_length=120)
+    decision: str = Field(..., min_length=3, max_length=20)
+    author: str = Field(default="system", min_length=1, max_length=80)
+    reason: str | None = Field(default=None, max_length=2000)
 
 
 class PlaybookExecutionPayload(BaseModel):
@@ -270,6 +287,27 @@ def dashboard_postmortem_readiness(limit: int = Query(default=10, ge=1, le=50), 
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.get("/playbook-readiness")
+def dashboard_playbook_readiness(
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+    history_limit: int = Query(default=10, ge=1, le=50),
+):
+    try:
+        alerting = get_alerting_status()
+        retention = get_retention_job_status()
+        readiness = build_playbook_readiness(
+            alerting_metrics=alerting,
+            retention_metrics=retention,
+            limit=limit,
+            offset=offset,
+            history_limit=history_limit,
+        )
+        return {"status": "ok", **readiness}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.get("/metrics-governance")
 def dashboard_metrics_governance():
     try:
@@ -291,5 +329,68 @@ def dashboard_metrics_governance_update(payload: ThresholdsUpdatePayload):
     try:
         result = update_thresholds(payload.thresholds, author=payload.author)
         return {"status": "ok", "result": result}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/metrics-governance/suggestions")
+def dashboard_metrics_governance_suggestions(
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    try:
+        alerting = get_alerting_status()
+        retention = get_retention_job_status()
+        sample_size = max(limit + offset, 20)
+        incidents = list_incidents(limit=sample_size, offset=0)
+        build_threshold_suggestions(
+            alerting_metrics=alerting,
+            retention_metrics=retention,
+            incidents=incidents,
+            limit=max(5, limit),
+        )
+        suggestions = list_threshold_suggestions(limit=limit, offset=offset)
+        return {
+            "status": "ok",
+            "suggestions": suggestions,
+            "applied_limit": limit,
+            "applied_offset": offset,
+            "model_version": GOVERNANCE_SUGGESTION_MODEL_VERSION,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/metrics-governance/decisions")
+def dashboard_metrics_governance_decisions(
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    try:
+        decisions = get_threshold_decisions(limit=limit, offset=offset)
+        return {"status": "ok", "decisions": decisions, "applied_limit": limit, "applied_offset": offset}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/metrics-governance/decisions")
+def dashboard_metrics_governance_decision(payload: GovernanceDecisionPayload):
+    try:
+        result = register_threshold_decision(
+            suggestion_id=payload.suggestion_id,
+            decision=payload.decision,
+            author=payload.author,
+            reason=payload.reason,
+        )
+        if not result.get("updated"):
+            error = result.get("error")
+            if error == "invalid_decision":
+                raise HTTPException(status_code=422, detail="Invalid decision. Use accepted/rejected/deferred.")
+            if error == "suggestion_not_found":
+                raise HTTPException(status_code=404, detail="Suggestion not found.")
+            raise HTTPException(status_code=400, detail="Unable to register decision.")
+        return {"status": "ok", "result": result}
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

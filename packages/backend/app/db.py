@@ -245,6 +245,48 @@ CREATE INDEX IF NOT EXISTS idx_metrics_governance_audit_state_created
   ON metrics_governance_audit(state_key, created_at DESC, id DESC);
 """
 
+METRICS_GOVERNANCE_SUGGESTIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS metrics_governance_suggestions (
+  id BIGSERIAL PRIMARY KEY,
+  state_key VARCHAR(100) NOT NULL DEFAULT 'global',
+  suggestion_id VARCHAR(120) NOT NULL UNIQUE,
+  component VARCHAR(50) NOT NULL DEFAULT 'global',
+  model_version VARCHAR(20) NOT NULL,
+  generated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  rationale TEXT NOT NULL,
+  expected_impact TEXT NOT NULL,
+  recommendation TEXT NOT NULL,
+  proposed_thresholds JSONB NOT NULL DEFAULT '{}'::jsonb,
+  diffs JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  decided_at TIMESTAMP,
+  decided_by VARCHAR(100),
+  decision_reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_metrics_governance_suggestions_state_created
+  ON metrics_governance_suggestions(state_key, generated_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_metrics_governance_suggestions_status
+  ON metrics_governance_suggestions(status, generated_at DESC, id DESC);
+"""
+
+METRICS_GOVERNANCE_DECISIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS metrics_governance_decisions (
+  id BIGSERIAL PRIMARY KEY,
+  state_key VARCHAR(100) NOT NULL DEFAULT 'global',
+  decision_id VARCHAR(120) NOT NULL UNIQUE,
+  suggestion_id VARCHAR(120) NOT NULL,
+  decision VARCHAR(20) NOT NULL,
+  author VARCHAR(100) NOT NULL,
+  reason TEXT,
+  proposed_diffs JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_metrics_governance_decisions_state_created
+  ON metrics_governance_decisions(state_key, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_metrics_governance_decisions_suggestion
+  ON metrics_governance_decisions(suggestion_id, created_at DESC, id DESC);
+"""
+
 OPERATIONAL_INCIDENTS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS operational_incidents (
   id BIGSERIAL PRIMARY KEY,
@@ -290,6 +332,27 @@ CREATE INDEX IF NOT EXISTS idx_playbook_exec_playbook ON operational_playbook_ex
 CREATE INDEX IF NOT EXISTS idx_playbook_exec_incident ON operational_playbook_executions(incident_id);
 """
 
+OPERATIONAL_PLAYBOOK_READINESS_CHECKS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS operational_playbook_readiness_checks (
+  id BIGSERIAL PRIMARY KEY,
+  check_id VARCHAR(120) NOT NULL,
+  playbook_key VARCHAR(120) NOT NULL,
+  component VARCHAR(50) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'warn',
+  severity VARCHAR(20) NOT NULL DEFAULT 'warn',
+  owner VARCHAR(100),
+  has_recent_execution BOOLEAN NOT NULL DEFAULT false,
+  last_execution_at TIMESTAMP,
+  recommendation TEXT NOT NULL,
+  gaps JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_playbook_readiness_check_created
+  ON operational_playbook_readiness_checks(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_playbook_readiness_check_id
+  ON operational_playbook_readiness_checks(check_id, created_at DESC, id DESC);
+"""
+
 
 @contextmanager
 def get_connection():
@@ -317,7 +380,10 @@ def ensure_schema():
             cur.execute(ALERTING_RECENT_EVENTS_TABLE_SQL)
             cur.execute(METRICS_GOVERNANCE_STATE_TABLE_SQL)
             cur.execute(METRICS_GOVERNANCE_AUDIT_TABLE_SQL)
+            cur.execute(METRICS_GOVERNANCE_SUGGESTIONS_TABLE_SQL)
+            cur.execute(METRICS_GOVERNANCE_DECISIONS_TABLE_SQL)
             cur.execute(OPERATIONAL_INCIDENTS_TABLE_SQL)
             cur.execute(OPERATIONAL_PLAYBOOKS_TABLE_SQL)
             cur.execute(OPERATIONAL_PLAYBOOK_EXECUTIONS_TABLE_SQL)
+            cur.execute(OPERATIONAL_PLAYBOOK_READINESS_CHECKS_TABLE_SQL)
         conn.commit()

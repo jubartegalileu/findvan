@@ -71,6 +71,13 @@ const activityTypeMeta = {
   campaign: { icon: 'campaigns', className: 'campaign' },
 };
 
+const governanceDecisionLabel = {
+  pending: 'Pendente',
+  accepted: 'Aceita',
+  rejected: 'Rejeitada',
+  deferred: 'Adiada',
+};
+
 const toCsv = (rows) => {
   const headers = [
     'id',
@@ -132,11 +139,15 @@ export default function Dashboard({ onNavigate, activePath }) {
   const [sloWindow, setSloWindow] = useState('24h');
   const [sloThresholds, setSloThresholds] = useState(DEFAULT_SLO_THRESHOLDS);
   const [governanceHistory, setGovernanceHistory] = useState([]);
+  const [governanceSuggestions, setGovernanceSuggestions] = useState([]);
+  const [governanceDecisions, setGovernanceDecisions] = useState([]);
+  const [governanceActionLoading, setGovernanceActionLoading] = useState('');
   const [guardrails, setGuardrails] = useState([]);
   const [predictiveRisk, setPredictiveRisk] = useState([]);
   const [playbooks, setPlaybooks] = useState([]);
   const [playbookExecutions, setPlaybookExecutions] = useState([]);
   const [postmortemReadiness, setPostmortemReadiness] = useState({ template: null, critical_incidents: [] });
+  const [playbookReadiness, setPlaybookReadiness] = useState({ check_id: null, checks: [], history: [] });
   const [operationalTelemetry, setOperationalTelemetry] = useState({
     metrics: {
       alerting: { fallback_count: 0, suppressed_count: 0, sent_count: 0, queued_count: 0 },
@@ -149,7 +160,7 @@ export default function Dashboard({ onNavigate, activePath }) {
     setLoading(true);
     setErrorMessage('');
     try {
-      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes, telemetryRes, guardrailsRes, predictiveRiskRes, playbooksRes, executionsRes, postmortemRes] = await Promise.all([
+      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes, governanceSuggestionsRes, governanceDecisionsRes, telemetryRes, guardrailsRes, predictiveRiskRes, playbooksRes, executionsRes, postmortemRes, playbookReadinessRes] = await Promise.all([
         fetch(`${API_BASE}/api/leads/?limit=120`),
         fetchWithFallback(
           `${API_BASE}/api/scraper/runs?limit=10`,
@@ -172,12 +183,21 @@ export default function Dashboard({ onNavigate, activePath }) {
         fetch(`${API_BASE}/api/integrations/messaging/receipts?limit=150`),
         fetchWithFallback(`${API_BASE}/api/dashboard/metrics-governance`, `${API_BASE}/api/dashboard/metrics-governance/`),
         fetchWithFallback(`${API_BASE}/api/dashboard/metrics-governance/history?limit=5`, `${API_BASE}/api/dashboard/metrics-governance/history/?limit=5`),
+        fetchWithFallback(
+          `${API_BASE}/api/dashboard/metrics-governance/suggestions?limit=5`,
+          `${API_BASE}/api/dashboard/metrics-governance/suggestions/?limit=5`
+        ),
+        fetchWithFallback(
+          `${API_BASE}/api/dashboard/metrics-governance/decisions?limit=5`,
+          `${API_BASE}/api/dashboard/metrics-governance/decisions/?limit=5`
+        ),
         fetchWithFallback(`${API_BASE}/api/dashboard/operational-telemetry?limit=5`, `${API_BASE}/api/dashboard/operational-telemetry/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/guardrails?limit=5`, `${API_BASE}/api/dashboard/guardrails/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/predictive-risk?limit=5`, `${API_BASE}/api/dashboard/predictive-risk/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/playbooks?limit=5`, `${API_BASE}/api/dashboard/playbooks/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/playbooks/executions?limit=5`, `${API_BASE}/api/dashboard/playbooks/executions/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/postmortem-readiness?limit=5`, `${API_BASE}/api/dashboard/postmortem-readiness/?limit=5`),
+        fetchWithFallback(`${API_BASE}/api/dashboard/playbook-readiness?limit=5&history_limit=5`, `${API_BASE}/api/dashboard/playbook-readiness/?limit=5&history_limit=5`),
       ]);
 
       const [
@@ -191,12 +211,15 @@ export default function Dashboard({ onNavigate, activePath }) {
         receiptsPayload,
         governancePayload,
         governanceHistoryPayload,
+        governanceSuggestionsPayload,
+        governanceDecisionsPayload,
         telemetryPayload,
         guardrailsPayload,
         predictiveRiskPayload,
         playbooksPayload,
         executionsPayload,
         postmortemPayload,
+        playbookReadinessPayload,
       ] = await Promise.all([
         leadsRes.json(),
         runsRes.json(),
@@ -208,12 +231,15 @@ export default function Dashboard({ onNavigate, activePath }) {
         receiptsRes.json(),
         governanceRes.json(),
         governanceHistoryRes.json(),
+        governanceSuggestionsRes.json(),
+        governanceDecisionsRes.json(),
         telemetryRes.json(),
         guardrailsRes.json(),
         predictiveRiskRes.json(),
         playbooksRes.json(),
         executionsRes.json(),
         postmortemRes.json(),
+        playbookReadinessRes.json(),
       ]);
 
       if (!leadsRes.ok) {
@@ -249,6 +275,12 @@ export default function Dashboard({ onNavigate, activePath }) {
       if (governanceHistoryRes.ok && Array.isArray(governanceHistoryPayload?.history)) {
         setGovernanceHistory(governanceHistoryPayload.history);
       }
+      if (governanceSuggestionsRes.ok && Array.isArray(governanceSuggestionsPayload?.suggestions)) {
+        setGovernanceSuggestions(governanceSuggestionsPayload.suggestions);
+      }
+      if (governanceDecisionsRes.ok && Array.isArray(governanceDecisionsPayload?.decisions)) {
+        setGovernanceDecisions(governanceDecisionsPayload.decisions);
+      }
       if (telemetryRes.ok && telemetryPayload) {
         setOperationalTelemetry({
           metrics:
@@ -277,6 +309,13 @@ export default function Dashboard({ onNavigate, activePath }) {
           critical_incidents: Array.isArray(postmortemPayload.critical_incidents)
             ? postmortemPayload.critical_incidents
             : [],
+        });
+      }
+      if (playbookReadinessRes.ok && playbookReadinessPayload) {
+        setPlaybookReadiness({
+          check_id: playbookReadinessPayload.check_id || null,
+          checks: Array.isArray(playbookReadinessPayload.checks) ? playbookReadinessPayload.checks : [],
+          history: Array.isArray(playbookReadinessPayload.history) ? playbookReadinessPayload.history : [],
         });
       }
 
@@ -475,6 +514,33 @@ export default function Dashboard({ onNavigate, activePath }) {
       return;
     }
     goTo(`/whatsapp?leadId=${encodeURIComponent(String(lead.id))}`);
+  };
+
+  const applyGovernanceDecision = async (suggestionId, decision) => {
+    if (!suggestionId || !decision) return;
+    setGovernanceActionLoading(`${suggestionId}:${decision}`);
+    setErrorMessage('');
+    try {
+      const saveResponse = await fetch(`${API_BASE}/api/dashboard/metrics-governance/decisions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          suggestion_id: suggestionId,
+          decision,
+          author: 'dashboard',
+          reason: `Decisão manual via dashboard (${decision})`,
+        }),
+      });
+      const savePayload = await saveResponse.json();
+      if (!saveResponse.ok) {
+        throw new Error(savePayload?.detail || 'Falha ao registrar decisão.');
+      }
+      await loadDashboard();
+    } catch (error) {
+      setErrorMessage(error?.message || 'Falha ao registrar decisão de governança.');
+    } finally {
+      setGovernanceActionLoading('');
+    }
   };
 
   return (
@@ -766,6 +832,79 @@ export default function Dashboard({ onNavigate, activePath }) {
             <div className="fv-divider" />
             <div className="fv-panel-header">
               <h2 className="fv-icon-label">
+                <Icon name="settings" />
+                Sugestões de governança
+              </h2>
+            </div>
+            <div className="fv-table">
+              {(governanceSuggestions || []).slice(0, 3).map((suggestion) => (
+                <div key={suggestion.id} className="fv-row fv-monitoring-row">
+                  <div>
+                    <div className="fv-row-title">
+                      {suggestion.component} • {governanceDecisionLabel[suggestion.status] || suggestion.status}
+                    </div>
+                    <div className="fv-row-sub">{suggestion.rationale}</div>
+                    <div className="fv-row-sub">{suggestion.expected_impact}</div>
+                    <div className="fv-row-sub">{suggestion.recommendation}</div>
+                    {suggestion.status === 'pending' ? (
+                      <div className="fv-row-actions">
+                        <button
+                          className="fv-ghost small"
+                          type="button"
+                          disabled={Boolean(governanceActionLoading)}
+                          onClick={() => applyGovernanceDecision(suggestion.id, 'accepted')}
+                        >
+                          {governanceActionLoading === `${suggestion.id}:accepted` ? 'Aplicando...' : 'Aceitar'}
+                        </button>
+                        <button
+                          className="fv-ghost small"
+                          type="button"
+                          disabled={Boolean(governanceActionLoading)}
+                          onClick={() => applyGovernanceDecision(suggestion.id, 'deferred')}
+                        >
+                          {governanceActionLoading === `${suggestion.id}:deferred` ? 'Salvando...' : 'Adiar'}
+                        </button>
+                        <button
+                          className="fv-ghost small"
+                          type="button"
+                          disabled={Boolean(governanceActionLoading)}
+                          onClick={() => applyGovernanceDecision(suggestion.id, 'rejected')}
+                        >
+                          {governanceActionLoading === `${suggestion.id}:rejected` ? 'Salvando...' : 'Rejeitar'}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className={`fv-row-chip fv-risk-chip ${suggestion.status === 'accepted' ? 'ok' : suggestion.status === 'pending' ? 'warn' : 'high'}`}>
+                    {suggestion.model_version || 'n/a'}
+                  </div>
+                </div>
+              ))}
+              {governanceSuggestions.length === 0 && (
+                <div className="fv-row-sub">Sem sugestões de governança no momento.</div>
+              )}
+            </div>
+            <div className="fv-table">
+              <div className="fv-row-title">Decision log recente</div>
+              {(governanceDecisions || []).slice(0, 3).map((decision) => (
+                <div key={decision.id} className="fv-row fv-monitoring-row">
+                  <div>
+                    <div className="fv-row-title">{decision.suggestion_id}</div>
+                    <div className="fv-row-sub">
+                      {decision.author} • {formatRelativeDate(decision.timestamp)}
+                    </div>
+                    {decision.reason ? <div className="fv-row-sub">{decision.reason}</div> : null}
+                  </div>
+                  <div className={`fv-row-chip fv-alert-${decision.decision === 'accepted' ? 'low' : decision.decision === 'deferred' ? 'medium' : 'high'}`}>
+                    {governanceDecisionLabel[decision.decision] || decision.decision}
+                  </div>
+                </div>
+              ))}
+              {governanceDecisions.length === 0 && <div className="fv-row-sub">Sem decisões registradas.</div>}
+            </div>
+            <div className="fv-divider" />
+            <div className="fv-panel-header">
+              <h2 className="fv-icon-label">
                 <Icon name="recent" />
                 Incidentes operacionais
               </h2>
@@ -886,6 +1025,32 @@ export default function Dashboard({ onNavigate, activePath }) {
               {(postmortemReadiness.critical_incidents || []).length === 0 && (
                 <div className="fv-row-sub">Sem incidentes críticos pendentes de pós-mortem.</div>
               )}
+            </div>
+            <div className="fv-table">
+              <div className="fv-row-title">Readiness contínua de playbooks</div>
+              {(playbookReadiness.checks || []).slice(0, 3).map((item) => (
+                <div key={item.playbook_key} className="fv-row fv-monitoring-row">
+                  <div>
+                    <div className="fv-row-title">{item.playbook_key}</div>
+                    <div className="fv-row-sub">
+                      {item.component} • owner: {item.owner || 'não definido'}
+                    </div>
+                    <div className="fv-row-sub">{item.recommendation}</div>
+                  </div>
+                  <div className={`fv-row-chip fv-alert-${item.severity === 'ok' ? 'low' : item.severity}`}>{item.severity || 'warn'}</div>
+                </div>
+              ))}
+              {playbookReadiness.checks.length === 0 && (
+                <div className="fv-row-sub">Sem checks de readiness disponíveis.</div>
+              )}
+              {(playbookReadiness.history || []).slice(0, 3).map((entry) => (
+                <div key={entry.check_id} className="fv-row fv-monitoring-row">
+                  <div className="fv-row-sub">
+                    {formatRelativeDate(entry.checked_at)} • críticos: {entry.critical_count || 0} • alertas: {entry.warn_count || 0}
+                  </div>
+                  <div className={`fv-row-chip fv-alert-${entry.overall_status === 'ok' ? 'low' : entry.overall_status}`}>{entry.overall_status || 'warn'}</div>
+                </div>
+              ))}
             </div>
           </>
         )}

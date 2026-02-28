@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import json
 
 from ..db import get_connection
@@ -10,6 +10,7 @@ INCIDENT_CLASSIFIER_VERSION = "1.0.0"
 PREDICTIVE_RISK_MODEL_VERSION = "1.0.0"
 _SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 POSTMORTEM_TEMPLATE_VERSION = "1.0.0"
+PLAYBOOK_READINESS_VERSION = "1.0.0"
 
 _DEFAULT_PLAYBOOKS = [
     {
@@ -124,6 +125,19 @@ def _iso(value) -> str:
     if isinstance(value, datetime):
         return value.isoformat()
     return str(value or "")
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except Exception:
+        return None
 
 
 def log_incident(
@@ -453,6 +467,271 @@ def list_playbook_executions(limit: int = 20, offset: int = 0, playbook_key: str
         return output
     except Exception:
         return []
+
+
+def _read_last_readiness_check() -> tuple[str | None, datetime | None]:
+    query = """
+        SELECT check_id, created_at
+        FROM operational_playbook_readiness_checks
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1;
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                row = cur.fetchone()
+        if not row:
+            return (None, None)
+        created_at = row[1]
+        if isinstance(created_at, datetime):
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            else:
+                created_at = created_at.astimezone(timezone.utc)
+        else:
+            created_at = None
+        return (str(row[0]), created_at)
+    except Exception:
+        return (None, None)
+
+
+def _persist_playbook_readiness_rows(check_id: str, rows: list[dict]) -> None:
+    if not rows:
+        return
+    query = """
+        INSERT INTO operational_playbook_readiness_checks (
+          check_id, playbook_key, component, status, severity, owner,
+          has_recent_execution, last_execution_at, recommendation, gaps
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb);
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            for row in rows:
+                last_execution_at = _parse_iso(row.get("last_execution_at"))
+                cur.execute(
+                    query,
+                    (
+                        check_id,
+                        row.get("playbook_key"),
+                        row.get("component"),
+                        row.get("status"),
+                        row.get("severity"),
+                        row.get("owner"),
+                        bool(row.get("has_recent_execution")),
+                        last_execution_at,
+                        row.get("recommendation") or "",
+                        json.dumps(row.get("gaps") or []),
+                    ),
+                )
+        conn.commit()
+
+
+def _load_readiness_checks(check_id: str, limit: int = 10, offset: int = 0) -> list[dict]:
+    query = """
+        SELECT playbook_key, component, status, severity, owner, has_recent_execution,
+               last_execution_at, recommendation, gaps, created_at
+        FROM operational_playbook_readiness_checks
+        WHERE check_id = %s
+        ORDER BY component ASC, playbook_key ASC
+        LIMIT %s OFFSET %s;
+    """
+    capped_limit = max(1, min(int(limit or 10), 100))
+    safe_offset = max(0, int(offset or 0))
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (check_id, capped_limit, safe_offset))
+                rows = cur.fetchall()
+        output = []
+        for row in rows:
+            output.append(
+                {
+                    "playbook_key": row[0],
+                    "component": row[1],
+                    "status": row[2],
+                    "severity": row[3],
+                    "owner": row[4],
+                    "has_recent_execution": bool(row[5]),
+                    "last_execution_at": _iso(row[6]) if row[6] else None,
+                    "recommendation": row[7],
+                    "gaps": row[8] if isinstance(row[8], list) else [],
+                    "checked_at": _iso(row[9]) if row[9] else None,
+                }
+            )
+        return output
+    except Exception:
+        return []
+
+
+def _load_readiness_history(limit: int = 10) -> list[dict]:
+    query = """
+        SELECT
+          check_id,
+          MAX(created_at) AS checked_at,
+          COUNT(*) AS total_checks,
+          COUNT(*) FILTER (WHERE severity = 'critical') AS critical_count,
+          COUNT(*) FILTER (WHERE severity = 'warn') AS warn_count,
+          COUNT(*) FILTER (WHERE severity = 'ok') AS ok_count
+        FROM operational_playbook_readiness_checks
+        GROUP BY check_id
+        ORDER BY checked_at DESC
+        LIMIT %s;
+    """
+    capped_limit = max(1, min(int(limit or 10), 100))
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (capped_limit,))
+                rows = cur.fetchall()
+        history = []
+        for row in rows:
+            overall = "ok"
+            if int(row[3] or 0) > 0:
+                overall = "critical"
+            elif int(row[4] or 0) > 0:
+                overall = "warn"
+            history.append(
+                {
+                    "check_id": row[0],
+                    "checked_at": _iso(row[1]),
+                    "total_checks": int(row[2] or 0),
+                    "critical_count": int(row[3] or 0),
+                    "warn_count": int(row[4] or 0),
+                    "ok_count": int(row[5] or 0),
+                    "overall_status": overall,
+                }
+            )
+        return history
+    except Exception:
+        return []
+
+
+def build_playbook_readiness(
+    alerting_metrics: dict | None = None,
+    retention_metrics: dict | None = None,
+    limit: int = 10,
+    offset: int = 0,
+    history_limit: int = 10,
+) -> dict:
+    alerting = alerting_metrics or {}
+    retention = retention_metrics or {}
+    now = datetime.now(tz=timezone.utc)
+
+    # Run checks at most once per minute and reuse latest persisted snapshot.
+    last_check_id, last_checked_at = _read_last_readiness_check()
+    if last_check_id and last_checked_at and (now - last_checked_at) <= timedelta(seconds=60):
+        checks = _load_readiness_checks(last_check_id, limit=limit, offset=offset)
+        history = _load_readiness_history(limit=history_limit)
+        return {
+            "check_id": last_check_id,
+            "checks": checks,
+            "history": history,
+            "applied_limit": limit,
+            "applied_offset": offset,
+            "version": PLAYBOOK_READINESS_VERSION,
+        }
+
+    playbooks = list_playbooks(limit=100, offset=0)
+    executions = list_playbook_executions(limit=200, offset=0)
+    execution_by_key: dict[str, dict] = {}
+    for item in executions:
+        key = str(item.get("playbook_key") or "").strip()
+        if key and key not in execution_by_key:
+            execution_by_key[key] = item
+
+    rows = []
+    for playbook in playbooks:
+        key = str(playbook.get("key") or "").strip()
+        component = str(playbook.get("component") or "messaging").strip().lower()
+        latest_exec = execution_by_key.get(key)
+        latest_exec_at = _parse_iso((latest_exec or {}).get("created_at"))
+        owner = None
+        if component == "retention":
+            owner = retention.get("owner")
+        elif component == "alerting":
+            owner = (alerting.get("self_healing") or {}).get("owner")
+        if not owner and latest_exec:
+            owner = latest_exec.get("author")
+        owner_text = str(owner or "").strip() or None
+
+        has_recent_execution = bool(
+            latest_exec_at
+            and latest_exec
+            and (latest_exec.get("result") in {"success", "completed", "started"})
+            and (now - latest_exec_at) <= timedelta(days=7)
+        )
+        gaps = []
+        if not owner_text:
+            gaps.append("missing_owner")
+        if not has_recent_execution:
+            gaps.append("stale_execution_evidence")
+
+        severity = "ok"
+        recommendation = "Readiness adequada. Manter evidências semanais e owner atualizado."
+        if len(gaps) >= 2:
+            severity = "critical"
+            recommendation = "Definir owner responsável e executar playbook para renovar evidência imediatamente."
+        elif gaps:
+            severity = "warn"
+            if "missing_owner" in gaps:
+                recommendation = "Definir owner explícito para o playbook e validar handoff operacional."
+            else:
+                recommendation = "Executar playbook em simulação/controlado para renovar evidência recente."
+
+        rows.append(
+            {
+                "playbook_key": key,
+                "component": component,
+                "status": severity,
+                "severity": severity,
+                "owner": owner_text,
+                "has_recent_execution": has_recent_execution,
+                "last_execution_at": _iso(latest_exec_at) if latest_exec_at else None,
+                "recommendation": recommendation,
+                "gaps": gaps,
+            }
+        )
+
+    check_id = f"readiness-{int(now.timestamp() * 1000)}"
+    try:
+        _persist_playbook_readiness_rows(check_id, rows)
+    except Exception:
+        # Safe fallback to non-persistent snapshot.
+        pass
+
+    checks = _load_readiness_checks(check_id, limit=limit, offset=offset)
+    if not checks:
+        safe_offset = max(0, int(offset or 0))
+        capped_limit = max(1, min(int(limit or 10), 100))
+        checks = rows[safe_offset : safe_offset + capped_limit]
+        for row in checks:
+            row["checked_at"] = _iso(now)
+    history = _load_readiness_history(limit=history_limit)
+    if not history:
+        history = [
+            {
+                "check_id": check_id,
+                "checked_at": _iso(now),
+                "total_checks": len(rows),
+                "critical_count": len([item for item in rows if item["severity"] == "critical"]),
+                "warn_count": len([item for item in rows if item["severity"] == "warn"]),
+                "ok_count": len([item for item in rows if item["severity"] == "ok"]),
+                "overall_status": "critical"
+                if any(item["severity"] == "critical" for item in rows)
+                else ("warn" if any(item["severity"] == "warn" for item in rows) else "ok"),
+            }
+        ]
+
+    return {
+        "check_id": check_id,
+        "checks": checks,
+        "history": history,
+        "applied_limit": limit,
+        "applied_offset": offset,
+        "version": PLAYBOOK_READINESS_VERSION,
+    }
 
 
 def build_postmortem_readiness(limit: int = 10, offset: int = 0) -> dict:

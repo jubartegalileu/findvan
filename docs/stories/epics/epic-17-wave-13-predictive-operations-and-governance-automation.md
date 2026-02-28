@@ -1,7 +1,7 @@
 # Epic 17 — Wave 13 Predictive Operations & Governance Automation
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Operação Preditiva)
 **Wave:** 13
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Evoluir de resposta reativa/assistida para operação preditiva, com detecção 
 
 ## Definition of Done
 
-- [ ] Stories 17.1, 17.2 e 17.3 implementadas e aprovadas
-- [ ] Score de risco preditivo disponível e visível por componente
-- [ ] Sugestões de governança com trilha de decisão persistida
-- [ ] Readiness contínua de playbooks exibida com recomendações acionáveis
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 17.1, 17.2 e 17.3 implementadas e aprovadas
+- [x] Score de risco preditivo disponível e visível por componente
+- [x] Sugestões de governança com trilha de decisão persistida
+- [x] Readiness contínua de playbooks exibida com recomendações acionáveis
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

@@ -328,6 +328,50 @@ def test_dashboard_postmortem_readiness_ok(monkeypatch):
     assert payload["critical_incidents"][0]["severity"] == "critical"
 
 
+def test_dashboard_playbook_readiness_ok(monkeypatch):
+    monkeypatch.setattr(dashboard_api, "get_alerting_status", lambda: {"self_healing": {"owner": "sre-alerting"}})
+    monkeypatch.setattr(dashboard_api, "get_retention_job_status", lambda: {"owner": "worker-retention"})
+    monkeypatch.setattr(
+        dashboard_api,
+        "build_playbook_readiness",
+        lambda alerting_metrics, retention_metrics, limit=10, offset=0, history_limit=10: {
+            "check_id": "readiness-1",
+            "checks": [
+                {
+                    "playbook_key": "retention-lock-recovery",
+                    "component": "retention",
+                    "severity": "ok",
+                    "status": "ok",
+                    "owner": "worker-retention",
+                    "has_recent_execution": True,
+                    "recommendation": "manter rotina",
+                    "gaps": [],
+                }
+            ],
+            "history": [
+                {
+                    "check_id": "readiness-1",
+                    "overall_status": "ok",
+                    "critical_count": 0,
+                    "warn_count": 0,
+                    "ok_count": 1,
+                }
+            ],
+            "applied_limit": limit,
+            "applied_offset": offset,
+            "version": "1.0.0",
+        },
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/playbook-readiness?limit=5&offset=0&history_limit=5")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["check_id"] == "readiness-1"
+    assert payload["checks"][0]["component"] == "retention"
+    assert payload["history"][0]["overall_status"] == "ok"
+
+
 def test_dashboard_alert_dispatch_ok(monkeypatch):
     monkeypatch.setattr(
         dashboard_api,
@@ -391,3 +435,111 @@ def test_dashboard_metrics_governance_patch_ok(monkeypatch):
     assert payload["status"] == "ok"
     assert payload["result"]["updated"] is True
     assert payload["result"]["audit"]["author"] == "pm"
+
+
+def test_dashboard_metrics_governance_suggestions_ok(monkeypatch):
+    monkeypatch.setattr(dashboard_api, "get_alerting_status", lambda: {"fallback_count": 3})
+    monkeypatch.setattr(dashboard_api, "get_retention_job_status", lambda: {"fail_count": 1})
+    monkeypatch.setattr(dashboard_api, "list_incidents", lambda limit=20, offset=0: [{"id": 1, "source": "retention"}])
+    monkeypatch.setattr(
+        dashboard_api,
+        "build_threshold_suggestions",
+        lambda alerting_metrics, retention_metrics, incidents, limit=5: [
+            {
+                "id": "sugg-1",
+                "component": "retention",
+                "model_version": "1.0.0",
+                "generated_at": "2026-02-28T12:00:00+00:00",
+                "rationale": "falhas elevadas",
+                "expected_impact": "melhor reação",
+                "recommendation": "ajustar threshold",
+                "proposed_thresholds": {"failure_rate_high_gte": 9},
+                "diffs": [{"key": "failure_rate_high_gte", "from": 10, "to": 9}],
+                "status": "pending",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "list_threshold_suggestions",
+        lambda limit=10, offset=0: [
+            {
+                "id": "sugg-1",
+                "component": "retention",
+                "model_version": "1.0.0",
+                "generated_at": "2026-02-28T12:00:00+00:00",
+                "rationale": "falhas elevadas",
+                "expected_impact": "melhor reação",
+                "recommendation": "ajustar threshold",
+                "proposed_thresholds": {"failure_rate_high_gte": 9},
+                "diffs": [{"key": "failure_rate_high_gte", "from": 10, "to": 9}],
+                "status": "pending",
+            }
+        ],
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/metrics-governance/suggestions?limit=5&offset=0")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["applied_limit"] == 5
+    assert payload["suggestions"][0]["id"] == "sugg-1"
+
+
+def test_dashboard_metrics_governance_decisions_get_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_threshold_decisions",
+        lambda limit=10, offset=0: [
+            {
+                "id": "decision-1",
+                "suggestion_id": "sugg-1",
+                "decision": "accepted",
+                "author": "pm",
+                "reason": "ok",
+                "timestamp": "2026-02-28T12:00:00+00:00",
+            }
+        ],
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/metrics-governance/decisions?limit=5&offset=0")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["decisions"][0]["decision"] == "accepted"
+
+
+def test_dashboard_metrics_governance_decisions_post_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "register_threshold_decision",
+        lambda suggestion_id, decision, author="system", reason=None: {
+            "updated": True,
+            "decision": {"id": "decision-1", "suggestion_id": suggestion_id, "decision": decision, "author": author},
+            "suggestion": {"id": suggestion_id, "status": decision},
+            "threshold_result": None,
+        },
+    )
+    client = build_client()
+    response = client.post(
+        "/api/dashboard/metrics-governance/decisions",
+        json={"suggestion_id": "sugg-1", "decision": "accepted", "author": "pm", "reason": "alinhado"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["result"]["decision"]["author"] == "pm"
+
+
+def test_dashboard_metrics_governance_decisions_post_invalid(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "register_threshold_decision",
+        lambda suggestion_id, decision, author="system", reason=None: {"updated": False, "error": "invalid_decision"},
+    )
+    client = build_client()
+    response = client.post(
+        "/api/dashboard/metrics-governance/decisions",
+        json={"suggestion_id": "sugg-1", "decision": "bad", "author": "pm"},
+    )
+    assert response.status_code == 422

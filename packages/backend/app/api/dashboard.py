@@ -8,7 +8,7 @@ from ..services.dashboard_service import (
 )
 from ..services.alerts_service import dispatch_slo_alert, get_alerting_status
 from ..services.metrics_governance_service import get_active_thresholds, get_threshold_history, update_thresholds
-from ..services.operational_telemetry_service import list_incidents
+from ..services.operational_telemetry_service import INCIDENT_CLASSIFIER_VERSION, build_guardrails, list_incidents
 from ..services.retention_jobs_service import get_retention_job_status
 
 
@@ -99,11 +99,11 @@ def dashboard_recovery_policies():
 
 
 @router.get("/operational-telemetry")
-def dashboard_operational_telemetry(limit: int = Query(default=10, ge=1, le=50)):
+def dashboard_operational_telemetry(limit: int = Query(default=10, ge=1, le=50), offset: int = Query(default=0, ge=0)):
     try:
         alerting = get_alerting_status()
         retention = get_retention_job_status()
-        incidents = list_incidents(limit=limit)
+        incidents = list_incidents(limit=limit, offset=offset)
         metrics = {
             "alerting": {
                 "fallback_count": int(alerting.get("fallback_count") or 0),
@@ -120,7 +120,38 @@ def dashboard_operational_telemetry(limit: int = Query(default=10, ge=1, le=50))
                 "self_healing": retention.get("self_healing") or {},
             },
         }
-        return {"status": "ok", "metrics": metrics, "incidents": incidents, "applied_limit": limit}
+        return {
+            "status": "ok",
+            "metrics": metrics,
+            "incidents": incidents,
+            "applied_limit": limit,
+            "applied_offset": offset,
+            "classifier_version": INCIDENT_CLASSIFIER_VERSION,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/guardrails")
+def dashboard_guardrails(limit: int = Query(default=10, ge=1, le=50), offset: int = Query(default=0, ge=0)):
+    try:
+        alerting = get_alerting_status()
+        retention = get_retention_job_status()
+        incidents = list_incidents(limit=max(limit + offset, limit), offset=0)
+        guardrails = build_guardrails(
+            incidents=incidents,
+            alerting_metrics=alerting,
+            retention_metrics=retention,
+            limit=max(limit + offset, limit),
+        )
+        sliced = guardrails[offset : offset + limit]
+        return {
+            "status": "ok",
+            "guardrails": sliced,
+            "applied_limit": limit,
+            "applied_offset": offset,
+            "classifier_version": INCIDENT_CLASSIFIER_VERSION,
+        }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

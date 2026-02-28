@@ -147,7 +147,7 @@ def test_dashboard_operational_telemetry_ok(monkeypatch):
     monkeypatch.setattr(
         dashboard_api,
         "list_incidents",
-        lambda limit=10: [{"id": 1, "source": "alerting", "severity": "medium", "title": "Fallback"}],
+        lambda limit=10, offset=0: [{"id": 1, "source": "alerting", "severity": "medium", "title": "Fallback"}],
     )
     client = build_client()
     response = client.get("/api/dashboard/operational-telemetry?limit=5")
@@ -158,7 +158,49 @@ def test_dashboard_operational_telemetry_ok(monkeypatch):
     assert payload["metrics"]["retention"]["run_count"] == 10
     assert payload["metrics"]["alerting"]["self_healing"]["enabled"] is True
     assert payload["metrics"]["retention"]["self_healing"]["enabled"] is True
+    assert payload["applied_offset"] == 0
     assert len(payload["incidents"]) == 1
+
+
+def test_dashboard_guardrails_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_alerting_status",
+        lambda: {"fallback_count": 4, "suppressed_count": 2},
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_retention_job_status",
+        lambda: {"fail_count": 2},
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "list_incidents",
+        lambda limit=10, offset=0: [{"id": 10, "source": "retention", "event_type": "retention_cycle_error", "severity": "high", "title": "Falha"}],
+    )
+    monkeypatch.setattr(
+        dashboard_api,
+        "build_guardrails",
+        lambda incidents, alerting_metrics, retention_metrics, limit=5: [
+            {
+                "type": "incident_guardrail",
+                "severity": "high",
+                "component": "retention",
+                "title": "Falha de retenção",
+                "impact": "expurgo degradado",
+                "recommendation": "validar owner",
+                "metadata": {},
+            }
+        ],
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/guardrails?limit=5&offset=0")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["applied_limit"] == 5
+    assert payload["applied_offset"] == 0
+    assert payload["guardrails"][0]["severity"] == "high"
 
 
 def test_dashboard_alert_dispatch_ok(monkeypatch):

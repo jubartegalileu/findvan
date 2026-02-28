@@ -132,6 +132,7 @@ export default function Dashboard({ onNavigate, activePath }) {
   const [sloWindow, setSloWindow] = useState('24h');
   const [sloThresholds, setSloThresholds] = useState(DEFAULT_SLO_THRESHOLDS);
   const [governanceHistory, setGovernanceHistory] = useState([]);
+  const [guardrails, setGuardrails] = useState([]);
   const [operationalTelemetry, setOperationalTelemetry] = useState({
     metrics: {
       alerting: { fallback_count: 0, suppressed_count: 0, sent_count: 0, queued_count: 0 },
@@ -144,7 +145,7 @@ export default function Dashboard({ onNavigate, activePath }) {
     setLoading(true);
     setErrorMessage('');
     try {
-      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes, telemetryRes] = await Promise.all([
+      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes, telemetryRes, guardrailsRes] = await Promise.all([
         fetch(`${API_BASE}/api/leads/?limit=120`),
         fetchWithFallback(
           `${API_BASE}/api/scraper/runs?limit=10`,
@@ -168,6 +169,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         fetchWithFallback(`${API_BASE}/api/dashboard/metrics-governance`, `${API_BASE}/api/dashboard/metrics-governance/`),
         fetchWithFallback(`${API_BASE}/api/dashboard/metrics-governance/history?limit=5`, `${API_BASE}/api/dashboard/metrics-governance/history/?limit=5`),
         fetchWithFallback(`${API_BASE}/api/dashboard/operational-telemetry?limit=5`, `${API_BASE}/api/dashboard/operational-telemetry/?limit=5`),
+        fetchWithFallback(`${API_BASE}/api/dashboard/guardrails?limit=5`, `${API_BASE}/api/dashboard/guardrails/?limit=5`),
       ]);
 
       const [
@@ -182,6 +184,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         governancePayload,
         governanceHistoryPayload,
         telemetryPayload,
+        guardrailsPayload,
       ] = await Promise.all([
         leadsRes.json(),
         runsRes.json(),
@@ -194,6 +197,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         governanceRes.json(),
         governanceHistoryRes.json(),
         telemetryRes.json(),
+        guardrailsRes.json(),
       ]);
 
       if (!leadsRes.ok) {
@@ -238,6 +242,9 @@ export default function Dashboard({ onNavigate, activePath }) {
             },
           incidents: Array.isArray(telemetryPayload.incidents) ? telemetryPayload.incidents : [],
         });
+      }
+      if (guardrailsRes.ok && Array.isArray(guardrailsPayload?.guardrails)) {
+        setGuardrails(guardrailsPayload.guardrails);
       }
 
       setLastRefresh(new Date());
@@ -730,6 +737,23 @@ export default function Dashboard({ onNavigate, activePath }) {
                 Incidentes operacionais
               </h2>
             </div>
+            <div className="fv-table">
+              <div className="fv-row-title">Guardrails prioritários</div>
+              {guardrails.slice(0, 3).map((item, index) => (
+                <div key={`${item.type}-${item.title}-${index}`} className="fv-row fv-monitoring-row">
+                  <div>
+                    <div className="fv-row-title">{item.title}</div>
+                    <div className="fv-row-sub">
+                      {item.component} • {item.impact}
+                    </div>
+                    <div className="fv-row-sub">{item.recommendation}</div>
+                  </div>
+                  <div className={`fv-row-chip fv-alert-${item.severity || 'medium'}`}>{item.severity || 'medium'}</div>
+                </div>
+              ))}
+              {guardrails.length === 0 && <div className="fv-row-sub">Sem guardrails ativos no momento.</div>}
+            </div>
+            <div className="fv-divider" />
             <div className="fv-table">
               <div className="fv-row">
                 <div className="fv-row-title">Fallbacks de alerta</div>

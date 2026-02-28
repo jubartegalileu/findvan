@@ -3,7 +3,12 @@ import Layout from '../components/Layout.jsx';
 import Icon from '../components/Icon.jsx';
 import './dashboard.css';
 import { API_BASE } from '../lib/apiBase.js';
-import { buildCostThroughputInsights, buildOperationalSlo, SLO_WINDOWS } from '../lib/campaignMonitoring.js';
+import {
+  buildCostThroughputInsights,
+  buildOperationalSlo,
+  DEFAULT_SLO_THRESHOLDS,
+  SLO_WINDOWS,
+} from '../lib/campaignMonitoring.js';
 import { readMessagingActivity } from '../lib/messagingActivity.js';
 
 const funnelMeta = {
@@ -125,12 +130,14 @@ export default function Dashboard({ onNavigate, activePath }) {
   const [scraperRuns, setScraperRuns] = useState([]);
   const [receipts, setReceipts] = useState([]);
   const [sloWindow, setSloWindow] = useState('24h');
+  const [sloThresholds, setSloThresholds] = useState(DEFAULT_SLO_THRESHOLDS);
+  const [governanceHistory, setGovernanceHistory] = useState([]);
 
   const loadDashboard = async () => {
     setLoading(true);
     setErrorMessage('');
     try {
-      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes] = await Promise.all([
+      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes] = await Promise.all([
         fetch(`${API_BASE}/api/leads/?limit=120`),
         fetchWithFallback(
           `${API_BASE}/api/scraper/runs?limit=10`,
@@ -151,6 +158,8 @@ export default function Dashboard({ onNavigate, activePath }) {
         ),
         fetchWithFallback(`${API_BASE}/api/activity?limit=15`, `${API_BASE}/api/activity/?limit=15`),
         fetch(`${API_BASE}/api/integrations/messaging/receipts?limit=150`),
+        fetchWithFallback(`${API_BASE}/api/dashboard/metrics-governance`, `${API_BASE}/api/dashboard/metrics-governance/`),
+        fetchWithFallback(`${API_BASE}/api/dashboard/metrics-governance/history?limit=5`, `${API_BASE}/api/dashboard/metrics-governance/history/?limit=5`),
       ]);
 
       const [
@@ -162,6 +171,8 @@ export default function Dashboard({ onNavigate, activePath }) {
         weeklyPayload,
         activityPayload,
         receiptsPayload,
+        governancePayload,
+        governanceHistoryPayload,
       ] = await Promise.all([
         leadsRes.json(),
         runsRes.json(),
@@ -171,6 +182,8 @@ export default function Dashboard({ onNavigate, activePath }) {
         weeklyRes.json(),
         activityRes.json(),
         receiptsRes.json(),
+        governanceRes.json(),
+        governanceHistoryRes.json(),
       ]);
 
       if (!leadsRes.ok) {
@@ -199,6 +212,12 @@ export default function Dashboard({ onNavigate, activePath }) {
       }
       if (receiptsRes.ok && Array.isArray(receiptsPayload?.events)) {
         setReceipts(receiptsPayload.events);
+      }
+      if (governanceRes.ok && governancePayload?.thresholds) {
+        setSloThresholds((prev) => ({ ...prev, ...governancePayload.thresholds }));
+      }
+      if (governanceHistoryRes.ok && Array.isArray(governanceHistoryPayload?.history)) {
+        setGovernanceHistory(governanceHistoryPayload.history);
       }
 
       setLastRefresh(new Date());
@@ -335,8 +354,8 @@ export default function Dashboard({ onNavigate, activePath }) {
 
   const activityRecent = useMemo(() => activity.slice(0, 15), [activity]);
   const slo = useMemo(
-    () => buildOperationalSlo({ receipts, activity: readMessagingActivity(), window: sloWindow }),
-    [receipts, sloWindow, lastRefresh]
+    () => buildOperationalSlo({ receipts, activity: readMessagingActivity(), window: sloWindow, thresholds: sloThresholds }),
+    [receipts, sloWindow, sloThresholds, lastRefresh]
   );
   const costInsights = useMemo(
     () =>
@@ -654,6 +673,35 @@ export default function Dashboard({ onNavigate, activePath }) {
                   {alert.message}
                 </div>
               ))}
+            </div>
+            <div className="fv-divider" />
+            <div className="fv-panel-header">
+              <h2 className="fv-icon-label">
+                <Icon name="settings" />
+                Governança de métricas
+              </h2>
+            </div>
+            <div className="fv-table">
+              <div className="fv-row">
+                <div className="fv-row-title">Threshold entrega crítica</div>
+                <div className="fv-row-chip">{sloThresholds.delivery_rate_critical_lt}%</div>
+              </div>
+              <div className="fv-row">
+                <div className="fv-row-title">Threshold falha crítica</div>
+                <div className="fv-row-chip">{sloThresholds.failure_rate_critical_gte}%</div>
+              </div>
+              <div className="fv-row">
+                <div className="fv-row-title">Threshold bloqueio crítico</div>
+                <div className="fv-row-chip">{sloThresholds.block_rate_critical_gt}%</div>
+              </div>
+              {governanceHistory.length > 0 ? (
+                <div className="fv-row-sub">
+                  Última alteração: {governanceHistory[0]?.author || 'sistema'} em{' '}
+                  {governanceHistory[0]?.timestamp ? new Date(governanceHistory[0].timestamp).toLocaleString('pt-BR') : '--'}
+                </div>
+              ) : (
+                <div className="fv-row-sub">Sem histórico de alterações registrado.</div>
+              )}
             </div>
           </>
         )}

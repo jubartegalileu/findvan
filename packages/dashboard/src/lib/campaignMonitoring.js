@@ -16,6 +16,20 @@ export const SLO_WINDOWS = [
   { value: '7d', label: 'Últimos 7 dias', hours: 24 * 7 },
 ];
 
+export const DEFAULT_SLO_THRESHOLDS = {
+  delivery_rate_critical_lt: 70,
+  delivery_rate_high_lt: 80,
+  delivery_rate_medium_lt: 90,
+  failure_rate_critical_gte: 20,
+  failure_rate_high_gte: 10,
+  failure_rate_medium_gte: 5,
+  reply_rate_medium_lt: 5,
+  latency_critical_gt_min: 120,
+  latency_high_gt_min: 60,
+  block_rate_critical_gt: 5,
+  block_rate_high_gt: 3,
+};
+
 const normalizeStatus = (status) => {
   const value = String(status || '').trim().toLowerCase();
   if (!value) return '';
@@ -94,21 +108,28 @@ const ensureCampaign = (map, name) => {
 const calcRelativeCost = ({ sent = 0, delivered = 0, replied = 0, failed = 0 }) =>
   Math.round((sent * 1 + delivered * 0.1 + replied * 0.2 + failed * 0.6) * 100) / 100;
 
-const getSloSeverity = ({ sent, deliveryRate, replyRate, failureRate, latencyAvgMinutes }) => {
+const normalizeThresholds = (thresholds) => ({
+  ...DEFAULT_SLO_THRESHOLDS,
+  ...(thresholds && typeof thresholds === 'object' ? thresholds : {}),
+});
+
+const getSloSeverity = ({ sent, deliveryRate, replyRate, failureRate, latencyAvgMinutes }, thresholds) => {
+  const t = normalizeThresholds(thresholds);
   if (sent <= 0) return { key: 'low', label: 'Baixa prioridade' };
-  if (failureRate >= 20 || deliveryRate < 50 || latencyAvgMinutes > 120) {
+  if (failureRate >= t.failure_rate_critical_gte || deliveryRate < t.delivery_rate_critical_lt || latencyAvgMinutes > t.latency_critical_gt_min) {
     return { key: 'critical', label: 'Crítico' };
   }
-  if (failureRate >= 10 || deliveryRate < 70 || latencyAvgMinutes > 60) {
+  if (failureRate >= t.failure_rate_high_gte || deliveryRate < t.delivery_rate_high_lt || latencyAvgMinutes > t.latency_high_gt_min) {
     return { key: 'high', label: 'Alto' };
   }
-  if ((sent >= 20 && replyRate < 5) || failureRate >= 5 || deliveryRate < 85) {
+  if ((sent >= 20 && replyRate < t.reply_rate_medium_lt) || failureRate >= t.failure_rate_medium_gte || deliveryRate < t.delivery_rate_medium_lt) {
     return { key: 'medium', label: 'Médio' };
   }
   return { key: 'low', label: 'Baixa prioridade' };
 };
 
-export const buildOperationalSlo = ({ receipts = [], activity = [], window = '24h' }) => {
+export const buildOperationalSlo = ({ receipts = [], activity = [], window = '24h', thresholds = DEFAULT_SLO_THRESHOLDS }) => {
+  const t = normalizeThresholds(thresholds);
   const filteredActivity = filterByWindow(activity, window, (entry) => parseDate(entry?.at));
   const filteredReceipts = filterByWindow(receipts, window, (entry) => parseDate(entry?.occurred_at || entry?.received_at));
 
@@ -175,14 +196,14 @@ export const buildOperationalSlo = ({ receipts = [], activity = [], window = '24
   });
 
   const latencyAvgMinutes = latencySamples > 0 ? Math.round((latencySumMinutes / latencySamples) * 10) / 10 : 0;
-  const severity = getSloSeverity({ sent, deliveryRate, replyRate, failureRate, latencyAvgMinutes });
+  const severity = getSloSeverity({ sent, deliveryRate, replyRate, failureRate, latencyAvgMinutes }, t);
   const alerts = [];
 
   if (sent > 0) {
-    if (failureRate >= 20) alerts.push({ key: 'critical', message: `Taxa de falha alta (${failureRate}%).` });
-    if (deliveryRate < 70) alerts.push({ key: 'high', message: `Taxa de entrega baixa (${deliveryRate}%).` });
-    if (latencyAvgMinutes > 60) alerts.push({ key: 'high', message: `Latência média elevada (${latencyAvgMinutes} min).` });
-    if (replyRate < 5 && sent >= 20) alerts.push({ key: 'medium', message: `Taxa de resposta baixa (${replyRate}%).` });
+    if (failureRate >= t.failure_rate_critical_gte) alerts.push({ key: 'critical', message: `Taxa de falha alta (${failureRate}%).` });
+    if (deliveryRate < t.delivery_rate_high_lt) alerts.push({ key: 'high', message: `Taxa de entrega baixa (${deliveryRate}%).` });
+    if (latencyAvgMinutes > t.latency_high_gt_min) alerts.push({ key: 'high', message: `Latência média elevada (${latencyAvgMinutes} min).` });
+    if (replyRate < t.reply_rate_medium_lt && sent >= 20) alerts.push({ key: 'medium', message: `Taxa de resposta baixa (${replyRate}%).` });
   }
 
   alerts.sort((a, b) => {
@@ -395,7 +416,13 @@ export const buildReconciliationInsights = ({ leads = [], receipts = [], activit
   };
 };
 
-export const buildCampaignMonitoring = ({ leads = [], receipts = [], activity = [], window = '24h' }) => {
+export const buildCampaignMonitoring = ({
+  leads = [],
+  receipts = [],
+  activity = [],
+  window = '24h',
+  thresholds = DEFAULT_SLO_THRESHOLDS,
+}) => {
   const map = new Map();
   const leadCampaignById = new Map();
 
@@ -459,9 +486,16 @@ export const buildCampaignMonitoring = ({ leads = [], receipts = [], activity = 
     items,
     totals,
     reconciliation: buildReconciliationInsights({ leads, receipts, activity }),
-    slo: buildOperationalSlo({ receipts, activity, window }),
+    slo: buildOperationalSlo({ receipts, activity, window, thresholds }),
     cost: buildCostThroughputInsights({ leads, receipts, activity, window }),
   };
+};
+
+export const fetchGovernanceThresholds = async () => {
+  const response = await fetch(`${API_BASE}/api/dashboard/metrics-governance`);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload?.thresholds) return { ...DEFAULT_SLO_THRESHOLDS };
+  return normalizeThresholds(payload.thresholds);
 };
 
 export const fetchCampaignMonitoringData = async () => {

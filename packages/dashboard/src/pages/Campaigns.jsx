@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout.jsx';
-import { buildCampaignMonitoring, fetchCampaignMonitoringData, SLO_WINDOWS } from '../lib/campaignMonitoring.js';
+import {
+  buildCampaignMonitoring,
+  DEFAULT_SLO_THRESHOLDS,
+  fetchCampaignMonitoringData,
+  fetchGovernanceThresholds,
+  SLO_WINDOWS,
+} from '../lib/campaignMonitoring.js';
 import { readMessagingActivity } from '../lib/messagingActivity.js';
 import './dashboard.css';
 
@@ -13,18 +19,24 @@ export default function Campaigns({ onNavigate, activePath }) {
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState('');
   const [sloWindow, setSloWindow] = useState('24h');
+  const [sloThresholds, setSloThresholds] = useState(DEFAULT_SLO_THRESHOLDS);
 
   const loadMonitoring = async () => {
     setLoading(true);
     setError('');
     try {
-      const { leads, receipts } = await fetchCampaignMonitoringData();
+      const [{ leads, receipts }, thresholds] = await Promise.all([
+        fetchCampaignMonitoringData(),
+        fetchGovernanceThresholds(),
+      ]);
+      setSloThresholds((prev) => ({ ...prev, ...thresholds }));
       setMonitoring(
         buildCampaignMonitoring({
           leads,
           receipts,
           activity: readMessagingActivity(),
           window: sloWindow,
+          thresholds: { ...sloThresholds, ...thresholds },
         })
       );
       setUpdatedAt(new Date().toLocaleTimeString('pt-BR'));

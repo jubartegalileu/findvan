@@ -118,3 +118,49 @@ def test_dashboard_alert_dispatch_ok(monkeypatch):
     payload = response.json()
     assert payload["status"] == "ok"
     assert payload["dispatch"]["delivery"] == "local_fallback"
+
+
+def test_dashboard_metrics_governance_get_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_active_thresholds",
+        lambda: {"delivery_rate_critical_lt": 70, "block_rate_critical_gt": 5},
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/metrics-governance")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["thresholds"]["delivery_rate_critical_lt"] == 70
+
+
+def test_dashboard_metrics_governance_history_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_threshold_history",
+        lambda limit=20: [{"id": "a-1", "author": "qa", "diffs": [{"key": "x", "from": 1, "to": 2}]}],
+    )
+    client = build_client()
+    response = client.get("/api/dashboard/metrics-governance/history?limit=10")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["history"][0]["author"] == "qa"
+
+
+def test_dashboard_metrics_governance_patch_ok(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_api,
+        "update_thresholds",
+        lambda thresholds, author="system": {"updated": True, "thresholds": thresholds, "audit": {"author": author}},
+    )
+    client = build_client()
+    response = client.patch(
+        "/api/dashboard/metrics-governance",
+        json={"author": "pm", "thresholds": {"delivery_rate_critical_lt": 68}},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["result"]["updated"] is True
+    assert payload["result"]["audit"]["author"] == "pm"

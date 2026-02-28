@@ -6,7 +6,13 @@ import {
   clearMessagingActivity,
   readMessagingActivity,
 } from '../lib/messagingActivity.js';
-import { buildCampaignMonitoring, fetchCampaignMonitoringData, SLO_WINDOWS } from '../lib/campaignMonitoring.js';
+import {
+  buildCampaignMonitoring,
+  DEFAULT_SLO_THRESHOLDS,
+  fetchCampaignMonitoringData,
+  fetchGovernanceThresholds,
+  SLO_WINDOWS,
+} from '../lib/campaignMonitoring.js';
 import './dashboard.css';
 
 const templates = [
@@ -49,6 +55,7 @@ export default function WhatsApp({ onNavigate, activePath }) {
   const [monitoringError, setMonitoringError] = useState('');
   const [monitoringUpdatedAt, setMonitoringUpdatedAt] = useState('');
   const [sloWindow, setSloWindow] = useState('24h');
+  const [sloThresholds, setSloThresholds] = useState(DEFAULT_SLO_THRESHOLDS);
 
   const [form, setForm] = useState({
     lead_id: getInitialLeadId(),
@@ -92,12 +99,17 @@ export default function WhatsApp({ onNavigate, activePath }) {
     setMonitoringLoading(true);
     setMonitoringError('');
     try {
-      const { leads, receipts } = await fetchCampaignMonitoringData();
+      const [{ leads, receipts }, thresholds] = await Promise.all([
+        fetchCampaignMonitoringData(),
+        fetchGovernanceThresholds(),
+      ]);
+      setSloThresholds((prev) => ({ ...prev, ...thresholds }));
       const result = buildCampaignMonitoring({
         leads,
         receipts,
         activity: readMessagingActivity(),
         window: sloWindow,
+        thresholds: { ...sloThresholds, ...thresholds },
       });
       setMonitoring(result);
       setMonitoringUpdatedAt(new Date().toLocaleTimeString('pt-BR'));

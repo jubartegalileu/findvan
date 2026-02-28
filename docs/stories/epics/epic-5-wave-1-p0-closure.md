@@ -1,7 +1,7 @@
 # Epic 5 — Wave 1 P0 Closure: Dashboard, Scraper e Leads
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md
-**Status:** In QA
+**Status:** Closed
 **Prioridade:** P0 (Must Have)
 **Wave:** 1
 **Estimativa:** 2-3 semanas
@@ -95,8 +95,8 @@ quality_gate_tools: [regression_test_suite, batch_action_validation, ux_consiste
 
 - [x] Existing APIs remain unchanged (ou cobertas por aliases de compatibilidade)
 - [x] Database schema changes are backward compatible
-- [ ] UI changes follow existing patterns e navegação atual
-- [ ] Performance impact is minimal em Dashboard e Leads
+- [x] UI changes follow existing patterns e navegação atual
+- [x] Performance impact is minimal em Dashboard e Leads
 
 ## Risk Mitigation
 
@@ -113,8 +113,8 @@ quality_gate_tools: [regression_test_suite, batch_action_validation, ux_consiste
 
 ## Definition of Done
 
-- [ ] Stories 5.1, 5.2 e 5.3 concluídas com AC atendidos
-- [ ] RF P0 pendentes da Wave 1 fechados
+- [x] Stories 5.1, 5.2 e 5.3 concluídas com AC atendidos
+- [x] RF P0 pendentes da Wave 1 fechados
 - [x] Sem regressão em fluxos existentes
 - [x] Documentação de endpoints e comportamento de UI atualizada
 - [x] Quality gates verdes (lint, typecheck, test)

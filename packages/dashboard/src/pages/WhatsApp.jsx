@@ -6,12 +6,8 @@ import {
   clearMessagingActivity,
   readMessagingActivity,
 } from '../lib/messagingActivity.js';
+import { buildCampaignMonitoring, fetchCampaignMonitoringData } from '../lib/campaignMonitoring.js';
 import './dashboard.css';
-
-const campaigns = [
-  { name: 'Volta às aulas', status: 'Em execução', sent: 220, delivered: 206 },
-  { name: 'Reativação 2025', status: 'Agendada', sent: 0, delivered: 0 },
-];
 
 const templates = [
   { title: 'Primeiro contato', status: 'Ativo' },
@@ -45,6 +41,13 @@ export default function WhatsApp({ onNavigate, activePath }) {
   const [sendError, setSendError] = useState('');
   const [sendResult, setSendResult] = useState(null);
   const [activity, setActivity] = useState([]);
+  const [monitoring, setMonitoring] = useState({
+    items: [],
+    totals: { campaigns: 0, leads: 0, sent: 0, delivered: 0, replied: 0, failed: 0 },
+  });
+  const [monitoringLoading, setMonitoringLoading] = useState(false);
+  const [monitoringError, setMonitoringError] = useState('');
+  const [monitoringUpdatedAt, setMonitoringUpdatedAt] = useState('');
 
   const [form, setForm] = useState({
     lead_id: getInitialLeadId(),
@@ -84,11 +87,34 @@ export default function WhatsApp({ onNavigate, activePath }) {
     }
   };
 
+  const loadMonitoring = async () => {
+    setMonitoringLoading(true);
+    setMonitoringError('');
+    try {
+      const { leads, receipts } = await fetchCampaignMonitoringData();
+      const result = buildCampaignMonitoring({
+        leads,
+        receipts,
+        activity: readMessagingActivity(),
+      });
+      setMonitoring(result);
+      setMonitoringUpdatedAt(new Date().toLocaleTimeString('pt-BR'));
+    } catch (error) {
+      setMonitoringError(error?.message || 'Falha ao carregar monitoramento de campanhas.');
+    } finally {
+      setMonitoringLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadContracts();
     setActivity(readMessagingActivity());
+    loadMonitoring();
 
-    const onActivityUpdated = () => setActivity(readMessagingActivity());
+    const onActivityUpdated = () => {
+      setActivity(readMessagingActivity());
+      loadMonitoring();
+    };
     const onStorage = (event) => {
       if (event.key === 'findvan.messaging.activity.lastUpdate') {
         onActivityUpdated();
@@ -97,9 +123,13 @@ export default function WhatsApp({ onNavigate, activePath }) {
 
     window.addEventListener('findvan:messaging-activity-updated', onActivityUpdated);
     window.addEventListener('storage', onStorage);
+    const timer = window.setInterval(() => {
+      loadMonitoring();
+    }, 30000);
     return () => {
       window.removeEventListener('findvan:messaging-activity-updated', onActivityUpdated);
       window.removeEventListener('storage', onStorage);
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -331,21 +361,34 @@ export default function WhatsApp({ onNavigate, activePath }) {
       <section className="fv-columns fv-scraper-section">
         <div className="fv-panel">
           <div className="fv-panel-header">
-            <h2>Campanhas</h2>
-            <button className="fv-ghost small" type="button">
-              Ver todas
+            <h2>Monitoramento de campanhas</h2>
+            <button className="fv-ghost small" type="button" onClick={loadMonitoring} disabled={monitoringLoading}>
+              {monitoringLoading ? 'Atualizando...' : 'Atualizar'}
             </button>
           </div>
+          <div className="fv-monitoring-totals">
+            <div className="fv-row-sub">Campanhas: {monitoring.totals.campaigns}</div>
+            <div className="fv-row-sub">Enviadas: {monitoring.totals.sent}</div>
+            <div className="fv-row-sub">Entregues: {monitoring.totals.delivered}</div>
+            <div className="fv-row-sub">Respostas: {monitoring.totals.replied}</div>
+            <div className="fv-row-sub">Falhas: {monitoring.totals.failed}</div>
+            <div className="fv-row-sub">Atualizado às {monitoringUpdatedAt || '--:--:--'}</div>
+          </div>
+          {monitoringError && <div className="fv-message">{monitoringError}</div>}
           <div className="fv-table">
-            {campaigns.map((item) => (
-              <div key={item.name} className="fv-row">
+            {monitoring.items.length === 0 && <div className="fv-row-sub">Sem dados de campanha ainda.</div>}
+            {monitoring.items.slice(0, 8).map((item) => (
+              <div key={item.name} className="fv-row fv-monitoring-row">
                 <div>
                   <div className="fv-row-title">{item.name}</div>
                   <div className="fv-row-sub">
-                    {item.sent} enviadas • {item.delivered} entregues
+                    Leads: {item.leads} • Enviadas: {item.sent} • Entregues: {item.delivered}
+                  </div>
+                  <div className="fv-row-sub">
+                    Respostas: {item.replied} • Falhas: {item.failed} • Entrega: {item.deliveryRate}%
                   </div>
                 </div>
-                <div className={`fv-status ${statusClass[item.status] || ''}`}>{item.status}</div>
+                <div className={`fv-row-chip fv-risk-chip ${item.risk.key}`}>{item.risk.label}</div>
               </div>
             ))}
           </div>

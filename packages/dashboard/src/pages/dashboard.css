@@ -204,6 +204,10 @@ body,
   grid-template-columns: repeat(6, minmax(170px, 1fr));
 }
 
+.fv-grid-campaign-monitor {
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+}
+
 .fv-card {
   background: var(--fv-bg-soft);
   padding: 18px 20px;
@@ -1181,6 +1185,32 @@ body,
   padding: 10px 12px;
 }
 
+.fv-monitoring-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.fv-monitoring-row {
+  align-items: flex-start;
+}
+
+.fv-risk-chip.ok {
+  background: rgba(67, 160, 71, 0.22);
+  color: #2e7d32;
+}
+
+.fv-risk-chip.warn {
+  background: rgba(249, 168, 37, 0.25);
+  color: #8f6100;
+}
+
+.fv-risk-chip.high {
+  background: rgba(229, 57, 53, 0.2);
+  color: #b71c1c;
+}
+
 @media (max-width: 1080px) {
   .fv-app {
     grid-template-columns: 1fr;
@@ -1198,6 +1228,10 @@ body,
   }
 
   .fv-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .fv-grid-campaign-monitor {
     grid-template-columns: 1fr;
   }
 

@@ -18,6 +18,7 @@ const routes = [
   { name: 'scraper', path: '/scraper' },
   { name: 'leads', path: '/leads' },
   { name: 'whatsapp', path: '/whatsapp' },
+  { name: 'campaigns', path: '/campaigns' },
 ];
 
 const screenshotsDir = path.join(outputDir, 'screenshots');

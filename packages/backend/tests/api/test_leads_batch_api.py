@@ -131,3 +131,25 @@ def test_lead_tags_endpoints(monkeypatch):
     batch_response = client.post("/api/leads/batch/tag", json={"ids": [9, 10], "tag": "indicacao"})
     assert batch_response.status_code == 200
     assert batch_response.json()["updated"] == 2
+
+
+def test_normalize_consistency_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        leads_api,
+        "normalize_leads_consistency",
+        lambda: {
+            "status": "ok",
+            "scanned": 10,
+            "updated": 4,
+            "score_updated": 3,
+            "status_normalized": 2,
+            "loss_reason_cleared": 1,
+        },
+    )
+    client = build_client()
+    response = client.post("/api/leads/normalize-consistency")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["scanned"] == 10
+    assert payload["updated"] == 4

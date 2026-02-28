@@ -13,6 +13,7 @@ from ..services.leads_service import (
     get_lead_by_id,
     get_lead_score_breakdown,
     list_leads,
+    normalize_leads_consistency,
     recalculate_all_scores,
     update_lead,
 )
@@ -215,6 +216,12 @@ def remove_lead(lead_id: int):
 def post_recalculate_scores():
     result = recalculate_all_scores()
     return {"status": "ok", **result}
+
+
+@router.post("/normalize-consistency")
+def post_normalize_consistency():
+    result = normalize_leads_consistency()
+    return result
 
 
 @router.post("/batch/campaign")

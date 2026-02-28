@@ -1,6 +1,7 @@
 from typing import Iterable
 from psycopg import sql
 from ..db import get_connection
+from .funnel_service import FUNNEL_TRANSITIONS
 from .score_service import calculate_lead_score
 
 
@@ -28,6 +29,13 @@ LEAD_COLUMNS = (
     "is_duplicate",
 )
 
+VALID_FUNNEL_STATUS = set(FUNNEL_TRANSITIONS.keys())
+
+
+def normalize_funnel_status(value: str | None) -> str:
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in VALID_FUNNEL_STATUS else "novo"
+
 
 def insert_leads(leads: Iterable[dict]) -> dict:
     if not leads:
@@ -46,7 +54,7 @@ def insert_leads(leads: Iterable[dict]) -> dict:
             lead.get("cnpj"),
             lead.get("url"),
             calculate_lead_score(lead).get("total", 0),
-            lead.get("funnel_status", "novo"),
+            normalize_funnel_status(lead.get("funnel_status")),
             lead.get("loss_reason"),
             lead.get("prospect_status", "nao_contatado"),
             lead.get("prospect_notes"),
@@ -243,7 +251,7 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
         data.get("cnpj"),
         data.get("url"),
         score,
-        data.get("funnel_status", current.get("funnel_status", "novo")),
+        normalize_funnel_status(data.get("funnel_status", current.get("funnel_status", "novo"))),
         data.get("loss_reason"),
         data.get("prospect_status", "nao_contatado"),
         data.get("prospect_notes"),
@@ -348,6 +356,81 @@ def recalculate_all_scores() -> dict:
 
     avg_score = round(score_sum / updated, 2) if updated else 0
     return {"updated": updated, "avg_score": avg_score}
+
+
+def normalize_leads_consistency() -> dict:
+    select_query = """
+        SELECT id, source, name, phone, email, address, city, state, company_name, cnpj, url, score, funnel_status, loss_reason
+        FROM leads
+        WHERE deleted_at IS NULL;
+    """
+    update_query = """
+        UPDATE leads
+        SET score = %s,
+            funnel_status = %s,
+            loss_reason = %s,
+            updated_at = NOW()
+        WHERE id = %s;
+    """
+
+    scanned = 0
+    total_updated = 0
+    score_updated = 0
+    status_normalized = 0
+    loss_reason_cleared = 0
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(select_query)
+            rows = cur.fetchall()
+            for row in rows:
+                scanned += 1
+                current = {
+                    "id": row[0],
+                    "source": row[1],
+                    "name": row[2],
+                    "phone": row[3],
+                    "email": row[4],
+                    "address": row[5],
+                    "city": row[6],
+                    "state": row[7],
+                    "company_name": row[8],
+                    "cnpj": row[9],
+                    "url": row[10],
+                    "score": row[11],
+                    "funnel_status": row[12],
+                    "loss_reason": row[13],
+                }
+                next_score = calculate_lead_score(current).get("total", 0)
+                next_status = normalize_funnel_status(current.get("funnel_status"))
+                next_loss_reason = current.get("loss_reason") if next_status == "perdido" else None
+
+                changed = False
+                if int(current.get("score") or 0) != int(next_score):
+                    score_updated += 1
+                    changed = True
+                if str(current.get("funnel_status") or "").strip().lower() != next_status:
+                    status_normalized += 1
+                    changed = True
+                if (current.get("loss_reason") or None) != next_loss_reason:
+                    if current.get("loss_reason") is not None and next_loss_reason is None:
+                        loss_reason_cleared += 1
+                    changed = True
+                if not changed:
+                    continue
+
+                cur.execute(update_query, (next_score, next_status, next_loss_reason, current["id"]))
+                total_updated += 1
+        conn.commit()
+
+    return {
+        "status": "ok",
+        "scanned": scanned,
+        "updated": total_updated,
+        "score_updated": score_updated,
+        "status_normalized": status_normalized,
+        "loss_reason_cleared": loss_reason_cleared,
+    }
 
 
 def batch_update_campaign(lead_ids: list[int], campaign_status: str) -> dict:

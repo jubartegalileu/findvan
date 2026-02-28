@@ -317,6 +317,20 @@ body,
   background: #e1f6e5;
 }
 
+.fv-lead-card {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.fv-lead-card.replied {
+  border: 1px solid rgba(0, 172, 193, 0.45);
+  background: #eefbfd;
+}
+
+.fv-lead-card.overdue {
+  border: 1px solid rgba(229, 57, 53, 0.32);
+}
+
 .fv-row-main {
   flex: 1;
   min-width: 0;
@@ -396,6 +410,49 @@ body,
 
 .fv-dot.fora_do_ramo {
   background: #d9534f;
+}
+
+.fv-lead-completeness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.fv-complete-item {
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.fv-complete-item.ok {
+  background: rgba(67, 160, 71, 0.18);
+  color: #2e7d32;
+}
+
+.fv-complete-item.missing {
+  background: rgba(229, 57, 53, 0.18);
+  color: #b71c1c;
+}
+
+.fv-lead-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.fv-lead-right {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.fv-lead-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .fv-inline-form {
@@ -662,6 +719,29 @@ body,
   box-shadow: 0 24px 48px rgba(32, 80, 114, 0.28);
 }
 
+.fv-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.fv-tab {
+  border: 1px solid rgba(32, 80, 114, 0.18);
+  background: #ffffff;
+  color: var(--fv-c1);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fv-tab.active {
+  background: rgba(50, 157, 156, 0.2);
+  border-color: rgba(50, 157, 156, 0.5);
+  font-weight: 700;
+}
+
 .fv-modal-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -802,6 +882,16 @@ body,
 .fv-modal-actions {
   justify-content: flex-end;
   margin-top: 14px;
+}
+
+.fv-notes-tab {
+  display: grid;
+  gap: 12px;
+}
+
+.fv-insights-panel {
+  position: sticky;
+  top: 20px;
 }
 
 .fv-status {

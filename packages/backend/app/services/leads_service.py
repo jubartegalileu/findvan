@@ -22,6 +22,8 @@ LEAD_COLUMNS = (
     "prospect_notes",
     "campaign_status",
     "captured_at",
+    "next_action_date",
+    "next_action_description",
     "is_valid",
     "is_duplicate",
 )
@@ -50,6 +52,8 @@ def insert_leads(leads: Iterable[dict]) -> dict:
             lead.get("prospect_notes"),
             lead.get("campaign_status"),
             lead.get("captured_at"),
+            lead.get("next_action_date"),
+            lead.get("next_action_description"),
             lead.get("is_valid", True),
             lead.get("is_duplicate", False),
         )
@@ -77,6 +81,8 @@ def insert_leads(leads: Iterable[dict]) -> dict:
           prospect_notes = COALESCE(leads.prospect_notes, EXCLUDED.prospect_notes),
           campaign_status = COALESCE(leads.campaign_status, EXCLUDED.campaign_status),
           captured_at = EXCLUDED.captured_at,
+          next_action_date = EXCLUDED.next_action_date,
+          next_action_description = EXCLUDED.next_action_description,
           is_valid = EXCLUDED.is_valid,
           is_duplicate = TRUE,
           updated_at = NOW()
@@ -108,7 +114,7 @@ def insert_leads(leads: Iterable[dict]) -> dict:
 def list_leads(limit: int = 50) -> list[dict]:
     query = """
         SELECT id, source, name, phone, email, address, city, state, company_name,
-               cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
+               cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, next_action_date, next_action_description, is_valid, is_duplicate, created_at, updated_at
         FROM leads
         WHERE deleted_at IS NULL
         ORDER BY created_at DESC
@@ -139,6 +145,8 @@ def list_leads(limit: int = 50) -> list[dict]:
         "prospect_notes",
         "campaign_status",
         "captured_at",
+        "next_action_date",
+        "next_action_description",
         "is_valid",
         "is_duplicate",
         "created_at",
@@ -150,7 +158,7 @@ def list_leads(limit: int = 50) -> list[dict]:
 def get_lead_by_id(lead_id: int) -> dict | None:
     query = """
         SELECT id, source, name, phone, email, address, city, state, company_name,
-               cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
+               cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, next_action_date, next_action_description, is_valid, is_duplicate, created_at, updated_at
         FROM leads
         WHERE id = %s AND deleted_at IS NULL;
     """
@@ -179,6 +187,8 @@ def get_lead_by_id(lead_id: int) -> dict | None:
         "prospect_notes",
         "campaign_status",
         "captured_at",
+        "next_action_date",
+        "next_action_description",
         "is_valid",
         "is_duplicate",
         "created_at",
@@ -211,12 +221,14 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
           prospect_status = %s,
           prospect_notes = %s,
           campaign_status = %s,
+          next_action_date = %s,
+          next_action_description = %s,
           is_valid = %s,
           is_duplicate = %s,
           updated_at = NOW()
         WHERE id = %s
         RETURNING id, source, name, phone, email, address, city, state, company_name,
-                  cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at;
+                  cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, next_action_date, next_action_description, is_valid, is_duplicate, created_at, updated_at;
     """
     values = (
         data.get("name"),
@@ -234,6 +246,8 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
         data.get("prospect_status", "nao_contatado"),
         data.get("prospect_notes"),
         data.get("campaign_status"),
+        data.get("next_action_date"),
+        data.get("next_action_description"),
         data.get("is_valid", True),
         data.get("is_duplicate", False),
         lead_id,
@@ -264,6 +278,8 @@ def update_lead(lead_id: int, data: dict) -> dict | None:
         "prospect_notes",
         "campaign_status",
         "captured_at",
+        "next_action_date",
+        "next_action_description",
         "is_valid",
         "is_duplicate",
         "created_at",
@@ -368,7 +384,7 @@ def get_leads_by_ids(lead_ids: list[int]) -> list[dict]:
         return []
     query = """
         SELECT id, source, name, phone, email, address, city, state, company_name,
-               cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, is_valid, is_duplicate, created_at, updated_at
+               cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, next_action_date, next_action_description, is_valid, is_duplicate, created_at, updated_at
         FROM leads
         WHERE id = ANY(%s::bigint[]) AND deleted_at IS NULL
         ORDER BY created_at DESC;
@@ -396,9 +412,47 @@ def get_leads_by_ids(lead_ids: list[int]) -> list[dict]:
         "prospect_notes",
         "campaign_status",
         "captured_at",
+        "next_action_date",
+        "next_action_description",
         "is_valid",
         "is_duplicate",
         "created_at",
         "updated_at",
     ]
     return [dict(zip(keys, row)) for row in rows]
+
+
+def list_lead_notes(lead_id: int, limit: int = 50) -> list[dict]:
+    query = """
+        SELECT id, lead_id, content, author, created_at
+        FROM lead_notes
+        WHERE lead_id = %s
+        ORDER BY created_at DESC
+        LIMIT %s;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (lead_id, limit))
+            rows = cur.fetchall()
+    keys = ["id", "lead_id", "content", "author", "created_at"]
+    return [dict(zip(keys, row)) for row in rows]
+
+
+def add_lead_note(lead_id: int, content: str, author: str | None = None) -> dict:
+    query = """
+        INSERT INTO lead_notes (lead_id, content, author)
+        VALUES (%s, %s, %s)
+        RETURNING id, lead_id, content, author, created_at;
+    """
+    interaction_query = """
+        INSERT INTO lead_interactions (lead_id, type, content, metadata, author)
+        VALUES (%s, 'note', %s, '{}'::jsonb, %s);
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (lead_id, content, author or "dashboard"))
+            row = cur.fetchone()
+            cur.execute(interaction_query, (lead_id, content, author or "dashboard"))
+        conn.commit()
+    keys = ["id", "lead_id", "content", "author", "created_at"]
+    return dict(zip(keys, row))

@@ -53,3 +53,39 @@ def test_status_alias_and_transitions(monkeypatch):
     transitions = client.get("/api/leads/1/transitions")
     assert transitions.status_code == 200
     assert transitions.json()["transitions"] == ["contactado", "perdido"]
+
+
+def test_lead_notes_endpoints(monkeypatch):
+    monkeypatch.setattr(
+        leads_api,
+        "get_lead_by_id",
+        lambda lead_id: {"id": lead_id, "funnel_status": "novo"} if lead_id == 7 else None,
+    )
+    monkeypatch.setattr(
+        leads_api,
+        "list_lead_notes",
+        lambda lead_id, limit=50: [
+            {"id": 1, "lead_id": lead_id, "content": "Primeira nota", "author": "qa", "created_at": "2026-02-28T10:00:00"}
+        ],
+    )
+    monkeypatch.setattr(
+        leads_api,
+        "add_lead_note",
+        lambda lead_id, content, author=None: {
+            "id": 2,
+            "lead_id": lead_id,
+            "content": content,
+            "author": author or "dashboard",
+            "created_at": "2026-02-28T11:00:00",
+        },
+    )
+
+    client = build_client()
+
+    get_response = client.get("/api/leads/7/notes")
+    assert get_response.status_code == 200
+    assert get_response.json()["notes"][0]["content"] == "Primeira nota"
+
+    post_response = client.post("/api/leads/7/notes", json={"content": "Nova nota", "author": "dev"})
+    assert post_response.status_code == 200
+    assert post_response.json()["note"]["content"] == "Nova nota"

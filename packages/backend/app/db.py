@@ -101,6 +101,18 @@ CREATE INDEX IF NOT EXISTS idx_scraper_schedules_active ON scraper_schedules(is_
 CREATE INDEX IF NOT EXISTS idx_scraper_schedules_state_city ON scraper_schedules(state, city);
 """
 
+LEAD_NOTES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS lead_notes (
+  id BIGSERIAL PRIMARY KEY,
+  lead_id BIGINT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  author VARCHAR(100),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_lead_notes_lead_id ON lead_notes(lead_id);
+CREATE INDEX IF NOT EXISTS idx_lead_notes_created_at ON lead_notes(created_at DESC);
+"""
+
 LEAD_INTERACTIONS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS lead_interactions (
   id BIGSERIAL PRIMARY KEY,
@@ -132,5 +144,6 @@ def ensure_schema():
             cur.execute(SCRAPER_RUNS_TABLE_SQL)
             cur.execute(SCRAPER_KEYWORD_PROFILES_TABLE_SQL)
             cur.execute(SCRAPER_SCHEDULES_TABLE_SQL)
+            cur.execute(LEAD_NOTES_TABLE_SQL)
             cur.execute(LEAD_INTERACTIONS_TABLE_SQL)
         conn.commit()

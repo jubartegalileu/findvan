@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from ..services.leads_service import (
+    add_lead_note,
     batch_soft_delete,
     batch_update_campaign,
     delete_lead,
+    list_lead_notes,
     get_leads_by_ids,
     get_lead_by_id,
     get_lead_score_breakdown,
@@ -62,6 +64,8 @@ class LeadUpdateRequest(BaseModel):
     prospect_status: str = Field(default="nao_contatado")
     prospect_notes: str | None = None
     campaign_status: str | None = None
+    next_action_date: str | None = None
+    next_action_description: str | None = None
     is_valid: bool = True
     is_duplicate: bool = False
 
@@ -95,6 +99,11 @@ class BatchStatusRequest(BaseModel):
     new_status: str
     loss_reason: str | None = None
     loss_reason_other: str | None = None
+    author: str | None = None
+
+
+class LeadNoteRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=5000)
     author: str | None = None
 
 
@@ -136,6 +145,23 @@ def get_interactions(lead_id: int, limit: int = 30):
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     return {"interactions": get_lead_interactions(lead_id, limit)}
+
+
+@router.get("/{lead_id}/notes")
+def get_notes(lead_id: int, limit: int = 50):
+    lead = get_lead_by_id(lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return {"notes": list_lead_notes(lead_id, limit)}
+
+
+@router.post("/{lead_id}/notes")
+def post_note(lead_id: int, payload: LeadNoteRequest):
+    lead = get_lead_by_id(lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    note = add_lead_note(lead_id, payload.content.strip(), payload.author)
+    return {"status": "ok", "note": note}
 
 
 @router.get("/funnel/meta")

@@ -1,8 +1,12 @@
+import os
+
 from ..db import get_connection
 
 
 FUNNEL_STATUSES = ["novo", "contactado", "respondeu", "interessado", "convertido", "perdido"]
 ACTIVITY_TYPES = {"scraper", "msg_sent", "msg_received", "status_change", "campaign"}
+MAX_ACTIVITY_QUERY_LIMIT = 50
+DEFAULT_ACTIVITY_RETENTION_DAYS = max(1, int(os.getenv("ACTIVITY_RETENTION_DAYS", "90")))
 
 
 def get_dashboard_kpis() -> dict:
@@ -233,6 +237,7 @@ def get_weekly_performance() -> dict:
 
 
 def list_activity_events(limit: int = 20) -> list[dict]:
+    capped = max(1, min(limit, MAX_ACTIVITY_QUERY_LIMIT))
     query = """
         WITH scraper_events AS (
             SELECT
@@ -277,7 +282,7 @@ def list_activity_events(limit: int = 20) -> list[dict]:
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query, (limit,))
+            cur.execute(query, (capped,))
             rows = cur.fetchall()
 
     events = []
@@ -295,3 +300,27 @@ def list_activity_events(limit: int = 20) -> list[dict]:
         )
 
     return events
+
+
+def prune_old_activity_events(retention_days: int | None = None) -> int:
+    days = max(1, int(retention_days or DEFAULT_ACTIVITY_RETENTION_DAYS))
+    deleted_total = 0
+    interaction_query = """
+        DELETE FROM lead_interactions
+        WHERE created_at < NOW() - (%s::text || ' days')::interval;
+    """
+    scraper_query = """
+        DELETE FROM scraper_runs
+        WHERE created_at < NOW() - (%s::text || ' days')::interval;
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(interaction_query, (str(days),))
+                deleted_total += cur.rowcount or 0
+                cur.execute(scraper_query, (str(days),))
+                deleted_total += cur.rowcount or 0
+            conn.commit()
+    except Exception:
+        return 0
+    return deleted_total

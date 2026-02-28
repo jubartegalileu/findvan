@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 import json
+import os
 
 from ..db import get_connection
 
@@ -10,6 +11,8 @@ from ..db import get_connection
 _RECEIPT_EVENTS: list[dict] = []
 _RECEIPT_INDEX: dict[str, dict] = {}
 _MAX_EVENTS = 500
+MAX_RECEIPT_QUERY_LIMIT = 100
+DEFAULT_RECEIPTS_RETENTION_DAYS = max(1, int(os.getenv("RECEIPTS_RETENTION_DAYS", "30")))
 
 
 def _idempotency_key(event: dict) -> str:
@@ -114,7 +117,7 @@ def list_receipt_events(limit: int = 20) -> list[dict]:
 
 
 def _list_receipt_events_db(limit: int = 20) -> list[dict]:
-    capped = max(1, min(limit, 100))
+    capped = max(1, min(limit, MAX_RECEIPT_QUERY_LIMIT))
     query = """
         SELECT id, version, event_type, external_id, provider, lead_id, campaign_id, destination, occurred_at, status_detail, metadata, received_at
         FROM messaging_receipts
@@ -129,8 +132,29 @@ def _list_receipt_events_db(limit: int = 20) -> list[dict]:
 
 
 def _list_receipt_events_memory(limit: int = 20) -> list[dict]:
-    capped = max(1, min(limit, 100))
+    capped = max(1, min(limit, MAX_RECEIPT_QUERY_LIMIT))
     return [deepcopy(item) for item in _RECEIPT_EVENTS[-capped:]][::-1]
+
+
+def get_capped_receipt_limit(limit: int = 20) -> int:
+    return max(1, min(limit, MAX_RECEIPT_QUERY_LIMIT))
+
+
+def prune_old_receipt_events(retention_days: int | None = None) -> int:
+    days = max(1, int(retention_days or DEFAULT_RECEIPTS_RETENTION_DAYS))
+    query = """
+        DELETE FROM messaging_receipts
+        WHERE received_at < NOW() - (%s::text || ' days')::interval;
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (str(days),))
+                deleted = cur.rowcount or 0
+            conn.commit()
+        return deleted
+    except Exception:
+        return 0
 
 
 def clear_receipt_events() -> None:

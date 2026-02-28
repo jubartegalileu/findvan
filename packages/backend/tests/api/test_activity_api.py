@@ -37,3 +37,14 @@ def test_activity_limit_validation():
     client = build_client()
     response = client.get("/api/activity?limit=0")
     assert response.status_code == 422
+
+
+def test_activity_limit_is_capped_in_response(monkeypatch):
+    monkeypatch.setattr(activity_api, "prune_old_activity_events", lambda retention_days=None: 0)
+    monkeypatch.setattr(activity_api, "list_activity_events", lambda limit: [])
+    client = build_client()
+    response = client.get("/api/activity?limit=999")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["applied_limit"] == 50

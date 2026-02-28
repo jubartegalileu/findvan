@@ -90,6 +90,7 @@ def test_messaging_receipt_list_returns_most_recent_first():
 
     payload = response.json()
     assert payload["status"] == "ok"
+    assert payload["applied_limit"] == 2
     assert len(payload["events"]) == 2
     assert payload["events"][0]["external_id"] == "SM-002"
     assert payload["events"][1]["external_id"] == "SM-001"
@@ -162,3 +163,12 @@ def test_messaging_receipt_allows_same_external_id_for_different_event_type():
     payload = listed.json()
     assert len(payload["events"]) == 2
     assert {payload["events"][0]["event_type"], payload["events"][1]["event_type"]} == {"delivered", "failed"}
+
+
+def test_messaging_receipt_limit_is_capped():
+    client = build_client()
+    response = client.get("/api/integrations/messaging/receipts?limit=1000")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["applied_limit"] == 100

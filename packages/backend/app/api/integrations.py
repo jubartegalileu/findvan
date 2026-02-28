@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..integrations import (
@@ -15,7 +15,12 @@ from ..integrations import (
 )
 from ..integrations.contracts import OutboundMessage, to_dict
 from ..integrations.registry import get_messaging_provider
-from ..services.messaging_receipts_service import list_receipt_events, register_receipt_event
+from ..services.messaging_receipts_service import (
+    get_capped_receipt_limit,
+    list_receipt_events,
+    prune_old_receipt_events,
+    register_receipt_event,
+)
 
 
 router = APIRouter()
@@ -93,9 +98,16 @@ def post_messaging_receipt(payload: ReceiptPayload):
 
 
 @router.get("/messaging/receipts")
-def get_messaging_receipts(limit: int = 20):
+def get_messaging_receipts(limit: int = Query(default=20, ge=1), retention_days: int | None = Query(default=None, ge=1)):
     try:
-        return {"status": "ok", "events": list_receipt_events(limit)}
+        pruned = prune_old_receipt_events(retention_days=retention_days)
+        applied_limit = get_capped_receipt_limit(limit)
+        return {
+            "status": "ok",
+            "events": list_receipt_events(applied_limit),
+            "applied_limit": applied_limit,
+            "retention_pruned": pruned,
+        }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

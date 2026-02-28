@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.services import messaging_receipts_service as service
 
@@ -11,6 +11,7 @@ class _FakeCursor:
         self.db = db
         self._one = None
         self._all = []
+        self.rowcount = 0
 
     def __enter__(self):
         return self
@@ -23,6 +24,7 @@ class _FakeCursor:
         normalized = " ".join(str(query).split()).lower()
         self._one = None
         self._all = []
+        self.rowcount = 0
 
         if normalized.startswith("insert into messaging_receipts"):
             (
@@ -66,6 +68,7 @@ class _FakeCursor:
             self.db["next_id"] += 1
             self.db["rows"].append(row)
             self._one = row
+            self.rowcount = 1
             return
 
         if "from messaging_receipts" in normalized and "where external_id" in normalized:
@@ -86,7 +89,15 @@ class _FakeCursor:
             return
 
         if normalized.startswith("delete from messaging_receipts"):
+            if "where received_at < now()" in normalized:
+                days = int(params[0])
+                threshold = datetime.now(tz=timezone.utc) - timedelta(days=days)
+                before = len(self.db["rows"])
+                self.db["rows"] = [row for row in self.db["rows"] if row[11] >= threshold]
+                self.rowcount = before - len(self.db["rows"])
+                return
             self.db["rows"].clear()
+            self.rowcount = 0
             return
 
         raise AssertionError(f"Unsupported query in fake cursor: {query}")
@@ -175,3 +186,21 @@ def test_register_receipt_idempotent_duplicate(monkeypatch):
     assert duplicate_dedup is True
     assert first["id"] == duplicate["id"]
     assert len(service.list_receipt_events(limit=10)) == 1
+
+
+def test_prune_old_receipts_removes_expired_rows(monkeypatch):
+    now = datetime.now(tz=timezone.utc)
+    fake_db = {
+        "rows": [
+            (1, "1.1.0", "delivered", "SM-OLD", "twilio", None, None, None, now - timedelta(days=40), None, {}, now - timedelta(days=40)),
+            (2, "1.1.0", "delivered", "SM-NEW", "twilio", None, None, None, now - timedelta(days=1), None, {}, now - timedelta(days=1)),
+        ],
+        "next_id": 3,
+    }
+    monkeypatch.setattr(service, "get_connection", lambda: _FakeConnection(fake_db))
+
+    deleted = service.prune_old_receipt_events(retention_days=30)
+    assert deleted == 1
+    listed = service.list_receipt_events(limit=10)
+    assert len(listed) == 1
+    assert listed[0]["external_id"] == "SM-NEW"

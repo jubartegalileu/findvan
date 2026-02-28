@@ -37,6 +37,8 @@
     "runtime:down": "bash scripts/runtime-profile.sh down",
     "runtime:status": "bash scripts/runtime-profile.sh status",
     "runtime:health": "bash scripts/runtime-profile.sh health",
+    "qa:smoke:e2e": "bash scripts/qa-smoke-e2e.sh",
+    "qa:smoke:e2e:external": "MANAGE_RUNTIME=0 bash scripts/qa-smoke-e2e.sh",
     "scraper:run": "cd packages/scraper && npm run scraper:google-maps",
     "clean": "rm -rf node_modules coverage .npm-cache && npm cache clean --force"
   },

@@ -1,19 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Bar } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Tooltip,
-  Legend,
-} from 'chart.js';
 import Layout from '../components/Layout.jsx';
 import Icon from '../components/Icon.jsx';
 import './dashboard.css';
 import { API_BASE } from '../lib/apiBase.js';
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
 const funnelMeta = {
   novo: { label: 'Novo', className: 'funnel-novo' },
@@ -298,43 +287,19 @@ export default function Dashboard({ onNavigate, activePath }) {
     ];
   }, [dashboardKpis, leads, lastRefresh]);
 
-  const weeklyChartData = useMemo(
-    () => ({
-      labels: weeklyPerformance.labels || [],
-      datasets: [
-        {
-          label: 'Mensagens enviadas',
-          data: weeklyPerformance.series || [],
-          borderRadius: 6,
-          backgroundColor: '#329d9c',
-        },
-      ],
-    }),
-    [weeklyPerformance]
-  );
-
-  const weeklyChartOptions = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { displayColors: false },
-      },
-      scales: {
-        x: {
-          ticks: { color: '#4c777d', font: { size: 11 } },
-          grid: { display: false },
-        },
-        y: {
-          ticks: { color: '#4c777d', font: { size: 11 }, precision: 0 },
-          grid: { color: 'rgba(32, 80, 114, 0.12)' },
-          beginAtZero: true,
-        },
-      },
-    }),
-    []
-  );
+  const weeklyBars = useMemo(() => {
+    const labels = weeklyPerformance.labels || [];
+    const values = weeklyPerformance.series || [];
+    const max = Math.max(1, ...values);
+    return labels.map((label, index) => {
+      const value = Number(values[index] || 0);
+      return {
+        label,
+        value,
+        height: Math.max(6, Math.round((value / max) * 100)),
+      };
+    });
+  }, [weeklyPerformance]);
 
   const activity = useMemo(
     () =>
@@ -544,7 +509,14 @@ export default function Dashboard({ onNavigate, activePath }) {
                 </div>
               </div>
               <div className="fv-weekly-chart">
-                <Bar data={weeklyChartData} options={weeklyChartOptions} />
+                {weeklyBars.map((item) => (
+                  <div key={item.label} className="fv-weekly-bar-item" title={`${item.label}: ${item.value}`}>
+                    <div className="fv-weekly-bar-track">
+                      <div className="fv-weekly-bar-fill" style={{ height: `${item.height}%` }} />
+                    </div>
+                    <span>{item.label}</span>
+                  </div>
+                ))}
               </div>
             </>
           ) : (

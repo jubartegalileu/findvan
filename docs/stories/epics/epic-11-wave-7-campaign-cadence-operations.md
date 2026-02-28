@@ -1,7 +1,7 @@
 # Epic 11 — Wave 7 Campaign Cadence Operations (Execution + Monitoring)
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Operação de Campanhas)
 **Wave:** 7
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Evoluir a adoção funcional de mensageria (Wave 6) para operação de campanhas
 
 ## Definition of Done
 
-- [ ] Stories 11.1, 11.2 e 11.3 implementadas e aprovadas
-- [ ] Execução de campanha em lote funcional com feedback operacional
-- [ ] Monitoramento básico de campanha disponível para operação SDR
-- [ ] Contrato incremental de receipts/webhooks aprovado sem breaking change
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 11.1, 11.2 e 11.3 implementadas e aprovadas
+- [x] Execução de campanha em lote funcional com feedback operacional
+- [x] Monitoramento básico de campanha disponível para operação SDR
+- [x] Contrato incremental de receipts/webhooks aprovado sem breaking change
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

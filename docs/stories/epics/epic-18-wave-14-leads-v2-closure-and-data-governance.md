@@ -1,7 +1,7 @@
 # Epic 18 — Wave 14 Leads v2 Closure & Data Governance
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (RF-L1..RF-L7 + consolidação Epic 4)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Fechamento funcional de Leads)
 **Wave:** 14
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Fechar pendências estruturantes de Leads v2 com foco em consistência de score/
 
 ## Definition of Done
 
-- [ ] Stories 18.1, 18.2 e 18.3 implementadas e aprovadas
-- [ ] Score/status de Leads consistentes para base histórica e novos eventos
-- [ ] Filtros e ações em lote estáveis em cenários operacionais
-- [ ] Governança de insights/histórico validada por PO
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 18.1, 18.2 e 18.3 implementadas e aprovadas
+- [x] Score/status de Leads consistentes para base histórica e novos eventos
+- [x] Filtros e ações em lote estáveis em cenários operacionais
+- [x] Governança de insights/histórico validada por PO
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

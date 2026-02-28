@@ -143,6 +143,18 @@ const getInteractionLabel = (type) => {
   return labels[type] || type;
 };
 
+const getInteractionContext = (item) => {
+  if (!item || typeof item !== 'object') return '';
+  const metadata = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+  if (item.type === 'status_change') {
+    const from = metadata.old_status || 'n/d';
+    const to = metadata.new_status || 'n/d';
+    const reason = metadata.loss_reason ? ` • motivo: ${metadata.loss_reason}` : '';
+    return `Transição: ${from} → ${to}${reason}`;
+  }
+  return '';
+};
+
 const isFollowUpOverdue = (lead) => {
   if (!lead.next_action_date) return false;
   const when = new Date(lead.next_action_date);
@@ -167,6 +179,7 @@ export default function Leads({ onNavigate, activePath }) {
   const [selectedFunnels, setSelectedFunnels] = useState([]);
   const [selectedSource, setSelectedSource] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
+  const [activeAlertFilter, setActiveAlertFilter] = useState('');
   const [capturedDateFrom, setCapturedDateFrom] = useState('');
   const [capturedDateTo, setCapturedDateTo] = useState('');
   const [scoreSort, setScoreSort] = useState('desc');
@@ -229,6 +242,7 @@ export default function Leads({ onNavigate, activePath }) {
         setSelectedFunnels(validFunnels);
         setSelectedSource(parsed.selectedSource || '');
         setSelectedTag(parsed.selectedTag || '');
+        setActiveAlertFilter(parsed.activeAlertFilter || '');
         setCapturedDateFrom(parsed.capturedDateFrom || '');
         setCapturedDateTo(parsed.capturedDateTo || '');
         setScoreSort(validScoreSort);
@@ -288,6 +302,7 @@ export default function Leads({ onNavigate, activePath }) {
           selectedFunnels,
           selectedSource,
           selectedTag,
+          activeAlertFilter,
           capturedDateFrom,
           capturedDateTo,
           scoreSort,
@@ -304,6 +319,7 @@ export default function Leads({ onNavigate, activePath }) {
     selectedFunnels,
     selectedSource,
     selectedTag,
+    activeAlertFilter,
     capturedDateFrom,
     capturedDateTo,
     scoreSort,
@@ -344,6 +360,7 @@ export default function Leads({ onNavigate, activePath }) {
       if (selectedFunnels.length > 0 && !selectedFunnels.includes(lead.funnel_status)) return false;
       if (selectedSource && lead.source !== selectedSource) return false;
       if (selectedTag && !(lead.tags || []).includes(selectedTag)) return false;
+      if (activeAlertFilter === 'overdue' && !isFollowUpOverdue(lead)) return false;
       if (selectedScoreRange === 'excellent' && !(lead.score >= 90)) return false;
       if (selectedScoreRange === 'good' && !(lead.score >= 70 && lead.score <= 89)) return false;
       if (selectedScoreRange === 'regular' && !(lead.score >= 50 && lead.score <= 69)) return false;
@@ -387,6 +404,7 @@ export default function Leads({ onNavigate, activePath }) {
     selectedFunnels,
     selectedSource,
     selectedTag,
+    activeAlertFilter,
     selectedScoreRange,
     capturedDateFrom,
     capturedDateTo,
@@ -476,6 +494,7 @@ export default function Leads({ onNavigate, activePath }) {
     selectedFunnels,
     selectedSource,
     selectedTag,
+    activeAlertFilter,
     selectedScoreRange,
     capturedDateFrom,
     capturedDateTo,
@@ -692,6 +711,7 @@ export default function Leads({ onNavigate, activePath }) {
     setSelectedFunnels([]);
     setSelectedSource('');
     setSelectedTag('');
+    setActiveAlertFilter('');
     setCapturedDateFrom('');
     setCapturedDateTo('');
     setScoreSort('desc');
@@ -992,6 +1012,7 @@ export default function Leads({ onNavigate, activePath }) {
   };
 
   const handleAlertFilter = (type) => {
+    setActiveAlertFilter(type);
     if (type === 'respondeu') {
       setSelectedFunnels(['respondeu']);
       return;
@@ -1364,6 +1385,21 @@ export default function Leads({ onNavigate, activePath }) {
               <button className="fv-alert-btn green" type="button" onClick={() => handleAlertFilter('novo')}>
                 Novos leads: {insights.alerts.newLeads}
               </button>
+              {activeAlertFilter && (
+                <div className="fv-row-sub">
+                  Filtro ativo: {activeAlertFilter}{' '}
+                  <button
+                    className="fv-ghost small"
+                    type="button"
+                    onClick={() => {
+                      setActiveAlertFilter('');
+                      setSelectedFunnels([]);
+                    }}
+                  >
+                    Limpar alerta
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="fv-activity-item">
@@ -1724,6 +1760,7 @@ export default function Leads({ onNavigate, activePath }) {
                       <span className="fv-activity-time">{formatDateTime(item.created_at)}</span>
                     </div>
                     <div className="fv-row-sub">{item.content || 'Sem conteúdo'}</div>
+                    {getInteractionContext(item) && <div className="fv-row-sub">{getInteractionContext(item)}</div>}
                     <div className="fv-row-sub">Autor: {item.author || 'sistema'}</div>
                   </div>
                 ))}

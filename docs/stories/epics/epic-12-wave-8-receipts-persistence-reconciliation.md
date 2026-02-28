@@ -1,7 +1,7 @@
 # Epic 12 — Wave 8 Receipts Persistence & Reconciliation
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Confiabilidade Operacional)
 **Wave:** 8
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Evoluir o monitoramento de mensageria da Wave 7 para um modelo confiável em pro
 
 ## Definition of Done
 
-- [ ] Stories 12.1, 12.2 e 12.3 implementadas e aprovadas
-- [ ] Receipts persistidos em storage durável com leitura operacional
-- [ ] Política de idempotência aplicada em webhooks sem breaking change
-- [ ] Reconciliação de status disponível com visibilidade de divergências
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 12.1, 12.2 e 12.3 implementadas e aprovadas
+- [x] Receipts persistidos em storage durável com leitura operacional
+- [x] Política de idempotência aplicada em webhooks sem breaking change
+- [x] Reconciliação de status disponível com visibilidade de divergências
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

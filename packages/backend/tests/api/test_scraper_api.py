@@ -130,3 +130,22 @@ def test_scraper_schedule_create_accepts_state_only(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["schedule"]["state"] == "SP"
+
+
+def test_scraper_coverage_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        scraper_api,
+        "get_scraper_coverage",
+        lambda: {
+            "states": [{"state": "SP", "cities_collected": 3, "total_leads": 120}],
+            "active_cities_total": 3,
+            "avg_leads_per_city": 40.0,
+            "next_city_suggestion": {"state": "RJ", "city": "Rio de Janeiro"},
+        },
+    )
+    client = build_client()
+    response = client.get("/api/scraper/coverage")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["coverage"]["states"][0]["state"] == "SP"
+    assert payload["coverage"]["next_city_suggestion"]["state"] == "RJ"

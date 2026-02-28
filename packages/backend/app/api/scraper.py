@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from ..services.scraper_service import (
     create_scraper_schedule,
     delete_scraper_schedule,
+    get_scraper_coverage,
     get_scraper_stats,
     get_keywords_profile,
     list_scraper_schedules,
@@ -77,6 +78,14 @@ def run_google_maps(payload: ScraperRequest):
 def scraper_stats():
     try:
         return {"status": "ok", "stats": get_scraper_stats()}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/coverage")
+def scraper_coverage():
+    try:
+        return {"status": "ok", "coverage": get_scraper_coverage()}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

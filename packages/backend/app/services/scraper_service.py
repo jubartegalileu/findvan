@@ -14,6 +14,18 @@ SCRAPER_DATA_DIR = REPO_ROOT / "packages" / "scraper" / "data" / "raw-leads"
 DEFAULT_KEYWORD = "transporte escolar"
 SCHEDULE_FREQUENCIES = {"daily", "weekly", "monthly"}
 MAX_ACTIVE_SCHEDULES = 5
+CAPITAL_SUGGESTIONS = [
+    {"state": "SP", "city": "São Paulo"},
+    {"state": "RJ", "city": "Rio de Janeiro"},
+    {"state": "MG", "city": "Belo Horizonte"},
+    {"state": "BA", "city": "Salvador"},
+    {"state": "PR", "city": "Curitiba"},
+    {"state": "RS", "city": "Porto Alegre"},
+    {"state": "PE", "city": "Recife"},
+    {"state": "CE", "city": "Fortaleza"},
+    {"state": "GO", "city": "Goiânia"},
+    {"state": "PA", "city": "Belém"},
+]
 
 
 def _resolve_chrome_binary() -> str:
@@ -425,6 +437,68 @@ def get_scraper_stats() -> dict:
         "validation_rate": validation_rate,
         "latest_total": latest_total,
         "latest_unique": latest_unique,
+    }
+
+
+def get_scraper_coverage() -> dict:
+    query = """
+        SELECT COALESCE(state, '') AS state, city, COALESCE(SUM(inserted_count), 0) AS inserted_total
+        FROM scraper_runs
+        WHERE status = 'completed'
+        GROUP BY COALESCE(state, ''), city;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            rows = cur.fetchall()
+
+    city_entries = []
+    for state, city, inserted_total in rows:
+        clean_state = str(state or "").strip().upper()
+        clean_city = str(city or "").strip()
+        if not clean_city:
+            continue
+        city_entries.append(
+            {
+                "state": clean_state,
+                "city": clean_city,
+                "inserted_total": int(inserted_total or 0),
+            }
+        )
+
+    states_map: dict[str, dict] = {}
+    for item in city_entries:
+        state_key = item["state"] or "--"
+        if state_key not in states_map:
+            states_map[state_key] = {
+                "state": state_key,
+                "cities_collected": 0,
+                "total_leads": 0,
+            }
+        states_map[state_key]["cities_collected"] += 1
+        states_map[state_key]["total_leads"] += item["inserted_total"]
+
+    states = sorted(
+        states_map.values(),
+        key=lambda item: (-item["cities_collected"], -item["total_leads"], item["state"]),
+    )
+    active_cities_total = len(city_entries)
+    total_leads = sum(item["inserted_total"] for item in city_entries)
+    avg_leads_per_city = round(total_leads / active_cities_total, 1) if active_cities_total else 0
+
+    collected_pairs = {(item["state"], item["city"].lower()) for item in city_entries}
+    next_city_suggestion = None
+    for suggestion in CAPITAL_SUGGESTIONS:
+        pair = (suggestion["state"], suggestion["city"].lower())
+        if pair not in collected_pairs:
+            next_city_suggestion = suggestion
+            break
+
+    return {
+        "states": states,
+        "active_cities_total": active_cities_total,
+        "avg_leads_per_city": avg_leads_per_city,
+        "next_city_suggestion": next_city_suggestion,
     }
 
 

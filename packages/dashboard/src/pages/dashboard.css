@@ -242,6 +242,11 @@ body,
   align-items: stretch;
 }
 
+.fv-columns-scraper {
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 28vw, 360px);
+  align-items: start;
+}
+
 .fv-columns-leads {
   grid-template-columns: minmax(0, 1fr) clamp(220px, 22vw, 320px);
   align-items: start;
@@ -267,6 +272,11 @@ body,
 
 .fv-scraper-section {
   margin-top: 24px;
+}
+
+.fv-scraper-coverage {
+  position: sticky;
+  top: 20px;
 }
 
 .fv-panel-compact {

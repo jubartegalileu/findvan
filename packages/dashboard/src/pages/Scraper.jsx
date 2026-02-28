@@ -56,6 +56,12 @@ export default function Scraper({ onNavigate, activePath }) {
   const [scheduleActive, setScheduleActive] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleMessage, setScheduleMessage] = useState('');
+  const [coverageData, setCoverageData] = useState({
+    states: [],
+    active_cities_total: 0,
+    avg_leads_per_city: 0,
+    next_city_suggestion: null,
+  });
   const [editingSchedule, setEditingSchedule] = useState(null);
   const [editScheduleState, setEditScheduleState] = useState('');
   const [editScheduleCity, setEditScheduleCity] = useState('');
@@ -192,9 +198,14 @@ export default function Scraper({ onNavigate, activePath }) {
           `${API_BASE}/api/scraper/schedules/`
         ),
       ]);
+      const coverageRes = await fetchWithFallback(
+        `${API_BASE}/api/scraper/coverage`,
+        `${API_BASE}/api/scraper/coverage/`
+      );
       const statsPayload = await statsRes.json();
       const runsPayload = await runsRes.json();
       const schedulesPayload = await schedulesRes.json();
+      const coveragePayload = await coverageRes.json();
 
       if (statsRes.ok && statsPayload?.stats) {
         setStatsData(statsPayload.stats);
@@ -225,6 +236,9 @@ export default function Scraper({ onNavigate, activePath }) {
 
       if (schedulesRes.ok && Array.isArray(schedulesPayload?.schedules)) {
         setSchedules(schedulesPayload.schedules);
+      }
+      if (coverageRes.ok && coveragePayload?.coverage) {
+        setCoverageData(coveragePayload.coverage);
       }
     } catch (error) {
       // keep previous UI values on fetch failure
@@ -807,7 +821,8 @@ export default function Scraper({ onNavigate, activePath }) {
         </div>
       </section>
 
-      <section className="fv-panel fv-scraper-section">
+      <section className="fv-columns fv-columns-scraper">
+        <div className="fv-panel fv-scraper-section">
         <div className="fv-panel-header">
           <h2>Execuções em andamento</h2>
           <button className="fv-ghost small">Ver histórico</button>
@@ -849,6 +864,58 @@ export default function Scraper({ onNavigate, activePath }) {
             <div className="fv-row-sub">Sem execuções registradas ainda.</div>
           )}
         </div>
+        </div>
+
+        <aside className="fv-panel fv-scraper-section fv-scraper-coverage">
+          <div className="fv-panel-header">
+            <h2>Mapa de cobertura</h2>
+          </div>
+          <div className="fv-activity">
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Cidades ativas</div>
+              <div className="fv-row-sub">{coverageData.active_cities_total || 0}</div>
+            </div>
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Média leads/cidade</div>
+              <div className="fv-row-sub">{Number(coverageData.avg_leads_per_city || 0).toLocaleString('pt-BR')}</div>
+            </div>
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Próxima cidade sugerida</div>
+              {coverageData.next_city_suggestion ? (
+                <div className="fv-row-sub">
+                  {coverageData.next_city_suggestion.city} • {coverageData.next_city_suggestion.state}
+                </div>
+              ) : (
+                <div className="fv-row-sub">Sem sugestão no momento.</div>
+              )}
+            </div>
+          </div>
+          <div className="fv-divider" />
+          <div className="fv-table">
+            {(coverageData.states || []).map((item) => {
+              const maxCities = Math.max(
+                1,
+                ...(coverageData.states || []).map((stateItem) => Number(stateItem.cities_collected || 0))
+              );
+              const width = Math.max(8, Math.round((Number(item.cities_collected || 0) / maxCities) * 100));
+              return (
+                <div key={`coverage-${item.state}`} className="fv-activity-item">
+                  <div className="fv-activity-head">
+                    <div className="fv-activity-title">{item.state}</div>
+                    <span className="fv-row-sub">{item.cities_collected} cidades</span>
+                  </div>
+                  <div className="fv-funnel-track">
+                    <div className="fv-funnel-fill" style={{ width: `${width}%` }} />
+                  </div>
+                  <div className="fv-row-sub">{item.total_leads} leads inseridos</div>
+                </div>
+              );
+            })}
+            {(coverageData.states || []).length === 0 && (
+              <div className="fv-row-sub">Sem cobertura registrada ainda.</div>
+            )}
+          </div>
+        </aside>
       </section>
 
       {editingSchedule && (

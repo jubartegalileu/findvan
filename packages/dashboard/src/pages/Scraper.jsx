@@ -600,7 +600,7 @@ export default function Scraper({ onNavigate, activePath }) {
         </div>
       </section>
 
-      <section className="fv-panel">
+      <section className="fv-panel fv-scraper-section">
         <div className="fv-panel-header">
           <h2>Agendamentos</h2>
           <span className="fv-row-sub">{schedules.filter((item) => item.is_active).length}/5 ativos</span>
@@ -715,7 +715,7 @@ export default function Scraper({ onNavigate, activePath }) {
         </div>
       </section>
 
-      <section className="fv-panel">
+      <section className="fv-panel fv-scraper-section">
         <div className="fv-panel-header">
           <h2>Execuções em andamento</h2>
           <button className="fv-ghost small">Ver histórico</button>

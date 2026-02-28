@@ -258,6 +258,10 @@ body,
   overflow: hidden;
 }
 
+.fv-scraper-section {
+  margin-top: 24px;
+}
+
 .fv-panel-compact {
   padding: 18px 22px;
   margin-bottom: 20px;

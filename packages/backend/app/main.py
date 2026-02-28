@@ -8,6 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import logging
 from pathlib import Path
+from .db import ensure_schema
+from .api import leads as leads_api
+from .api import scraper as scraper_api
 
 # Configure logging
 logging.basicConfig(
@@ -65,15 +68,10 @@ async def root():
 
 
 # ============================================================
-# API Routes (Placeholder)
+# API Routes
 # ============================================================
-# TODO: Import and include routers when implemented
-
-# from .api import leads, scrapers, conversations, auth
-# app.include_router(leads.router, prefix="/api/leads", tags=["leads"])
-# app.include_router(scrapers.router, prefix="/api/scraper", tags=["scraper"])
-# app.include_router(conversations.router, prefix="/api/conversations", tags=["conversations"])
-# app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(leads_api.router, prefix="/api/leads", tags=["leads"])
+app.include_router(scraper_api.router, prefix="/api/scraper", tags=["scraper"])
 
 
 # ============================================================
@@ -83,9 +81,7 @@ async def root():
 async def startup_event():
     """Initialize on startup"""
     logger.info("🚀 FindVan Backend starting...")
-    # TODO: Initialize database connection
-    # TODO: Initialize Redis connection
-    # TODO: Initialize Celery worker
+    ensure_schema()
     logger.info("✅ Backend ready")
 
 

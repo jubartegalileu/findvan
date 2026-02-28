@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14-alpine
+    container_name: findvan-postgres
+    environment:
+      POSTGRES_USER: findvan
+      POSTGRES_PASSWORD: findvan123
+      POSTGRES_DB: findvan
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U findvan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: node:18-alpine
+    container_name: findvan-backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: findvan
+      DB_USER: findvan
+      DB_PASSWORD: findvan123
+      NODE_ENV: production
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./packages/backend:/home/node/app
+    working_dir: /home/node/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npm install && node src/index.js"
+
+  frontend:
+    image: node:18-alpine
+    container_name: findvan-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:3001/api
+    volumes:
+      - ./packages/frontend:/home/node/app
+    working_dir: /home/node/app
+    depends_on:
+      - backend
+    command: sh -c "npm install && npm run dev"
+
+volumes:
+  postgres_data:

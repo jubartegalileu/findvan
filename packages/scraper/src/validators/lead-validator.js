@@ -12,10 +12,15 @@ export const validatePhone = (phone) => {
   if (!phone) return false;
 
   // Remove non-digits
-  const cleaned = phone.replace(/\D/g, '');
+  let cleaned = phone.replace(/\D/g, '');
 
-  // Check if 11 digits (Brazil format)
-  return cleaned.length === 11 && /^\d{11}$/.test(cleaned);
+  // Handle country code (+55XXXXXXXXXXX)
+  if (cleaned.length >= 12 && cleaned.startsWith('55')) {
+    cleaned = cleaned.slice(2);
+  }
+
+  // Accept 10 or 11 digits in Brazil local format
+  return (cleaned.length === 10 || cleaned.length === 11) && /^\d+$/.test(cleaned);
 };
 
 /**
@@ -36,7 +41,7 @@ export const validateEmail = (email) => {
  * @returns {boolean} true if non-empty
  */
 export const validateAddress = (address) => {
-  if (!address) return false;
+  if (!address) return true; // optional in practice
   return address.trim().length > 0;
 };
 
@@ -52,12 +57,20 @@ export const validateLead = (lead) => {
     errors.push('Missing or empty name');
   }
 
-  if (!validatePhone(lead.phone)) {
+  const hasPhone = !!lead.phone;
+  const hasEmail = !!lead.email;
+  const hasAddress = !!lead.address;
+
+  if (!hasPhone && !hasEmail && !hasAddress) {
+    errors.push('Lead has no contact data (phone/email/address)');
+  }
+
+  if (hasPhone && !validatePhone(lead.phone)) {
     errors.push(`Invalid phone format: ${lead.phone}`);
   }
 
   if (!validateAddress(lead.address)) {
-    errors.push('Missing or empty address');
+    errors.push('Invalid address');
   }
 
   if (lead.email && !validateEmail(lead.email)) {
@@ -78,15 +91,15 @@ export const validateLead = (lead) => {
 export const normalizePhone = (phone) => {
   if (!phone) return null;
 
-  const cleaned = phone.replace(/\D/g, '');
+  let cleaned = phone.replace(/\D/g, '');
 
-  // Handle Brazilian format: if 10 digits, assume missing first area code digit
-  // If 11 digits, return as-is
-  if (cleaned.length === 11) {
+  if (cleaned.length >= 12 && cleaned.startsWith('55')) {
+    cleaned = cleaned.slice(2);
+  }
+
+  // Accept 10 or 11 digits
+  if (cleaned.length === 11 || cleaned.length === 10) {
     return cleaned;
-  } else if (cleaned.length === 10) {
-    // Add missing digit (assuming local format without area code)
-    return null; // Invalid
   }
 
   return null;

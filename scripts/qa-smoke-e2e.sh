@@ -14,6 +14,7 @@ DASHBOARD_BASE="http://${DASHBOARD_HOST}:${DASHBOARD_PORT}"
 
 EVIDENCE_ROOT="${EVIDENCE_ROOT:-/tmp/findvan-qa-e2e-smoke}"
 MANAGE_RUNTIME="${MANAGE_RUNTIME:-1}"
+ENABLE_VISUAL_SMOKE="${ENABLE_VISUAL_SMOKE:-1}"
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 RUN_DIR="$EVIDENCE_ROOT/$RUN_ID"
 mkdir -p "$RUN_DIR/bodies"
@@ -116,6 +117,19 @@ run_check "ui-dashboard" "ui" "$DASHBOARD_BASE/dashboard"
 run_check "ui-scraper" "ui" "$DASHBOARD_BASE/scraper"
 run_check "ui-leads" "ui" "$DASHBOARD_BASE/leads"
 
+if [[ "$ENABLE_VISUAL_SMOKE" == "1" ]]; then
+  if (
+    cd "$ROOT_DIR/packages/scraper" &&
+    node scripts/qa-visual-smoke.js "$DASHBOARD_BASE" "$RUN_DIR"
+  ); then
+    pass_count=$((pass_count + 1))
+    echo -e "visual-smoke\tui\t$DASHBOARD_BASE\t200\tPASS\tscreenshots generated" >> "$CHECKS_FILE"
+  else
+    fail_count=$((fail_count + 1))
+    echo -e "visual-smoke\tui\t$DASHBOARD_BASE\t000\tFAIL\tvisual smoke failed (see visual-summary.json)" >> "$CHECKS_FILE"
+  fi
+fi
+
 node - <<'NODE' "$CHECKS_FILE" "$SUMMARY_JSON" "$RUN_ID" "$BACKEND_BASE" "$DASHBOARD_BASE"
 const fs = require('fs');
 const [checksPath, summaryPath, runId, backendBase, dashboardBase] = process.argv.slice(2);
@@ -154,6 +168,8 @@ cat > "$SUMMARY_MD" <<MARKDOWN
 - fail: $fail_count
 - checks_file: $CHECKS_FILE
 - summary_json: $SUMMARY_JSON
+- visual_summary: $RUN_DIR/visual-summary.json
+- screenshots_dir: $RUN_DIR/screenshots
 MARKDOWN
 
 ln -sfn "$RUN_DIR" "$EVIDENCE_ROOT/latest"

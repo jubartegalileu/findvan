@@ -22,8 +22,9 @@ O script faz:
 2. Health check de backend/dashboard.
 3. Smoke de APIs essenciais (Dashboard, Scraper, Leads, Activity).
 4. Smoke de rotas de UI (`/dashboard`, `/scraper`, `/leads`).
-5. Geração de evidências em `/tmp/findvan-qa-e2e-smoke/<run_id>/`.
-6. `runtime down` ao final (pass/fail).
+5. Smoke visual automatizado com screenshots das 3 rotas principais.
+6. Geração de evidências em `/tmp/findvan-qa-e2e-smoke/<run_id>/`.
+7. `runtime down` ao final (pass/fail).
 
 Modo alternativo (sem gerenciar runtime, para ambientes já ativos):
 
@@ -38,6 +39,10 @@ Diretório por execução:
 - `/tmp/findvan-qa-e2e-smoke/<run_id>/checks.tsv`
 - `/tmp/findvan-qa-e2e-smoke/<run_id>/summary.json`
 - `/tmp/findvan-qa-e2e-smoke/<run_id>/summary.md`
+- `/tmp/findvan-qa-e2e-smoke/<run_id>/visual-summary.json`
+- `/tmp/findvan-qa-e2e-smoke/<run_id>/screenshots/dashboard.png`
+- `/tmp/findvan-qa-e2e-smoke/<run_id>/screenshots/scraper.png`
+- `/tmp/findvan-qa-e2e-smoke/<run_id>/screenshots/leads.png`
 - `/tmp/findvan-qa-e2e-smoke/<run_id>/bodies/*.txt`
 
 Atalho da última execução:
@@ -48,7 +53,8 @@ Atalho da última execução:
 
 1. Todos os checks HTTP em `2xx`.
 2. Rotas de UI retornando HTML válido.
-3. `summary.json` com `totals.fail = 0`.
+3. Smoke visual sem erro fatal e com screenshots geradas.
+4. `summary.json` com `totals.fail = 0`.
 
 ## Checklist de gate @qa
 

@@ -106,7 +106,9 @@ _CONTRACTS = {
             "required_fields": ["lead_id", "to", "content"],
             "optional_fields": ["template_id", "idempotency_key", "metadata"],
             "status_flow": ["queued", "sent", "delivered", "failed"],
-            "features": ["template_send", "provider_receipt", "idempotency"],
+            "receipt_events": ["delivered", "failed", "replied"],
+            "webhook_required_fields": ["event_type", "external_id", "provider"],
+            "features": ["template_send", "provider_receipt", "idempotency", "webhook_receipts"],
         },
         "osint": {
             "sources": ["google_maps", "facebook", "linkedin", "manual"],

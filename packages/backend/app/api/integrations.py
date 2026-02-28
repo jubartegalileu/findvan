@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -14,6 +15,7 @@ from ..integrations import (
 )
 from ..integrations.contracts import OutboundMessage, to_dict
 from ..integrations.registry import get_messaging_provider
+from ..services.messaging_receipts_service import list_receipt_events, register_receipt_event
 
 
 router = APIRouter()
@@ -27,6 +29,19 @@ class SendMessagePayload(BaseModel):
     metadata: dict = Field(default_factory=dict)
     dry_run: bool = True
     provider: str | None = None
+
+
+class ReceiptPayload(BaseModel):
+    version: str | None = "1.1.0"
+    event_type: Literal["delivered", "failed", "replied"]
+    external_id: str = Field(..., min_length=1)
+    provider: str = Field(..., min_length=1)
+    lead_id: str | None = None
+    campaign_id: str | None = None
+    to: str | None = None
+    occurred_at: datetime | None = None
+    status_detail: str | None = Field(default=None, max_length=500)
+    metadata: dict = Field(default_factory=dict)
 
 
 @router.get("/contracts")
@@ -47,6 +62,40 @@ def get_integration_contracts(version: str | None = None, include_compat: bool =
         return payload
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/messaging/receipts")
+def post_messaging_receipt(payload: ReceiptPayload):
+    try:
+        selected_version = normalize_contract_version(payload.version)
+        occurred_at = payload.occurred_at or datetime.now(tz=timezone.utc)
+        event = register_receipt_event(
+            {
+                "version": selected_version,
+                "event_type": payload.event_type,
+                "external_id": payload.external_id,
+                "provider": payload.provider,
+                "lead_id": payload.lead_id,
+                "campaign_id": payload.campaign_id,
+                "to": payload.to,
+                "occurred_at": occurred_at.isoformat(),
+                "status_detail": payload.status_detail,
+                "metadata": payload.metadata or {},
+            }
+        )
+        return {"status": "ok", "event": event}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/messaging/receipts")
+def get_messaging_receipts(limit: int = 20):
+    try:
+        return {"status": "ok", "events": list_receipt_events(limit)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

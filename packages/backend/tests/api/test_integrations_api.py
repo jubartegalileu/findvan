@@ -35,6 +35,7 @@ def test_integration_contracts_endpoint_accepts_v1_1():
     assert payload["version"] == "1.1.0"
     assert payload["contract"]["version"] == "1.1.0"
     assert "idempotency_key" in payload["contract"]["messaging"]["optional_fields"]
+    assert "replied" in payload["contract"]["messaging"]["receipt_events"]
     assert "confidence_score" in payload["contract"]["osint"]["recommended_fields"]
 
 

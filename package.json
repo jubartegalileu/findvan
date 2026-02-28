@@ -33,6 +33,10 @@
     "docker:up": "docker-compose -f .docker/docker-compose.yml up -d",
     "docker:down": "docker-compose -f .docker/docker-compose.yml down",
     "docker:logs": "docker-compose -f .docker/docker-compose.yml logs -f",
+    "runtime:up": "bash scripts/runtime-profile.sh up",
+    "runtime:down": "bash scripts/runtime-profile.sh down",
+    "runtime:status": "bash scripts/runtime-profile.sh status",
+    "runtime:health": "bash scripts/runtime-profile.sh health",
     "scraper:run": "cd packages/scraper && npm run scraper:google-maps",
     "clean": "rm -rf node_modules coverage .npm-cache && npm cache clean --force"
   },

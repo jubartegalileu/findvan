@@ -27,3 +27,50 @@ def test_start_retention_job_respects_disabled_flag(monkeypatch):
     status = service.start_retention_job()
     assert status["enabled"] is False
     assert status["running"] is False
+
+
+def test_start_retention_job_keeps_api_without_local_worker(monkeypatch):
+    monkeypatch.setenv("RETENTION_JOB_ENABLED", "1")
+    status = service.start_retention_job()
+    assert status["enabled"] is True
+    assert status["running"] is False
+    assert status["thread_alive"] is False
+
+
+def test_worker_run_once_executes_cycle_when_lock_acquired(monkeypatch):
+    monkeypatch.setenv("RETENTION_JOB_ENABLED", "1")
+
+    calls = {"cycles": 0}
+
+    monkeypatch.setattr(service, "acquire_lock", lambda *args, **kwargs: {"acquired": True, "lock": {"owner_id": "w1"}})
+    monkeypatch.setattr(service, "renew_lock", lambda *args, **kwargs: {"renewed": True})
+    monkeypatch.setattr(service, "release_lock", lambda *args, **kwargs: True)
+
+    def _fake_cycle(*args, **kwargs):
+        calls["cycles"] += 1
+        return {"status": "ok", "deleted": {"receipts": 0, "activity": 0, "total": 0}, "duration_ms": 1}
+
+    monkeypatch.setattr(service, "run_retention_cycle", _fake_cycle)
+
+    status = service.run_retention_worker(run_once=True)
+    assert calls["cycles"] == 1
+    assert status["running"] is False
+
+
+def test_worker_run_once_skips_cycle_when_lock_not_acquired(monkeypatch):
+    monkeypatch.setenv("RETENTION_JOB_ENABLED", "1")
+
+    calls = {"cycles": 0}
+    monkeypatch.setattr(service, "acquire_lock", lambda *args, **kwargs: {"acquired": False, "lock": {"owner_id": "other"}})
+    monkeypatch.setattr(service, "release_lock", lambda *args, **kwargs: False)
+    monkeypatch.setattr(service, "renew_lock", lambda *args, **kwargs: {"renewed": False})
+
+    def _fake_cycle(*args, **kwargs):
+        calls["cycles"] += 1
+        return {"status": "ok"}
+
+    monkeypatch.setattr(service, "run_retention_cycle", _fake_cycle)
+
+    status = service.run_retention_worker(run_once=True)
+    assert calls["cycles"] == 0
+    assert status["running"] is False

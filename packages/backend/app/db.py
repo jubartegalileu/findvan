@@ -160,6 +160,40 @@ CREATE INDEX IF NOT EXISTS idx_messaging_receipts_external ON messaging_receipts
 CREATE INDEX IF NOT EXISTS idx_messaging_receipts_provider_event ON messaging_receipts(provider, event_type);
 """
 
+JOB_LOCKS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS distributed_job_locks (
+  lock_name VARCHAR(100) PRIMARY KEY,
+  owner_id VARCHAR(255) NOT NULL,
+  acquired_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  heartbeat_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_distributed_job_locks_owner ON distributed_job_locks(owner_id);
+CREATE INDEX IF NOT EXISTS idx_distributed_job_locks_expires ON distributed_job_locks(expires_at);
+"""
+
+RETENTION_STATUS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS retention_job_status (
+  job_name VARCHAR(100) PRIMARY KEY,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  running BOOLEAN NOT NULL DEFAULT false,
+  interval_seconds INTEGER NOT NULL DEFAULT 300,
+  retention_receipts_days INTEGER NOT NULL DEFAULT 30,
+  retention_activity_days INTEGER NOT NULL DEFAULT 30,
+  owner_id VARCHAR(255),
+  last_run_at TIMESTAMP,
+  last_success_at TIMESTAMP,
+  last_duration_ms INTEGER NOT NULL DEFAULT 0,
+  last_deleted_receipts INTEGER NOT NULL DEFAULT 0,
+  last_deleted_activity INTEGER NOT NULL DEFAULT 0,
+  last_deleted_total INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  run_count INTEGER NOT NULL DEFAULT 0,
+  fail_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+"""
+
 
 @contextmanager
 def get_connection():
@@ -181,4 +215,6 @@ def ensure_schema():
             cur.execute(LEAD_TAGS_TABLE_SQL)
             cur.execute(LEAD_INTERACTIONS_TABLE_SQL)
             cur.execute(MESSAGING_RECEIPTS_TABLE_SQL)
+            cur.execute(JOB_LOCKS_TABLE_SQL)
+            cur.execute(RETENTION_STATUS_TABLE_SQL)
         conn.commit()

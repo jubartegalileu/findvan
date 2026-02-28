@@ -14,7 +14,7 @@ from .api import scraper as scraper_api
 from .api import dashboard as dashboard_api
 from .api import activity as activity_api
 from .api import integrations as integrations_api
-from .services.retention_jobs_service import get_retention_job_status, start_retention_job, stop_retention_job
+from .services.retention_jobs_service import get_retention_job_status, start_retention_job
 
 # Configure logging
 logging.basicConfig(
@@ -109,7 +109,6 @@ async def startup_event():
 async def shutdown_event():
     """Cleanup on shutdown"""
     logger.info("⛔ FindVan Backend shutting down...")
-    stop_retention_job()
     # TODO: Close database connection
     # TODO: Close Redis connection
     logger.info("✅ Shutdown complete")

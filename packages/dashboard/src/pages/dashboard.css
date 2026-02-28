@@ -239,6 +239,7 @@ body,
 
 .fv-columns-analytics {
   margin-bottom: 24px;
+  align-items: stretch;
 }
 
 .fv-columns-leads {
@@ -256,6 +257,12 @@ body,
   padding: 22px;
   box-shadow: 0 20px 40px rgba(32, 80, 114, 0.1);
   overflow: hidden;
+}
+
+.fv-analytics-panel {
+  min-height: 470px;
+  display: flex;
+  flex-direction: column;
 }
 
 .fv-scraper-section {
@@ -970,6 +977,13 @@ body,
   gap: 12px;
 }
 
+.fv-activity-scroll {
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 4px;
+  align-content: start;
+}
+
 .fv-activity-item {
   background: #edf9f0;
   padding: 12px 14px;
@@ -1044,6 +1058,10 @@ body,
 
 .fv-weekly-chart {
   height: 180px;
+}
+
+.fv-weekly-empty {
+  margin-top: 8px;
 }
 
 .fv-alert-pill {

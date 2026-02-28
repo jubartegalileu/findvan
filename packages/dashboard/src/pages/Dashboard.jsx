@@ -145,7 +145,7 @@ export default function Dashboard({ onNavigate, activePath }) {
           `${API_BASE}/api/dashboard/weekly-performance`,
           `${API_BASE}/api/dashboard/weekly-performance/`
         ),
-        fetchWithFallback(`${API_BASE}/api/activity?limit=20`, `${API_BASE}/api/activity/?limit=20`),
+        fetchWithFallback(`${API_BASE}/api/activity?limit=15`, `${API_BASE}/api/activity/?limit=15`),
       ]);
 
       const [
@@ -206,7 +206,7 @@ export default function Dashboard({ onNavigate, activePath }) {
           `${API_BASE}/api/dashboard/weekly-performance`,
           `${API_BASE}/api/dashboard/weekly-performance/`
         ),
-        fetchWithFallback(`${API_BASE}/api/activity?limit=20`, `${API_BASE}/api/activity/?limit=20`),
+        fetchWithFallback(`${API_BASE}/api/activity?limit=15`, `${API_BASE}/api/activity/?limit=15`),
       ]);
       const [weeklyPayload, activityPayload] = await Promise.all([weeklyRes.json(), activityRes.json()]);
 
@@ -315,6 +315,8 @@ export default function Dashboard({ onNavigate, activePath }) {
     [activityEvents]
   );
 
+  const activityRecent = useMemo(() => activity.slice(0, 15), [activity]);
+
   const exportLeads = () => {
     if (!leads.length) {
       setErrorMessage('Não há leads para exportar.');
@@ -404,7 +406,7 @@ export default function Dashboard({ onNavigate, activePath }) {
       </section>
 
       <section className="fv-columns fv-columns-dashboard">
-        <div className="fv-panel">
+        <div className="fv-panel fv-analytics-panel">
           <div className="fv-panel-header">
             <h2 className="fv-icon-label">
               <Icon name="activity" />
@@ -520,11 +522,11 @@ export default function Dashboard({ onNavigate, activePath }) {
               </div>
             </>
           ) : (
-            <div className="fv-row-sub">Sem dados de envio</div>
+            <div className="fv-row-sub fv-weekly-empty">Sem dados de envio</div>
           )}
         </div>
 
-        <div className="fv-panel">
+        <div className="fv-panel fv-analytics-panel">
           <div className="fv-panel-header">
             <h2 className="fv-icon-label">
               <Icon name="activity" />
@@ -534,8 +536,8 @@ export default function Dashboard({ onNavigate, activePath }) {
               Ver histórico
             </button>
           </div>
-          <div className="fv-activity">
-            {activity.map((item) => (
+          <div className="fv-activity fv-activity-scroll">
+            {activityRecent.map((item) => (
               <div key={item.id} className={`fv-activity-item ${item.className}`}>
                 <div className="fv-activity-head">
                   <span className="fv-icon-label">
@@ -547,7 +549,7 @@ export default function Dashboard({ onNavigate, activePath }) {
                 <div className="fv-row-sub">{item.description || 'Sem descrição'}</div>
               </div>
             ))}
-            {activity.length === 0 && <div className="fv-row-sub">Sem atividade recente.</div>}
+            {activityRecent.length === 0 && <div className="fv-row-sub">Sem atividade recente.</div>}
           </div>
         </div>
       </section>

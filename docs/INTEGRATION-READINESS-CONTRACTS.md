@@ -48,6 +48,7 @@ Comportamento:
 ## Endpoint de contrato
 
 - `GET /api/integrations/contracts`
+- Versionamento: ver `docs/INTEGRATION-CONTRACT-VERSIONING.md`
 
 Retorno:
 - versão de contrato

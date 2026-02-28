@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Literal, Protocol
@@ -69,11 +70,24 @@ class OsintProvider(Protocol):
 
 
 CONTRACT_VERSION = "1.0.0"
+LATEST_CONTRACT_VERSION = "1.1.0"
 
 
-def contract_descriptor() -> dict:
-    return {
-        "version": CONTRACT_VERSION,
+_CONTRACT_ALIASES = {
+    "v1": "1.0.0",
+    "1": "1.0.0",
+    "1.0": "1.0.0",
+    "1.0.0": "1.0.0",
+    "v1.1": "1.1.0",
+    "1.1": "1.1.0",
+    "1.1.0": "1.1.0",
+    "latest": LATEST_CONTRACT_VERSION,
+}
+
+
+_CONTRACTS = {
+    "1.0.0": {
+        "version": "1.0.0",
         "messaging": {
             "channels": ["whatsapp"],
             "required_fields": ["lead_id", "to", "content"],
@@ -84,6 +98,61 @@ def contract_descriptor() -> dict:
             "required_fields": ["source", "name"],
             "recommended_fields": ["phone", "address", "city", "state", "url"],
         },
+    },
+    "1.1.0": {
+        "version": "1.1.0",
+        "messaging": {
+            "channels": ["whatsapp"],
+            "required_fields": ["lead_id", "to", "content"],
+            "optional_fields": ["template_id", "idempotency_key", "metadata"],
+            "status_flow": ["queued", "sent", "delivered", "failed"],
+            "features": ["template_send", "provider_receipt", "idempotency"],
+        },
+        "osint": {
+            "sources": ["google_maps", "facebook", "linkedin", "manual"],
+            "required_fields": ["source", "name"],
+            "recommended_fields": [
+                "phone",
+                "address",
+                "city",
+                "state",
+                "url",
+                "business_category",
+                "confidence_score",
+            ],
+            "features": ["source_attribution", "metadata_passthrough"],
+        },
+    },
+}
+
+
+def normalize_contract_version(version: str | None) -> str:
+    if version is None:
+        return CONTRACT_VERSION
+    normalized = _CONTRACT_ALIASES.get(str(version).strip().lower())
+    if not normalized:
+        raise ValueError("Unsupported contract version.")
+    return normalized
+
+
+def supported_contract_versions() -> list[str]:
+    return sorted(_CONTRACTS.keys())
+
+
+def contract_descriptor(version: str | None = None) -> dict:
+    selected_version = normalize_contract_version(version)
+    if selected_version not in _CONTRACTS:
+        raise ValueError("Unsupported contract version.")
+    return deepcopy(_CONTRACTS[selected_version])
+
+
+def contract_compatibility() -> dict:
+    return {
+        "default_version": CONTRACT_VERSION,
+        "latest_version": LATEST_CONTRACT_VERSION,
+        "supported_versions": supported_contract_versions(),
+        "backward_compatible": True,
+        "policy": "minor version additions only; no breaking removals",
     }
 
 

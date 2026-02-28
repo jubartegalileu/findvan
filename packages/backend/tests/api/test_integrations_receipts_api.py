@@ -31,6 +31,7 @@ def test_messaging_receipt_accepts_v1_1_payload():
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
+    assert payload["idempotent"] is False
     assert payload["event"]["version"] == "1.1.0"
     assert payload["event"]["event_type"] == "delivered"
     assert payload["event"]["external_id"] == "SM-001"
@@ -92,3 +93,72 @@ def test_messaging_receipt_list_returns_most_recent_first():
     assert len(payload["events"]) == 2
     assert payload["events"][0]["external_id"] == "SM-002"
     assert payload["events"][1]["external_id"] == "SM-001"
+
+
+def test_messaging_receipt_duplicate_event_is_idempotent():
+    client = build_client()
+    first = client.post(
+        "/api/integrations/messaging/receipts",
+        json={
+            "version": "1.1",
+            "event_type": "delivered",
+            "external_id": "SM-777",
+            "provider": "twilio",
+            "lead_id": "42",
+        },
+    )
+    assert first.status_code == 200
+    first_payload = first.json()
+    assert first_payload["idempotent"] is False
+
+    duplicate = client.post(
+        "/api/integrations/messaging/receipts",
+        json={
+            "version": "1.1",
+            "event_type": "delivered",
+            "external_id": "SM-777",
+            "provider": "twilio",
+            "lead_id": "42",
+        },
+    )
+    assert duplicate.status_code == 200
+    duplicate_payload = duplicate.json()
+    assert duplicate_payload["idempotent"] is True
+    assert duplicate_payload["event"]["received_at"] == first_payload["event"]["received_at"]
+
+    listed = client.get("/api/integrations/messaging/receipts?limit=5")
+    assert listed.status_code == 200
+    assert len(listed.json()["events"]) == 1
+
+
+def test_messaging_receipt_allows_same_external_id_for_different_event_type():
+    client = build_client()
+    delivered = client.post(
+        "/api/integrations/messaging/receipts",
+        json={
+            "version": "1.1",
+            "event_type": "delivered",
+            "external_id": "SM-888",
+            "provider": "twilio",
+        },
+    )
+    failed = client.post(
+        "/api/integrations/messaging/receipts",
+        json={
+            "version": "1.1",
+            "event_type": "failed",
+            "external_id": "SM-888",
+            "provider": "twilio",
+        },
+    )
+
+    assert delivered.status_code == 200
+    assert failed.status_code == 200
+    assert delivered.json()["idempotent"] is False
+    assert failed.json()["idempotent"] is False
+
+    listed = client.get("/api/integrations/messaging/receipts?limit=5")
+    assert listed.status_code == 200
+    payload = listed.json()
+    assert len(payload["events"]) == 2
+    assert {payload["events"][0]["event_type"], payload["events"][1]["event_type"]} == {"delivered", "failed"}

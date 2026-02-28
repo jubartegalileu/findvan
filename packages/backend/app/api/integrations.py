@@ -71,7 +71,7 @@ def post_messaging_receipt(payload: ReceiptPayload):
     try:
         selected_version = normalize_contract_version(payload.version)
         occurred_at = payload.occurred_at or datetime.now(tz=timezone.utc)
-        event = register_receipt_event(
+        event, deduplicated = register_receipt_event(
             {
                 "version": selected_version,
                 "event_type": payload.event_type,
@@ -85,7 +85,7 @@ def post_messaging_receipt(payload: ReceiptPayload):
                 "metadata": payload.metadata or {},
             }
         )
-        return {"status": "ok", "event": event}
+        return {"status": "ok", "event": event, "idempotent": deduplicated}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

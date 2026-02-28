@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout.jsx';
 import { API_BASE } from '../lib/apiBase.js';
+import {
+  addMessagingActivity,
+  clearMessagingActivity,
+  readMessagingActivity,
+} from '../lib/messagingActivity.js';
 import './dashboard.css';
 
 const campaigns = [
@@ -39,6 +44,7 @@ export default function WhatsApp({ onNavigate, activePath }) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const [sendResult, setSendResult] = useState(null);
+  const [activity, setActivity] = useState([]);
 
   const [form, setForm] = useState({
     lead_id: getInitialLeadId(),
@@ -80,6 +86,21 @@ export default function WhatsApp({ onNavigate, activePath }) {
 
   useEffect(() => {
     loadContracts();
+    setActivity(readMessagingActivity());
+
+    const onActivityUpdated = () => setActivity(readMessagingActivity());
+    const onStorage = (event) => {
+      if (event.key === 'findvan.messaging.activity.lastUpdate') {
+        onActivityUpdated();
+      }
+    };
+
+    window.addEventListener('findvan:messaging-activity-updated', onActivityUpdated);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('findvan:messaging-activity-updated', onActivityUpdated);
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   const onChangeField = (field, value) => {
@@ -117,11 +138,36 @@ export default function WhatsApp({ onNavigate, activePath }) {
       }
 
       setSendResult(body);
+      addMessagingActivity({
+        lead_id: payload.lead_id,
+        to: payload.to,
+        provider: body?.provider,
+        mode: body?.mode,
+        status: body?.receipt?.status,
+        message: payload.content,
+      });
     } catch (error) {
-      setSendError(error.message || 'Falha de conexão com backend.');
+      const message = error.message || 'Falha de conexão com backend.';
+      setSendError(message);
+      addMessagingActivity({
+        lead_id: form.lead_id.trim(),
+        to: form.to.trim(),
+        provider: form.provider || 'noop',
+        mode: form.dry_run ? 'dry_run' : 'live',
+        status: 'failed',
+        message: form.content.trim(),
+        error: message,
+      });
     } finally {
       setSending(false);
     }
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return '--';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '--';
+    return date.toLocaleString('pt-BR');
   };
 
   const providerLabel = contracts?.readiness?.messaging_provider || 'noop';
@@ -323,6 +369,45 @@ export default function WhatsApp({ onNavigate, activePath }) {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="fv-panel fv-scraper-section">
+        <div className="fv-panel-header">
+          <h2>Atividade de mensageria</h2>
+          <div className="fv-actions">
+            <button
+              className="fv-ghost small"
+              type="button"
+              onClick={() => setActivity(readMessagingActivity())}
+            >
+              Atualizar
+            </button>
+            <button className="fv-ghost small" type="button" onClick={clearMessagingActivity}>
+              Limpar
+            </button>
+          </div>
+        </div>
+        <div className="fv-activity fv-activity-scroll">
+          {activity.length === 0 && <div className="fv-row-sub">Nenhum envio registrado ainda.</div>}
+          {activity.map((item) => (
+            <div key={item.id} className={`fv-activity-item ${item.status === 'failed' ? 'status-change' : 'msg-sent'}`}>
+              <div className="fv-activity-head">
+                <div className="fv-activity-title">
+                  Lead {item.lead_id || '--'} • {item.mode} • {item.provider}
+                </div>
+                <div className="fv-activity-time">{formatDateTime(item.at)}</div>
+              </div>
+              <div className="fv-row-sub">
+                Status: <strong>{item.status || 'n/d'}</strong> • Destino: {item.to || '--'}
+              </div>
+              {item.error ? (
+                <div className="fv-row-sub">Erro: {item.error}</div>
+              ) : (
+                <div className="fv-row-sub">{item.message || ''}</div>
+              )}
+            </div>
+          ))}
         </div>
       </section>
     </Layout>

@@ -21,8 +21,8 @@ O script faz:
 1. `runtime up` do perfil canônico.
 2. Health check de backend/dashboard.
 3. Smoke de APIs essenciais (Dashboard, Scraper, Leads, Activity).
-4. Smoke de rotas de UI (`/dashboard`, `/scraper`, `/leads`).
-5. Smoke visual automatizado com screenshots das 3 rotas principais.
+4. Smoke de rotas de UI (`/dashboard`, `/scraper`, `/leads`, `/whatsapp`).
+5. Smoke visual automatizado com screenshots das 4 rotas principais.
 6. Geração de evidências em `/tmp/findvan-qa-e2e-smoke/<run_id>/`.
 7. `runtime down` ao final (pass/fail).
 
@@ -43,6 +43,7 @@ Diretório por execução:
 - `/tmp/findvan-qa-e2e-smoke/<run_id>/screenshots/dashboard.png`
 - `/tmp/findvan-qa-e2e-smoke/<run_id>/screenshots/scraper.png`
 - `/tmp/findvan-qa-e2e-smoke/<run_id>/screenshots/leads.png`
+- `/tmp/findvan-qa-e2e-smoke/<run_id>/screenshots/whatsapp.png`
 - `/tmp/findvan-qa-e2e-smoke/<run_id>/bodies/*.txt`
 
 Atalho da última execução:

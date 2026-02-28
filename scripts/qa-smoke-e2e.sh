@@ -116,6 +116,7 @@ run_check "leads-funnel-meta" "api" "$BACKEND_BASE/api/leads/funnel/meta"
 run_check "ui-dashboard" "ui" "$DASHBOARD_BASE/dashboard"
 run_check "ui-scraper" "ui" "$DASHBOARD_BASE/scraper"
 run_check "ui-leads" "ui" "$DASHBOARD_BASE/leads"
+run_check "ui-whatsapp" "ui" "$DASHBOARD_BASE/whatsapp"
 
 if [[ "$ENABLE_VISUAL_SMOKE" == "1" ]]; then
   if (

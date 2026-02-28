@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout.jsx';
 import './dashboard.css';
 import { API_BASE } from '../lib/apiBase.js';
+import { addMessagingActivity } from '../lib/messagingActivity.js';
 
 const prospectStatusOptions = [
   { value: 'cliente', label: 'CLIENTE', className: 'cliente' },
@@ -940,8 +941,26 @@ export default function Leads({ onNavigate, activePath }) {
       setModalMessage(
         `Mensagem ${payload.mode === 'dry_run' ? 'simulada' : 'enviada'} via ${payload.provider}. Status: ${payload.receipt?.status || 'n/d'}.`
       );
+      addMessagingActivity({
+        lead_id: String(lead.id),
+        to: lead.phone,
+        provider: payload.provider,
+        mode: payload.mode,
+        status: payload?.receipt?.status || 'queued',
+        message: content.trim(),
+      });
     } catch (error) {
-      setModalMessage(error?.message || 'Erro de envio para o lead.');
+      const message = error?.message || 'Erro de envio para o lead.';
+      setModalMessage(message);
+      addMessagingActivity({
+        lead_id: String(lead.id),
+        to: lead.phone || '',
+        provider: 'noop',
+        mode: normalizedMode,
+        status: 'failed',
+        message: content.trim(),
+        error: message,
+      });
     } finally {
       setMessagingBusy(false);
     }

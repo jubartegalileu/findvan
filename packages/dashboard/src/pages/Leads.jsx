@@ -78,6 +78,27 @@ const executionOutcomeOptions = [
   { value: 'lost', label: 'Perdido' },
 ];
 
+const executionVariantOptions = [
+  { value: 'control', label: 'Controle' },
+  { value: 'copy_a', label: 'Copy A' },
+  { value: 'copy_b', label: 'Copy B' },
+  { value: 'window_morning', label: 'Janela manhã' },
+  { value: 'window_afternoon', label: 'Janela tarde' },
+];
+
+const normalizeExecutionVariant = (rawValue) => {
+  if (!rawValue || !rawValue.trim()) {
+    return executionVariantOptions[0];
+  }
+  const normalized = rawValue.trim().toLowerCase().replace(/\s+/g, '_');
+  const preset = executionVariantOptions.find((option) => option.value === normalized);
+  if (preset) return preset;
+  return {
+    value: normalized.slice(0, 40),
+    label: rawValue.trim().slice(0, 40),
+  };
+};
+
 const getProspectClass = (value) =>
   prospectStatusOptions.find((option) => option.value === value)?.className || 'nao-contatado';
 
@@ -1714,6 +1735,11 @@ export default function Leads({ onNavigate, activePath }) {
 
     const label =
       executionOutcomeOptions.find((option) => option.value === normalized)?.label || normalized;
+    const rawVariant = window.prompt(
+      'Variante operacional (control/copy_a/copy_b/window_morning/window_afternoon):',
+      'control'
+    );
+    const variant = normalizeExecutionVariant(rawVariant);
     const entry = {
       id: `${lead.id}-${Date.now()}`,
       lead_id: String(lead.id),
@@ -1721,12 +1747,14 @@ export default function Leads({ onNavigate, activePath }) {
       stage: lead.funnel_status || 'novo',
       outcome: normalized,
       outcome_label: label,
+      variant: variant.value,
+      variant_label: variant.label,
       created_at: new Date().toISOString(),
     };
     setExecutionOutcomes((prev) => [entry, ...prev].slice(0, 100));
     setBatchResult({
       type: 'success',
-      summary: `Resultado "${label}" registrado para ${entry.lead_name}.`,
+      summary: `Resultado "${label}" (${variant.label}) registrado para ${entry.lead_name}.`,
     });
   };
 
@@ -2369,7 +2397,8 @@ export default function Leads({ onNavigate, activePath }) {
               )}
               {executionOutcomeSummary.recent.map((item) => (
                 <div key={item.id} className="fv-row-sub">
-                  {item.lead_name} • {item.outcome_label} • {formatRelativeDate(item.created_at)}
+                  {item.lead_name} • {item.outcome_label} • {item.variant_label || 'Controle'} •{' '}
+                  {formatRelativeDate(item.created_at)}
                 </div>
               ))}
             </div>

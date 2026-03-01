@@ -953,6 +953,83 @@ export default function Leads({ onNavigate, activePath }) {
     };
   }, [focusModeEnabled, focusedInsights.playbookRecommendations, insights.alerts, insights.playbookRecommendations]);
 
+  const continuousImprovementBrief = useMemo(() => {
+    const actions = [];
+
+    if (insights.alerts.slaCritical > 0) {
+      actions.push({
+        id: 'brief-sla-critical',
+        severity: 'critical',
+        title: 'Zerar SLA violado do turno',
+        description: `Há ${insights.alerts.slaCritical} leads com SLA violado no contexto atual.`,
+        evidence: 'Base: alerta de SLA crítico.',
+        execute: () => applyPlaybookAction({ type: 'filter_sla', value: 'violated' }),
+      });
+    }
+
+    stageLearningSignals.priority
+      .filter((item) => ['critical', 'high'].includes(item.severity) && item.total > 0)
+      .slice(0, 2)
+      .forEach((item) => {
+        actions.push({
+          id: `brief-stage-${item.stage}`,
+          severity: item.severity,
+          title: `Ajustar playbook em ${item.label}`,
+          description: `Sucesso ${item.successRate}% com amostra ${item.total}.`,
+          evidence: `Base: sem resposta ${item.noResponseRate}% • perdido ${item.lostRate}%.`,
+          execute: () => applyPlaybookAction({ type: 'focus_stage', value: item.stage }),
+        });
+      });
+
+    if (insights.alerts.newLeads > 0) {
+      actions.push({
+        id: 'brief-new-leads',
+        severity: insights.alerts.newLeads > 40 ? 'high' : 'medium',
+        title: 'Rodada de primeiro contato',
+        description: `${insights.alerts.newLeads} leads novos aguardando abordagem.`,
+        evidence: 'Base: distribuição atual do funil.',
+        execute: () => applyPlaybookAction({ type: 'focus_new_leads', value: 'novo' }),
+      });
+    }
+
+    const noResponse = executionOutcomeSummary.counts.no_response || 0;
+    const success = executionOutcomeSummary.counts.success || 0;
+    if (noResponse > success && noResponse > 0) {
+      actions.push({
+        id: 'brief-copy-window',
+        severity: 'medium',
+        title: 'Revisar copy e janela de envio',
+        description: 'Sem resposta acima de sucesso no turno atual.',
+        evidence: `Base: sem resposta ${noResponse} vs sucesso ${success}.`,
+        execute: () => setFocusModeEnabled(true),
+      });
+    }
+
+    if (actions.length < 3) {
+      actions.push({
+        id: 'brief-governance',
+        severity: 'medium',
+        title: 'Aplicar governança da fila',
+        description: 'Reordenar execução por criticidade operacional.',
+        evidence: 'Base: política de governança ativa no painel.',
+        execute: () => applyExecutionQueueGovernance(),
+      });
+    }
+
+    if (actions.length < 3) {
+      actions.push({
+        id: 'brief-stability',
+        severity: 'low',
+        title: 'Manter ritmo com monitoramento',
+        description: 'Sem gargalo crítico adicional detectado.',
+        evidence: 'Base: sinais atuais do contexto filtrado.',
+        execute: () => setFocusModeEnabled(false),
+      });
+    }
+
+    return actions.slice(0, 5);
+  }, [insights, stageLearningSignals.priority, executionOutcomeSummary.counts]);
+
   useEffect(() => {
     setPage(1);
     setSelectedLeadIds([]);
@@ -2261,6 +2338,19 @@ export default function Leads({ onNavigate, activePath }) {
                   <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.title}</span> {item.description}{' '}
                   <button className="fv-ghost small" type="button" onClick={() => applyPlaybookAction(item.action)}>
                     Executar
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Brief de melhoria contínua</div>
+              {continuousImprovementBrief.map((item) => (
+                <div key={item.id} className="fv-row-sub">
+                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.title}</span> {item.description}{' '}
+                  {item.evidence}{' '}
+                  <button className="fv-ghost small" type="button" onClick={item.execute}>
+                    Executar agora
                   </button>
                 </div>
               ))}

@@ -1,7 +1,7 @@
 # Epic 22 — Wave 18 SDR Closed-Loop Execution and Learning
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade pós-Wave 17)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Operação SDR)
 **Wave:** 18
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Fechar o ciclo operacional SDR com feedback contínuo de execução, resultado e
 
 ## Definition of Done
 
-- [ ] Stories 22.1, 22.2 e 22.3 implementadas e aprovadas
-- [ ] Captura de resultado operacional funcional
-- [ ] Sinais de aprendizado por estágio visíveis
-- [ ] Brief de melhoria contínua acionável
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 22.1, 22.2 e 22.3 implementadas e aprovadas
+- [x] Captura de resultado operacional funcional
+- [x] Sinais de aprendizado por estágio visíveis
+- [x] Brief de melhoria contínua acionável
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

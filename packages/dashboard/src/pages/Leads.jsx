@@ -825,6 +825,77 @@ export default function Leads({ onNavigate, activePath }) {
     };
   }, [scopedExecutionOutcomes]);
 
+  const stageLearningSignals = useMemo(() => {
+    const severityWeight = { critical: 3, high: 2, medium: 1, low: 0 };
+    const byStage = funnelStatusOptions.map((status) => {
+      const scoped = scopedExecutionOutcomes.filter((item) => item.stage === status.value);
+      const total = scoped.length;
+      const counts = executionOutcomeOptions.reduce((acc, option) => {
+        acc[option.value] = 0;
+        return acc;
+      }, {});
+      scoped.forEach((item) => {
+        if (counts[item.outcome] !== undefined) counts[item.outcome] += 1;
+      });
+
+      const successRate = total ? Math.round((counts.success / total) * 100) : 0;
+      const lostRate = total ? Math.round((counts.lost / total) * 100) : 0;
+      const noResponseRate = total ? Math.round((counts.no_response / total) * 100) : 0;
+      const rescheduleRate = total ? Math.round((counts.reschedule / total) * 100) : 0;
+
+      let sampleLabel = 'Sem amostra';
+      if (total >= 10) sampleLabel = 'Amostra robusta';
+      else if (total >= 5) sampleLabel = 'Amostra moderada';
+      else if (total > 0) sampleLabel = 'Amostra baixa';
+
+      let severity = 'low';
+      if (total === 0) severity = 'medium';
+      else if (successRate < 30 || lostRate >= 35) severity = 'critical';
+      else if (successRate < 45 || noResponseRate >= 50) severity = 'high';
+      else if (successRate < 60 || rescheduleRate >= 35) severity = 'medium';
+
+      let recommendation = `${status.label} está estável no contexto atual.`;
+      if (total === 0) {
+        recommendation = `Sem histórico recente em ${status.label}. Coletar ao menos 5 execuções antes de ajustar playbook.`;
+      } else if (severity === 'critical') {
+        recommendation = `Baixa eficiência em ${status.label}. Revisar abordagem e priorizar contatos com melhor score.`;
+      } else if (severity === 'high') {
+        recommendation = `Eficiência em atenção em ${status.label}. Ajustar copy e janela de contato no turno atual.`;
+      } else if (severity === 'medium') {
+        recommendation = `Monitorar ${status.label}. Validar se reagendamentos estão convertendo em avanço real.`;
+      }
+
+      return {
+        stage: status.value,
+        label: status.label,
+        total,
+        counts,
+        successRate,
+        lostRate,
+        noResponseRate,
+        rescheduleRate,
+        sampleLabel,
+        severity,
+        recommendation,
+      };
+    });
+
+    const priority = [...byStage]
+      .filter((item) => item.total > 0 || item.severity !== 'low')
+      .sort((a, b) => {
+        if (severityWeight[b.severity] !== severityWeight[a.severity]) {
+          return severityWeight[b.severity] - severityWeight[a.severity];
+        }
+        return b.total - a.total;
+      })
+      .slice(0, 3);
+
+    return {
+      byStage,
+      priority,
+    };
+  }, [scopedExecutionOutcomes]);
+
   const workspaceStages = useMemo(() => {
     return funnelStatusOptions.map((status) => ({
       ...status,
@@ -2209,6 +2280,32 @@ export default function Leads({ onNavigate, activePath }) {
               {executionOutcomeSummary.recent.map((item) => (
                 <div key={item.id} className="fv-row-sub">
                   {item.lead_name} • {item.outcome_label} • {formatRelativeDate(item.created_at)}
+                </div>
+              ))}
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Aprendizado por estágio</div>
+              {stageLearningSignals.byStage.map((item) => (
+                <div key={`learning-${item.stage}`} className="fv-row-sub">
+                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.label}</span> amostra {item.total} (
+                  {item.sampleLabel}) • sucesso {item.successRate}% • sem resposta {item.noResponseRate}% • reagendar{' '}
+                  {item.rescheduleRate}% • perdido {item.lostRate}%
+                </div>
+              ))}
+              {stageLearningSignals.priority.length === 0 && (
+                <div className="fv-row-sub">Sem recomendações de ajuste com os dados atuais.</div>
+              )}
+              {stageLearningSignals.priority.map((item) => (
+                <div key={`learning-rec-${item.stage}`} className="fv-row-sub">
+                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>Ajuste {item.label}</span> {item.recommendation}{' '}
+                  <button
+                    className="fv-ghost small"
+                    type="button"
+                    onClick={() => applyPlaybookAction({ type: 'focus_stage', value: item.stage })}
+                  >
+                    Focar estágio
+                  </button>
                 </div>
               ))}
             </div>

@@ -1,7 +1,7 @@
 # Epic 23 — Wave 19 SDR Playbook Optimization and Experimentation
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade pós-Wave 18)
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P1 (Operação SDR)
 **Wave:** 19
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Evoluir o ciclo fechado da Wave 18 para um ciclo de otimização contínua, com 
 
 ## Definition of Done
 
-- [ ] Stories 23.1, 23.2 e 23.3 implementadas e aprovadas
-- [ ] Rastreamento de variante operacional funcional
-- [ ] Comparativo por variante/estágio visível e acionável
-- [ ] Brief de recomendação de promoção/rollback funcional
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 23.1, 23.2 e 23.3 implementadas e aprovadas
+- [x] Rastreamento de variante operacional funcional
+- [x] Comparativo por variante/estágio visível e acionável
+- [x] Brief de recomendação de promoção/rollback funcional
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

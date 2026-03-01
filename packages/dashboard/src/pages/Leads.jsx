@@ -1122,6 +1122,66 @@ export default function Leads({ onNavigate, activePath }) {
     return actions.slice(0, 5);
   }, [insights, stageLearningSignals.priority, executionOutcomeSummary.counts]);
 
+  const variantDecisionBrief = useMemo(() => {
+    const actions = [];
+    variantEfficiencySignals.byStage.forEach((stage) => {
+      if (stage.variants.length <= 1 || !stage.best) return;
+      const best = stage.best;
+      const worst = stage.worst;
+      const spread = stage.spread || 0;
+
+      if (best.total >= 5 && spread >= 20 && best.successRate >= 55) {
+        actions.push({
+          id: `promote-${stage.stage}`,
+          severity: 'high',
+          decision: 'Promover',
+          title: `${stage.label}: promover ${best.label}`,
+          description: `Melhor taxa de sucesso (${best.successRate}%) com amostra ${best.total}.`,
+          evidence: worst
+            ? `Gap de ${spread}% vs ${worst.label} (${worst.successRate}%).`
+            : `Amostra consistente no estágio ${stage.label}.`,
+          execute: () => applyPlaybookAction({ type: 'focus_stage', value: stage.stage }),
+        });
+        if (worst && worst.total >= 5 && worst.successRate <= 30) {
+          actions.push({
+            id: `rollback-${stage.stage}`,
+            severity: 'critical',
+            decision: 'Rollback',
+            title: `${stage.label}: rollback ${worst.label}`,
+            description: `Baixa eficiência (${worst.successRate}%) com amostra ${worst.total}.`,
+            evidence: `Perda relativa de ${spread}% frente à melhor variante.`,
+            execute: () => applyPlaybookAction({ type: 'focus_stage', value: stage.stage }),
+          });
+        }
+        return;
+      }
+
+      actions.push({
+        id: `hold-test-${stage.stage}`,
+        severity: 'medium',
+        decision: 'Manter em teste',
+        title: `${stage.label}: manter variantes em teste`,
+        description: `Diferença atual de ${spread}% ainda não conclusiva.`,
+        evidence: `Amostra melhor/pior: ${best.total}/${worst?.total || 0}.`,
+        execute: () => applyPlaybookAction({ type: 'focus_stage', value: stage.stage }),
+      });
+    });
+
+    if (actions.length === 0) {
+      actions.push({
+        id: 'hold-global',
+        severity: 'low',
+        decision: 'Manter em teste',
+        title: 'Sem decisão de promoção/rollback no momento',
+        description: 'Contexto atual ainda sem comparação robusta de variantes.',
+        evidence: 'Aguardar novas execuções para fortalecer amostra.',
+        execute: () => setFocusModeEnabled(false),
+      });
+    }
+
+    return actions.slice(0, 5);
+  }, [variantEfficiencySignals.byStage]);
+
   useEffect(() => {
     setPage(1);
     setSelectedLeadIds([]);
@@ -2534,6 +2594,19 @@ export default function Leads({ onNavigate, activePath }) {
                 <div key={`variant-priority-${stage.stage}`} className="fv-row-sub">
                   <span className="fv-alert-pill fv-alert-high">Gap relevante</span> {stage.label} com diferença de {stage.spread}% entre
                   variantes.
+                </div>
+              ))}
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Decisão de variantes (promoção/rollback)</div>
+              {variantDecisionBrief.map((item) => (
+                <div key={item.id} className="fv-row-sub">
+                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.decision}</span> {item.title} • {item.description}{' '}
+                  {item.evidence}{' '}
+                  <button className="fv-ghost small" type="button" onClick={item.execute}>
+                    Aplicar contexto
+                  </button>
                 </div>
               ))}
             </div>

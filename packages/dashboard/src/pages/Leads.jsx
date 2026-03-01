@@ -276,6 +276,7 @@ export default function Leads({ onNavigate, activePath }) {
   const [selectedScoreRange, setSelectedScoreRange] = useState('all');
   const [selectedFollowUpFilter, setSelectedFollowUpFilter] = useState('all');
   const [selectedSlaFilter, setSelectedSlaFilter] = useState('all');
+  const [focusModeEnabled, setFocusModeEnabled] = useState(false);
   const [selectedFunnels, setSelectedFunnels] = useState([]);
   const [selectedSource, setSelectedSource] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
@@ -343,12 +344,14 @@ export default function Leads({ onNavigate, activePath }) {
         const validSlaFilter = slaFilterOptions.some((option) => option.value === parsed.selectedSlaFilter)
           ? parsed.selectedSlaFilter
           : 'all';
+        const validFocusModeEnabled = parsed.focusModeEnabled === true;
         setSelectedState(parsed.selectedState || '');
         setSelectedCity(parsed.selectedCity || '');
         setSearch(parsed.search || '');
         setSelectedScoreRange(validScoreRange);
         setSelectedFollowUpFilter(validFollowUpFilter);
         setSelectedSlaFilter(validSlaFilter);
+        setFocusModeEnabled(validFocusModeEnabled);
         setSelectedFunnels(validFunnels);
         setSelectedSource(parsed.selectedSource || '');
         setSelectedTag(parsed.selectedTag || '');
@@ -411,6 +414,7 @@ export default function Leads({ onNavigate, activePath }) {
           selectedScoreRange,
           selectedFollowUpFilter,
           selectedSlaFilter,
+          focusModeEnabled,
           selectedFunnels,
           selectedSource,
           selectedTag,
@@ -430,6 +434,7 @@ export default function Leads({ onNavigate, activePath }) {
     selectedScoreRange,
     selectedFollowUpFilter,
     selectedSlaFilter,
+    focusModeEnabled,
     selectedFunnels,
     selectedSource,
     selectedTag,
@@ -770,6 +775,36 @@ export default function Leads({ onNavigate, activePath }) {
     }));
   }, [sortedLeads]);
 
+  const visiblePaginatedLeads = useMemo(() => {
+    if (!focusModeEnabled) return paginatedLeads;
+    return paginatedLeads.filter((lead) => {
+      const sla = getSlaMeta(lead).value;
+      return sla === 'violated' || (sla === 'attention' && isFollowUpOverdue(lead));
+    });
+  }, [focusModeEnabled, paginatedLeads]);
+
+  const focusedInsights = useMemo(() => {
+    if (!focusModeEnabled) {
+      return {
+        capacityHeatmap: insights.capacityHeatmap,
+        backlogPriority: insights.backlogPriority,
+        governanceRecommendations: insights.governanceRecommendations,
+        playbookRecommendations: insights.playbookRecommendations,
+      };
+    }
+    const severityWeight = { critical: 3, high: 2, medium: 1, low: 0 };
+    return {
+      capacityHeatmap: insights.capacityHeatmap.filter((item) => ['critical', 'high'].includes(item.severity)),
+      backlogPriority: insights.backlogPriority.filter(({ sla }) => ['violated', 'attention'].includes(sla.value)),
+      governanceRecommendations: insights.governanceRecommendations.filter(
+        (item) => (severityWeight[item.severity] || 0) >= 2
+      ),
+      playbookRecommendations: insights.playbookRecommendations.filter(
+        (item) => (severityWeight[item.severity] || 0) >= 2
+      ),
+    };
+  }, [focusModeEnabled, insights]);
+
   useEffect(() => {
     setPage(1);
     setSelectedLeadIds([]);
@@ -997,6 +1032,7 @@ export default function Leads({ onNavigate, activePath }) {
     setSelectedScoreRange('all');
     setSelectedFollowUpFilter('all');
     setSelectedSlaFilter('all');
+    setFocusModeEnabled(false);
     setSelectedFunnels([]);
     setSelectedSource('');
     setSelectedTag('');
@@ -1021,7 +1057,9 @@ export default function Leads({ onNavigate, activePath }) {
   };
 
   const toggleSelectCurrentPage = (checked) => {
-    const pageIds = paginatedLeads.map((lead) => lead.id).filter(Boolean);
+    const pageIds = (focusModeEnabled ? visiblePaginatedLeads : paginatedLeads)
+      .map((lead) => lead.id)
+      .filter(Boolean);
     if (checked) {
       setSelectedLeadIds((prev) => [...new Set([...prev, ...pageIds])]);
     } else {
@@ -1540,6 +1578,9 @@ export default function Leads({ onNavigate, activePath }) {
           <p>Gerencie todo o pipeline de prospecção em tempo real.</p>
         </div>
         <div className="fv-actions">
+          <button className="fv-ghost" type="button" onClick={() => setFocusModeEnabled((prev) => !prev)}>
+            {focusModeEnabled ? 'Desativar modo foco' : 'Ativar modo foco'}
+          </button>
           <button className="fv-ghost" type="button" onClick={loadLeads}>
             {loading ? 'Atualizando...' : 'Atualizar leads'}
           </button>
@@ -1678,7 +1719,8 @@ export default function Leads({ onNavigate, activePath }) {
           </button>
 
           <div className="fv-row-sub">
-            {sortedLeads.length} leads • Atualizado às {lastUpdatedAt || '--:--:--'}
+            {sortedLeads.length} leads • Atualizado às {lastUpdatedAt || '--:--:--'} •{' '}
+            {focusModeEnabled ? 'Modo foco: ON' : 'Modo foco: OFF'}
           </div>
         </div>
       </section>
@@ -1690,7 +1732,10 @@ export default function Leads({ onNavigate, activePath }) {
             <label className="fv-check-label">
               <input
                 type="checkbox"
-                checked={paginatedLeads.length > 0 && paginatedLeads.every((lead) => selectedLeadIds.includes(lead.id))}
+                checked={
+                  visiblePaginatedLeads.length > 0 &&
+                  visiblePaginatedLeads.every((lead) => selectedLeadIds.includes(lead.id))
+                }
                 onChange={(event) => toggleSelectCurrentPage(event.target.checked)}
               />
               Selecionar página
@@ -1748,11 +1793,18 @@ export default function Leads({ onNavigate, activePath }) {
             </div>
 
             <div className="fv-workspace-grid">
-              {workspaceStages.map((stage) => (
+              {workspaceStages.map((stage) => {
+                const stageLeads = focusModeEnabled
+                  ? stage.leads.filter((lead) => {
+                      const sla = getSlaMeta(lead).value;
+                      return sla === 'violated' || (sla === 'attention' && isFollowUpOverdue(lead));
+                    })
+                  : stage.leads;
+                return (
                 <section key={stage.value} className="fv-workspace-stage">
                   <div className="fv-workspace-stage-head">
                     <div className={`fv-status ${stage.className}`}>{stage.label}</div>
-                    <div className="fv-row-chip">{stage.leads.length}</div>
+                    <div className="fv-row-chip">{stageLeads.length}</div>
                   </div>
 
                   <div className="fv-row-sub">
@@ -1796,7 +1848,7 @@ export default function Leads({ onNavigate, activePath }) {
                   </div>
 
                   <div className="fv-workspace-stage-list">
-                    {stage.leads.slice(0, 3).map((lead) => (
+                    {stageLeads.slice(0, 3).map((lead) => (
                       <article key={`workspace-${stage.value}-${lead.id}`} className="fv-workspace-lead">
                         <div className="fv-row-title">{lead.name || lead.company_name || 'Sem nome'}</div>
                         <div className="fv-row-sub">
@@ -1829,17 +1881,18 @@ export default function Leads({ onNavigate, activePath }) {
                         </div>
                       </article>
                     ))}
-                    {stage.leads.length === 0 && (
+                    {stageLeads.length === 0 && (
                       <div className="fv-row-sub">Nenhum lead neste estágio com os filtros atuais.</div>
                     )}
                   </div>
                 </section>
-              ))}
+                );
+              })}
             </div>
           </div>
 
           <div className="fv-table">
-            {paginatedLeads.map((lead, index) => {
+            {visiblePaginatedLeads.map((lead, index) => {
               const scoreMeta = getScoreMeta(lead.score);
               const overdue = isFollowUpOverdue(lead);
               const replied = lead.funnel_status === 'respondeu';
@@ -1938,7 +1991,7 @@ export default function Leads({ onNavigate, activePath }) {
               );
             })}
 
-            {paginatedLeads.length === 0 && (
+            {visiblePaginatedLeads.length === 0 && (
               <div className="fv-row-sub">Nenhum lead encontrado com os filtros atuais.</div>
             )}
           </div>
@@ -2040,7 +2093,7 @@ export default function Leads({ onNavigate, activePath }) {
 
             <div className="fv-activity-item">
               <div className="fv-activity-title">Heatmap de capacidade</div>
-              {insights.capacityHeatmap.map((item) => (
+              {focusedInsights.capacityHeatmap.map((item) => (
                 <div key={`capacity-${item.stage}`} className="fv-row-sub">
                   <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.label}</span> carga {item.workloadScore}{' '}
                   • backlog {item.count} • vencidos {item.overdueCount} • SLA violado {item.violatedCount}
@@ -2050,8 +2103,8 @@ export default function Leads({ onNavigate, activePath }) {
 
             <div className="fv-activity-item">
               <div className="fv-activity-title">Prioridade de backlog</div>
-              {insights.backlogPriority.length === 0 && <div className="fv-row-sub">Sem backlog prioritário no contexto.</div>}
-              {insights.backlogPriority.map(({ lead, sla, score }) => (
+              {focusedInsights.backlogPriority.length === 0 && <div className="fv-row-sub">Sem backlog prioritário no contexto.</div>}
+              {focusedInsights.backlogPriority.map(({ lead, sla, score }) => (
                 <div key={`backlog-priority-${lead.id}`} className="fv-row-sub">
                   <span className={sla.className}>{sla.label}</span> {lead.name || lead.company_name || lead.id} • score op. {score}{' '}
                   <button className="fv-ghost small" type="button" onClick={() => openLeadModal(lead)}>
@@ -2063,10 +2116,10 @@ export default function Leads({ onNavigate, activePath }) {
 
             <div className="fv-activity-item">
               <div className="fv-activity-title">Governança operacional</div>
-              {insights.governanceRecommendations.length === 0 && (
+              {focusedInsights.governanceRecommendations.length === 0 && (
                 <div className="fv-row-sub">Sem gargalos relevantes no contexto atual.</div>
               )}
-              {insights.governanceRecommendations.map((item) => (
+              {focusedInsights.governanceRecommendations.map((item) => (
                 <div key={`governance-${item.stage}`} className="fv-row-sub">
                   <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.label}</span> {item.recommendation}
                 </div>
@@ -2075,10 +2128,10 @@ export default function Leads({ onNavigate, activePath }) {
 
             <div className="fv-activity-item">
               <div className="fv-activity-title">Playbook diário</div>
-              {insights.playbookRecommendations.length === 0 && (
+              {focusedInsights.playbookRecommendations.length === 0 && (
                 <div className="fv-row-sub">Sem recomendações críticas no momento.</div>
               )}
-              {insights.playbookRecommendations.map((item) => (
+              {focusedInsights.playbookRecommendations.map((item) => (
                 <div key={`playbook-${item.id}`} className="fv-row-sub">
                   <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.title}</span> {item.description}{' '}
                   <button className="fv-ghost small" type="button" onClick={() => applyPlaybookAction(item.action)}>

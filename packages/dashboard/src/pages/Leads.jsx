@@ -54,6 +54,13 @@ const followUpFilterOptions = [
   { value: 'none', label: 'Follow-up: Sem agenda' },
 ];
 
+const slaFilterOptions = [
+  { value: 'all', label: 'SLA: Todos' },
+  { value: 'on_time', label: 'SLA: No prazo' },
+  { value: 'attention', label: 'SLA: Atenção' },
+  { value: 'violated', label: 'SLA: Violado' },
+];
+
 const modalTabs = [
   { value: 'dados', label: 'Dados' },
   { value: 'historico', label: 'Histórico' },
@@ -207,6 +214,28 @@ const getCadenceMeta = (lead) => {
   return { label: 'Sem próxima ação', className: 'fv-risk-chip warn' };
 };
 
+const getSlaMeta = (lead) => {
+  if (!lead || ['convertido', 'perdido'].includes(lead.funnel_status)) {
+    return { value: 'on_time', label: 'SLA encerrado', className: 'fv-alert-pill fv-alert-low' };
+  }
+  if (!lead.next_action_date) {
+    return { value: 'attention', label: 'SLA atenção', className: 'fv-alert-pill fv-alert-medium' };
+  }
+  const when = new Date(lead.next_action_date);
+  if (Number.isNaN(when.getTime())) {
+    return { value: 'attention', label: 'SLA atenção', className: 'fv-alert-pill fv-alert-medium' };
+  }
+  const now = new Date();
+  if (when < now) {
+    const delayHours = Math.floor((now.getTime() - when.getTime()) / (60 * 60 * 1000));
+    if (delayHours >= 24) {
+      return { value: 'violated', label: 'SLA violado', className: 'fv-alert-pill fv-alert-critical' };
+    }
+    return { value: 'attention', label: 'SLA atenção', className: 'fv-alert-pill fv-alert-high' };
+  }
+  return { value: 'on_time', label: 'SLA no prazo', className: 'fv-alert-pill fv-alert-low' };
+};
+
 const getScoreBand = (score) => {
   if (score >= 90) return '90-100';
   if (score >= 70) return '70-89';
@@ -246,6 +275,7 @@ export default function Leads({ onNavigate, activePath }) {
   const [search, setSearch] = useState('');
   const [selectedScoreRange, setSelectedScoreRange] = useState('all');
   const [selectedFollowUpFilter, setSelectedFollowUpFilter] = useState('all');
+  const [selectedSlaFilter, setSelectedSlaFilter] = useState('all');
   const [selectedFunnels, setSelectedFunnels] = useState([]);
   const [selectedSource, setSelectedSource] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
@@ -310,11 +340,15 @@ export default function Leads({ onNavigate, activePath }) {
         )
           ? parsed.selectedFollowUpFilter
           : 'all';
+        const validSlaFilter = slaFilterOptions.some((option) => option.value === parsed.selectedSlaFilter)
+          ? parsed.selectedSlaFilter
+          : 'all';
         setSelectedState(parsed.selectedState || '');
         setSelectedCity(parsed.selectedCity || '');
         setSearch(parsed.search || '');
         setSelectedScoreRange(validScoreRange);
         setSelectedFollowUpFilter(validFollowUpFilter);
+        setSelectedSlaFilter(validSlaFilter);
         setSelectedFunnels(validFunnels);
         setSelectedSource(parsed.selectedSource || '');
         setSelectedTag(parsed.selectedTag || '');
@@ -376,6 +410,7 @@ export default function Leads({ onNavigate, activePath }) {
           search,
           selectedScoreRange,
           selectedFollowUpFilter,
+          selectedSlaFilter,
           selectedFunnels,
           selectedSource,
           selectedTag,
@@ -394,6 +429,7 @@ export default function Leads({ onNavigate, activePath }) {
     search,
     selectedScoreRange,
     selectedFollowUpFilter,
+    selectedSlaFilter,
     selectedFunnels,
     selectedSource,
     selectedTag,
@@ -447,6 +483,10 @@ export default function Leads({ onNavigate, activePath }) {
       if (selectedFollowUpFilter === 'today' && !isFollowUpToday(lead)) return false;
       if (selectedFollowUpFilter === 'upcoming' && !isFollowUpUpcoming(lead)) return false;
       if (selectedFollowUpFilter === 'none' && !!lead.next_action_date) return false;
+      const slaMeta = getSlaMeta(lead);
+      if (selectedSlaFilter === 'on_time' && slaMeta.value !== 'on_time') return false;
+      if (selectedSlaFilter === 'attention' && slaMeta.value !== 'attention') return false;
+      if (selectedSlaFilter === 'violated' && slaMeta.value !== 'violated') return false;
 
       const capturedDate = lead.captured_at || lead.created_at;
       if (capturedDateFrom) {
@@ -489,6 +529,7 @@ export default function Leads({ onNavigate, activePath }) {
     activeAlertFilter,
     selectedScoreRange,
     selectedFollowUpFilter,
+    selectedSlaFilter,
     capturedDateFrom,
     capturedDateTo,
     search,
@@ -497,6 +538,10 @@ export default function Leads({ onNavigate, activePath }) {
   const sortedLeads = useMemo(() => {
     const copy = [...filteredLeads];
     copy.sort((a, b) => {
+      const slaRank = { violated: 3, attention: 2, on_time: 1 };
+      const slaA = slaRank[getSlaMeta(a).value] || 0;
+      const slaB = slaRank[getSlaMeta(b).value] || 0;
+      if (slaA !== slaB) return slaB - slaA;
       const overdueA = isFollowUpOverdue(a) ? 1 : 0;
       const overdueB = isFollowUpOverdue(b) ? 1 : 0;
       if (overdueA !== overdueB) return overdueB - overdueA;
@@ -583,6 +628,22 @@ export default function Leads({ onNavigate, activePath }) {
         };
       });
 
+    const slaByStage = funnelStatusOptions.reduce((acc, status) => {
+      const scopedStage = scoped.filter((lead) => lead.funnel_status === status.value);
+      const stageSummary = scopedStage.reduce(
+        (row, lead) => {
+          const sla = getSlaMeta(lead).value;
+          if (sla === 'violated') row.violated += 1;
+          else if (sla === 'attention') row.attention += 1;
+          else row.on_time += 1;
+          return row;
+        },
+        { on_time: 0, attention: 0, violated: 0 }
+      );
+      acc[status.value] = stageSummary;
+      return acc;
+    }, {});
+
     const governanceRecommendations = throughputByStage
       .filter((item) => item.count > 0)
       .sort((a, b) => {
@@ -617,8 +678,10 @@ export default function Leads({ onNavigate, activePath }) {
         pendingResponses: scoped.filter((lead) => lead.funnel_status === 'respondeu').length,
         overdueFollowups: scoped.filter((lead) => isFollowUpOverdue(lead)).length,
         newLeads: scoped.filter((lead) => lead.funnel_status === 'novo').length,
+        slaCritical: scoped.filter((lead) => getSlaMeta(lead).value === 'violated').length,
       },
       throughputByStage,
+      slaByStage,
       governanceRecommendations,
     };
   }, [filteredLeads]);
@@ -642,6 +705,7 @@ export default function Leads({ onNavigate, activePath }) {
     activeAlertFilter,
     selectedScoreRange,
     selectedFollowUpFilter,
+    selectedSlaFilter,
     capturedDateFrom,
     capturedDateTo,
     scoreSort,
@@ -855,6 +919,7 @@ export default function Leads({ onNavigate, activePath }) {
     setSearch('');
     setSelectedScoreRange('all');
     setSelectedFollowUpFilter('all');
+    setSelectedSlaFilter('all');
     setSelectedFunnels([]);
     setSelectedSource('');
     setSelectedTag('');
@@ -1162,17 +1227,26 @@ export default function Leads({ onNavigate, activePath }) {
     setActiveAlertFilter(type);
     if (type === 'respondeu') {
       setSelectedFollowUpFilter('all');
+      setSelectedSlaFilter('all');
       setSelectedFunnels(['respondeu']);
       return;
     }
     if (type === 'overdue') {
       setSelectedFollowUpFilter('overdue');
+      setSelectedSlaFilter('all');
       setSelectedFunnels(['contactado', 'respondeu', 'interessado']);
       return;
     }
     if (type === 'novo') {
       setSelectedFollowUpFilter('all');
+      setSelectedSlaFilter('all');
       setSelectedFunnels(['novo']);
+      return;
+    }
+    if (type === 'sla_critical') {
+      setSelectedFollowUpFilter('all');
+      setSelectedSlaFilter('violated');
+      setSelectedFunnels([]);
     }
   };
 
@@ -1433,6 +1507,18 @@ export default function Leads({ onNavigate, activePath }) {
             ))}
           </select>
 
+          <select
+            className="fv-input fv-select"
+            value={selectedSlaFilter}
+            onChange={(event) => setSelectedSlaFilter(event.target.value)}
+          >
+            {slaFilterOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
           <select className="fv-input fv-select" value={scoreSort} onChange={(event) => setScoreSort(event.target.value)}>
             <option value="desc">Ordenar score: maior primeiro</option>
             <option value="asc">Ordenar score: menor primeiro</option>
@@ -1568,6 +1654,12 @@ export default function Leads({ onNavigate, activePath }) {
                     <div className="fv-row-chip">{stage.leads.length}</div>
                   </div>
 
+                  <div className="fv-row-sub">
+                    SLA: ✅ {insights.slaByStage[stage.value]?.on_time || 0} • ⚠️{' '}
+                    {insights.slaByStage[stage.value]?.attention || 0} • ⛔{' '}
+                    {insights.slaByStage[stage.value]?.violated || 0}
+                  </div>
+
                   <div className="fv-workspace-stage-actions">
                     <button
                       className="fv-ghost small"
@@ -1583,9 +1675,22 @@ export default function Leads({ onNavigate, activePath }) {
                         setSelectedFunnels([]);
                         setActiveAlertFilter('');
                         setSelectedFollowUpFilter('all');
+                        setSelectedSlaFilter('all');
                       }}
                     >
                       Ver todos
+                    </button>
+                    <button
+                      className="fv-ghost small"
+                      type="button"
+                      onClick={() => {
+                        setSelectedFunnels([stage.value]);
+                        setSelectedSlaFilter('violated');
+                        setSelectedFollowUpFilter('all');
+                        setActiveAlertFilter('sla_critical');
+                      }}
+                    >
+                      Ver críticos
                     </button>
                   </div>
 
@@ -1638,6 +1743,7 @@ export default function Leads({ onNavigate, activePath }) {
               const overdue = isFollowUpOverdue(lead);
               const replied = lead.funnel_status === 'respondeu';
               const cadenceMeta = getCadenceMeta(lead);
+              const slaMeta = getSlaMeta(lead);
               const completeness = [
                 { key: 'Telefone', ok: !!lead.phone },
                 { key: 'Endereço', ok: !!lead.address },
@@ -1698,6 +1804,7 @@ export default function Leads({ onNavigate, activePath }) {
                     </div>
                     <div className={`fv-row-chip ${scoreMeta.className}`}>Score {lead.score} • {scoreMeta.label}</div>
                     <div className={`fv-row-chip ${cadenceMeta.className}`}>{cadenceMeta.label}</div>
+                    <div className={slaMeta.className}>{slaMeta.label}</div>
                     <div className="fv-lead-actions">
                       <button className="fv-ghost small" type="button" onClick={() => handleContactLead(lead)}>
                         Contactar
@@ -1760,6 +1867,9 @@ export default function Leads({ onNavigate, activePath }) {
               <button className="fv-alert-btn yellow" type="button" onClick={() => handleAlertFilter('overdue')}>
                 Follow-ups vencidos: {insights.alerts.overdueFollowups}
               </button>
+              <button className="fv-alert-btn red" type="button" onClick={() => handleAlertFilter('sla_critical')}>
+                SLA violado: {insights.alerts.slaCritical}
+              </button>
               <button className="fv-alert-btn green" type="button" onClick={() => handleAlertFilter('novo')}>
                 Novos leads: {insights.alerts.newLeads}
               </button>
@@ -1773,6 +1883,7 @@ export default function Leads({ onNavigate, activePath }) {
                       setActiveAlertFilter('');
                       setSelectedFunnels([]);
                       setSelectedFollowUpFilter('all');
+                      setSelectedSlaFilter('all');
                     }}
                   >
                     Limpar alerta
@@ -1811,6 +1922,17 @@ export default function Leads({ onNavigate, activePath }) {
               {insights.throughputByStage.map((item) => (
                 <div key={`throughput-${item.stage}`} className="fv-row-sub">
                   {item.label}: {item.count} • avanço {item.progressionRate}% • vencidos {item.overdueCount}
+                </div>
+              ))}
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">SLA por estágio</div>
+              {funnelStatusOptions.map((status) => (
+                <div key={`sla-stage-${status.value}`} className="fv-row-sub">
+                  {status.label}: ✅ {insights.slaByStage[status.value]?.on_time || 0} • ⚠️{' '}
+                  {insights.slaByStage[status.value]?.attention || 0} • ⛔{' '}
+                  {insights.slaByStage[status.value]?.violated || 0}
                 </div>
               ))}
             </div>

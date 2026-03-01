@@ -14,7 +14,13 @@ export function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
 
   const { filters, setCityFilter, setSourceFilter, setValidFilter, setPage, setSortBy, clearFilters } = useFilters();
-  const { leads, total, loading, error } = useLeads(filters);
+  const { leads, total, isLoading, error } = useLeads({
+    page: filters.page,
+    limit: 25,
+    city: filters.city,
+    source: filters.source,
+    isValid: filters.isValid,
+  });
 
   const handleRowClick = (lead: Lead) => {
     setSelectedLead(lead);
@@ -134,7 +140,7 @@ export function Dashboard() {
 
           {/* Table Section */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
-            {loading ? (
+            {isLoading ? (
               <LoadingSpinner />
             ) : (
               <>

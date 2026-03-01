@@ -76,33 +76,33 @@ async function scrapeGoogleMaps(options = {}) {
       // Set viewport for realistic interaction
       await page.setViewport({ width: 1280, height: 720 });
 
-    // Set user agent to avoid detection
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    );
+      // Set user agent to avoid detection
+      await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      );
 
-    // Navigate to Google Maps
-    const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(`${keyword} ${city}`)}`;
-    logger.info(`🗺️ Navigating to Google Maps search`, { url: mapsUrl });
+      // Navigate to Google Maps
+      const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(`${keyword} ${city}`)}`;
+      logger.info(`🗺️ Navigating to Google Maps search`, { url: mapsUrl });
 
-    await page.goto(mapsUrl, navigationOptions);
+      await page.goto(mapsUrl, navigationOptions);
 
-    // Wait for results to load
-    await page.waitForSelector('a[href*="/maps/place/"], [role="feed"], [role="main"]', {
-      timeout: 10000
-    }).catch(() => {
-      logger.warn('⚠️ Could not find exact selector, trying alternatives');
-    });
+      // Wait for results to load
+      await page.waitForSelector('a[href*="/maps/place/"], [role="feed"], [role="main"]', {
+        timeout: 10000
+      }).catch(() => {
+        logger.warn('⚠️ Could not find exact selector, trying alternatives');
+      });
 
-    // Scroll to load more results
-    let previousSignature = '';
-    let stagnantRounds = 0;
-    let scrollCount = 0;
-    const maxScrolls = Math.max(30, Math.ceil(maxResults / 3));
+      // Scroll to load more results
+      let previousSignature = '';
+      let stagnantRounds = 0;
+      let scrollCount = 0;
+      const maxScrolls = Math.max(30, Math.ceil(maxResults / 3));
 
-    logger.info('📜 Scrolling to load results');
+      logger.info('📜 Scrolling to load results');
 
-    while (scrollCount < maxScrolls && leads.length < maxResults) {
+      while (scrollCount < maxScrolls && leads.length < maxResults) {
       const panelMetricsBefore = await page.evaluate(() => {
         const panel =
           document.querySelector('[role="feed"]') ||
@@ -245,9 +245,10 @@ async function scrapeGoogleMaps(options = {}) {
         stagnantRounds = 0;
       }
       previousSignature = signature;
-      if (stagnantRounds >= 4) {
-        logger.info('✓ Reached end of results list (stagnant scroll)');
-        break;
+        if (stagnantRounds >= 4) {
+          logger.info('✓ Reached end of results list (stagnant scroll)');
+          break;
+        }
       }
     }
 

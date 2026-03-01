@@ -19,17 +19,21 @@ export function LeadModal({ lead, isOpen, onClose }: LeadModalProps) {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const FieldRow = ({ label, value, copyable = false }: { label: string; value: string | number | boolean | null; copyable?: boolean }) => {
-    const displayValue = value === null ? 'N/A' : value === true ? 'Yes' : value === false ? 'No' : String(value);
+  const FieldRow = ({ label, value, copyable = false }: { label: string; value: React.ReactNode; copyable?: boolean }) => {
+    const isPrimitive = ['string', 'number', 'boolean'].includes(typeof value) || value === null || value === undefined;
+    const displayValue = isPrimitive
+      ? (value === null || value === undefined ? 'N/A' : value === true ? 'Yes' : value === false ? 'No' : String(value))
+      : value;
+    const copyValue = isPrimitive ? String(value ?? '') : '';
 
     return (
       <div className="flex justify-between items-center py-3 border-b border-gray-200">
         <span className="text-sm font-medium text-gray-600">{label}</span>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-900">{displayValue}</span>
-          {copyable && value && (
+          {copyable && copyValue && (
             <button
-              onClick={() => copyToClipboard(String(value), label)}
+              onClick={() => copyToClipboard(copyValue, label)}
               className="p-1 hover:bg-gray-100 rounded transition"
             >
               {copiedField === label ? (

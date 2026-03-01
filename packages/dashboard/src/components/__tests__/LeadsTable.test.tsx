@@ -90,8 +90,8 @@ describe('LeadsTable', () => {
     const validBadge = screen.getByText('Yes').closest('span');
     const invalidBadge = screen.getByText('No').closest('span');
 
-    expect(validBadge).toHaveClass('bg-green-100');
-    expect(invalidBadge).toHaveClass('bg-red-100');
+    expect(validBadge?.className).toContain('bg-green-100');
+    expect(invalidBadge?.className).toContain('bg-red-100');
   });
 
   it('displays source badge in blue', () => {
@@ -99,7 +99,7 @@ describe('LeadsTable', () => {
     render(<LeadsTable leads={mockLeads} onRowClick={onRowClick} />);
 
     const sourceBadges = screen.getAllByText('google_maps');
-    expect(sourceBadges[0].closest('span')).toHaveClass('bg-blue-100');
+    expect(sourceBadges[0].closest('span')?.className).toContain('bg-blue-100');
   });
 
   it('displays formatted date in created column', () => {

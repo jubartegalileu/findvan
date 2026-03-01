@@ -46,6 +46,14 @@ const scoreRanges = [
   { value: 'weak', label: '< 50 (Fraco)' },
 ];
 
+const followUpFilterOptions = [
+  { value: 'all', label: 'Follow-up: Todos' },
+  { value: 'overdue', label: 'Follow-up: Vencido' },
+  { value: 'today', label: 'Follow-up: Hoje' },
+  { value: 'upcoming', label: 'Follow-up: Próximos' },
+  { value: 'none', label: 'Follow-up: Sem agenda' },
+];
+
 const modalTabs = [
   { value: 'dados', label: 'Dados' },
   { value: 'historico', label: 'Histórico' },
@@ -162,6 +170,43 @@ const isFollowUpOverdue = (lead) => {
   return when < new Date() && !['convertido', 'perdido'].includes(lead.funnel_status);
 };
 
+const isFollowUpToday = (lead) => {
+  if (!lead.next_action_date) return false;
+  const when = new Date(lead.next_action_date);
+  if (Number.isNaN(when.getTime())) return false;
+  const now = new Date();
+  return (
+    when.getFullYear() === now.getFullYear() &&
+    when.getMonth() === now.getMonth() &&
+    when.getDate() === now.getDate() &&
+    !isFollowUpOverdue(lead)
+  );
+};
+
+const isFollowUpUpcoming = (lead) => {
+  if (!lead.next_action_date) return false;
+  const when = new Date(lead.next_action_date);
+  if (Number.isNaN(when.getTime())) return false;
+  if (isFollowUpOverdue(lead) || isFollowUpToday(lead)) return false;
+  return when > new Date() && !['convertido', 'perdido'].includes(lead.funnel_status);
+};
+
+const getCadenceMeta = (lead) => {
+  if (!lead || ['convertido', 'perdido'].includes(lead.funnel_status)) {
+    return { label: 'Cadência encerrada', className: 'fv-risk-chip ok' };
+  }
+  if (isFollowUpOverdue(lead)) {
+    return { label: 'Cadência vencida', className: 'fv-risk-chip high' };
+  }
+  if (isFollowUpToday(lead)) {
+    return { label: 'Cadência hoje', className: 'fv-risk-chip warn' };
+  }
+  if (isFollowUpUpcoming(lead)) {
+    return { label: 'Cadência planejada', className: 'fv-risk-chip ok' };
+  }
+  return { label: 'Sem próxima ação', className: 'fv-risk-chip warn' };
+};
+
 const getScoreBand = (score) => {
   if (score >= 90) return '90-100';
   if (score >= 70) return '70-89';
@@ -188,6 +233,7 @@ export default function Leads({ onNavigate, activePath }) {
   const [selectedCity, setSelectedCity] = useState('');
   const [search, setSearch] = useState('');
   const [selectedScoreRange, setSelectedScoreRange] = useState('all');
+  const [selectedFollowUpFilter, setSelectedFollowUpFilter] = useState('all');
   const [selectedFunnels, setSelectedFunnels] = useState([]);
   const [selectedSource, setSelectedSource] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
@@ -247,10 +293,16 @@ export default function Leads({ onNavigate, activePath }) {
           ? parsed.selectedScoreRange
           : 'all';
         const validScoreSort = parsed.scoreSort === 'asc' || parsed.scoreSort === 'desc' ? parsed.scoreSort : 'desc';
+        const validFollowUpFilter = followUpFilterOptions.some(
+          (option) => option.value === parsed.selectedFollowUpFilter
+        )
+          ? parsed.selectedFollowUpFilter
+          : 'all';
         setSelectedState(parsed.selectedState || '');
         setSelectedCity(parsed.selectedCity || '');
         setSearch(parsed.search || '');
         setSelectedScoreRange(validScoreRange);
+        setSelectedFollowUpFilter(validFollowUpFilter);
         setSelectedFunnels(validFunnels);
         setSelectedSource(parsed.selectedSource || '');
         setSelectedTag(parsed.selectedTag || '');
@@ -311,6 +363,7 @@ export default function Leads({ onNavigate, activePath }) {
           selectedCity,
           search,
           selectedScoreRange,
+          selectedFollowUpFilter,
           selectedFunnels,
           selectedSource,
           selectedTag,
@@ -328,6 +381,7 @@ export default function Leads({ onNavigate, activePath }) {
     selectedCity,
     search,
     selectedScoreRange,
+    selectedFollowUpFilter,
     selectedFunnels,
     selectedSource,
     selectedTag,
@@ -377,6 +431,10 @@ export default function Leads({ onNavigate, activePath }) {
       if (selectedScoreRange === 'good' && !(lead.score >= 70 && lead.score <= 89)) return false;
       if (selectedScoreRange === 'regular' && !(lead.score >= 50 && lead.score <= 69)) return false;
       if (selectedScoreRange === 'weak' && !(lead.score < 50)) return false;
+      if (selectedFollowUpFilter === 'overdue' && !isFollowUpOverdue(lead)) return false;
+      if (selectedFollowUpFilter === 'today' && !isFollowUpToday(lead)) return false;
+      if (selectedFollowUpFilter === 'upcoming' && !isFollowUpUpcoming(lead)) return false;
+      if (selectedFollowUpFilter === 'none' && !!lead.next_action_date) return false;
 
       const capturedDate = lead.captured_at || lead.created_at;
       if (capturedDateFrom) {
@@ -418,6 +476,7 @@ export default function Leads({ onNavigate, activePath }) {
     selectedTag,
     activeAlertFilter,
     selectedScoreRange,
+    selectedFollowUpFilter,
     capturedDateFrom,
     capturedDateTo,
     search,
@@ -426,6 +485,9 @@ export default function Leads({ onNavigate, activePath }) {
   const sortedLeads = useMemo(() => {
     const copy = [...filteredLeads];
     copy.sort((a, b) => {
+      const overdueA = isFollowUpOverdue(a) ? 1 : 0;
+      const overdueB = isFollowUpOverdue(b) ? 1 : 0;
+      if (overdueA !== overdueB) return overdueB - overdueA;
       if (scoreSort === 'asc') return a.score - b.score;
       return b.score - a.score;
     });
@@ -515,6 +577,7 @@ export default function Leads({ onNavigate, activePath }) {
     selectedTag,
     activeAlertFilter,
     selectedScoreRange,
+    selectedFollowUpFilter,
     capturedDateFrom,
     capturedDateTo,
     scoreSort,
@@ -727,6 +790,7 @@ export default function Leads({ onNavigate, activePath }) {
     setSelectedCity('');
     setSearch('');
     setSelectedScoreRange('all');
+    setSelectedFollowUpFilter('all');
     setSelectedFunnels([]);
     setSelectedSource('');
     setSelectedTag('');
@@ -1033,14 +1097,17 @@ export default function Leads({ onNavigate, activePath }) {
   const handleAlertFilter = (type) => {
     setActiveAlertFilter(type);
     if (type === 'respondeu') {
+      setSelectedFollowUpFilter('all');
       setSelectedFunnels(['respondeu']);
       return;
     }
     if (type === 'overdue') {
+      setSelectedFollowUpFilter('overdue');
       setSelectedFunnels(['contactado', 'respondeu', 'interessado']);
       return;
     }
     if (type === 'novo') {
+      setSelectedFollowUpFilter('all');
       setSelectedFunnels(['novo']);
     }
   };
@@ -1116,6 +1183,73 @@ export default function Leads({ onNavigate, activePath }) {
   const handleContactLead = async (lead) => {
     openLeadModal(lead);
     await sendMessageForLead(lead);
+  };
+
+  const buildLeadUpdatePayload = (lead, overrides = {}) => {
+    const merged = { ...lead, ...overrides };
+    const normalizedLossReason =
+      merged.funnel_status === 'perdido'
+        ? merged.loss_reason === 'outro'
+          ? `outro:${merged.loss_reason_other || ''}`
+          : merged.loss_reason || null
+        : null;
+    return {
+      name: merged.name || '',
+      company_name: merged.company_name || merged.name || '',
+      phone: merged.phone || null,
+      email: merged.email || null,
+      address: merged.address || null,
+      city: merged.city || '',
+      state: merged.state || null,
+      cnpj: merged.cnpj || null,
+      url: merged.url || null,
+      funnel_status: merged.funnel_status || 'novo',
+      loss_reason: normalizedLossReason,
+      prospect_status: merged.prospect_status || 'nao_contatado',
+      prospect_notes: merged.prospect_notes || null,
+      campaign_status: merged.campaign_status || null,
+      next_action_date: merged.next_action_date || null,
+      next_action_description: merged.next_action_description || null,
+      is_valid: !!merged.is_valid,
+      is_duplicate: !!merged.is_duplicate,
+    };
+  };
+
+  const updateLeadCadence = async (lead, cadenceUpdates) => {
+    if (!lead?.id) return;
+    try {
+      setBatchBusy(true);
+      const response = await fetch(`${API_BASE}/api/leads/${lead.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildLeadUpdatePayload(lead, cadenceUpdates)),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao atualizar cadência.');
+      }
+      setBatchResult({
+        type: 'success',
+        summary: `Cadência atualizada para "${lead.name || lead.company_name || lead.id}".`,
+      });
+      await loadLeads();
+    } catch (error) {
+      setBatchResult({
+        type: 'error',
+        summary: error?.message || 'Erro ao atualizar cadência.',
+      });
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const scheduleFollowUpInHours = async (lead, hours) => {
+    const when = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+    const cadenceText = `Follow-up automático em ${hours}h`;
+    await updateLeadCadence(lead, {
+      next_action_date: when,
+      next_action_description: cadenceText,
+    });
   };
 
   const applyLeadFunnelTransition = async ({ lead, newStatus }) => {
@@ -1217,6 +1351,18 @@ export default function Leads({ onNavigate, activePath }) {
             onChange={(event) => setSelectedScoreRange(event.target.value)}
           >
             {scoreRanges.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="fv-input fv-select"
+            value={selectedFollowUpFilter}
+            onChange={(event) => setSelectedFollowUpFilter(event.target.value)}
+          >
+            {followUpFilterOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -1372,6 +1518,7 @@ export default function Leads({ onNavigate, activePath }) {
                       onClick={() => {
                         setSelectedFunnels([]);
                         setActiveAlertFilter('');
+                        setSelectedFollowUpFilter('all');
                       }}
                     >
                       Ver todos
@@ -1392,6 +1539,14 @@ export default function Leads({ onNavigate, activePath }) {
                           </button>
                           <button className="fv-ghost small" type="button" onClick={() => openLeadModal(lead)}>
                             Ver
+                          </button>
+                          <button
+                            className="fv-ghost small"
+                            type="button"
+                            disabled={batchBusy}
+                            onClick={() => scheduleFollowUpInHours(lead, 24)}
+                          >
+                            +24h
                           </button>
                           <button
                             className="fv-ghost small"
@@ -1418,6 +1573,7 @@ export default function Leads({ onNavigate, activePath }) {
               const scoreMeta = getScoreMeta(lead.score);
               const overdue = isFollowUpOverdue(lead);
               const replied = lead.funnel_status === 'respondeu';
+              const cadenceMeta = getCadenceMeta(lead);
               const completeness = [
                 { key: 'Telefone', ok: !!lead.phone },
                 { key: 'Endereço', ok: !!lead.address },
@@ -1464,6 +1620,12 @@ export default function Leads({ onNavigate, activePath }) {
                     )}
 
                     {overdue && <div className="fv-alert-pill">Follow-up vencido</div>}
+                    <div className="fv-row-sub">
+                      Próxima ação:{' '}
+                      {lead.next_action_date
+                        ? `${formatDateTime(lead.next_action_date)}${lead.next_action_description ? ` • ${lead.next_action_description}` : ''}`
+                        : 'não definida'}
+                    </div>
                   </div>
 
                   <div className="fv-lead-right">
@@ -1471,12 +1633,29 @@ export default function Leads({ onNavigate, activePath }) {
                       {funnelStatusOptions.find((f) => f.value === lead.funnel_status)?.label || 'Novo'}
                     </div>
                     <div className={`fv-row-chip ${scoreMeta.className}`}>Score {lead.score} • {scoreMeta.label}</div>
+                    <div className={`fv-row-chip ${cadenceMeta.className}`}>{cadenceMeta.label}</div>
                     <div className="fv-lead-actions">
                       <button className="fv-ghost small" type="button" onClick={() => handleContactLead(lead)}>
                         Contactar
                       </button>
                       <button className="fv-ghost small" type="button" onClick={() => openLeadModal(lead)}>
                         Ver
+                      </button>
+                      <button
+                        className="fv-ghost small"
+                        type="button"
+                        disabled={batchBusy}
+                        onClick={() => scheduleFollowUpInHours(lead, 24)}
+                      >
+                        +24h
+                      </button>
+                      <button
+                        className="fv-ghost small"
+                        type="button"
+                        disabled={batchBusy}
+                        onClick={() => updateLeadCadence(lead, { next_action_date: null, next_action_description: null })}
+                      >
+                        Limpar ação
                       </button>
                       <button className="fv-ghost small" type="button" onClick={() => window.alert('Menu rápido em evolução para a Wave 2.')}>
                         Menu...
@@ -1529,6 +1708,7 @@ export default function Leads({ onNavigate, activePath }) {
                     onClick={() => {
                       setActiveAlertFilter('');
                       setSelectedFunnels([]);
+                      setSelectedFollowUpFilter('all');
                     }}
                   >
                     Limpar alerta

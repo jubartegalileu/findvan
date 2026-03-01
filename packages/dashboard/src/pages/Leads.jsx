@@ -814,6 +814,26 @@ export default function Leads({ onNavigate, activePath }) {
     };
   }, [focusModeEnabled, insights]);
 
+  const dailyBriefing = useMemo(() => {
+    const topPlaybook = (focusModeEnabled
+      ? focusedInsights.playbookRecommendations
+      : insights.playbookRecommendations
+    ).slice(0, 3);
+
+    const priorities = [];
+    if (insights.alerts.slaCritical > 0) priorities.push(`${insights.alerts.slaCritical} SLA violado`);
+    if (insights.alerts.overdueFollowups > 0) priorities.push(`${insights.alerts.overdueFollowups} follow-ups vencidos`);
+    if (insights.alerts.newLeads > 0) priorities.push(`${insights.alerts.newLeads} novos leads`);
+
+    return {
+      headline:
+        priorities.length > 0
+          ? `Prioridades do turno: ${priorities.slice(0, 3).join(' • ')}`
+          : 'Turno estável: sem alertas críticos no contexto atual.',
+      actions: topPlaybook,
+    };
+  }, [focusModeEnabled, focusedInsights.playbookRecommendations, insights.alerts, insights.playbookRecommendations]);
+
   useEffect(() => {
     setPage(1);
     setSelectedLeadIds([]);
@@ -2069,6 +2089,22 @@ export default function Leads({ onNavigate, activePath }) {
               <div className="fv-row-sub">Total: {insights.total}</div>
               <div className="fv-row-sub">Válidos: {insights.valid}</div>
               <div className="fv-row-sub">Duplicados: {insights.duplicates}</div>
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Briefing diário</div>
+              <div className="fv-row-sub">{dailyBriefing.headline}</div>
+              {dailyBriefing.actions.length === 0 && (
+                <div className="fv-row-sub">Sem ações adicionais recomendadas para o início do turno.</div>
+              )}
+              {dailyBriefing.actions.map((item) => (
+                <div key={`briefing-${item.id}`} className="fv-row-sub">
+                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.title}</span> {item.description}{' '}
+                  <button className="fv-ghost small" type="button" onClick={() => applyPlaybookAction(item.action)}>
+                    Executar
+                  </button>
+                </div>
+              ))}
             </div>
 
             <div className="fv-activity-item">

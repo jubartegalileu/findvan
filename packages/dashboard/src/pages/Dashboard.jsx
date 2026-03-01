@@ -107,19 +107,19 @@ export default function Dashboard({ onNavigate, activePath }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [lastRefresh, setLastRefresh] = useState(null);
   const [leads, setLeads] = useState([]);
-  const [dashboardKpis, setDashboardKpis] = useState({
-    valid_leads: 0,
-    jobs_today: 0,
-    leads_24h: 0,
-    contacted_leads: 0,
-    reply_rate: 0,
-    monthly_conversions: 0,
+  const [sdrStats, setSdrStats] = useState({
+    total: 0,
+    done_today: 0,
+    pending: 0,
+    overdue: 0,
   });
   const [funnelSummary, setFunnelSummary] = useState({
     total: 0,
-    conversion_rate: 0,
+    overall_conversion: 0,
     stages: [],
   });
+  const [sdrStatsUnavailable, setSdrStatsUnavailable] = useState(false);
+  const [pipelineUnavailable, setPipelineUnavailable] = useState(false);
   const [urgentActions, setUrgentActions] = useState({
     alerts: [],
     all_clear: true,
@@ -160,17 +160,14 @@ export default function Dashboard({ onNavigate, activePath }) {
     setLoading(true);
     setErrorMessage('');
     try {
-      const [leadsRes, runsRes, kpisRes, funnelRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes, governanceSuggestionsRes, governanceDecisionsRes, telemetryRes, guardrailsRes, predictiveRiskRes, playbooksRes, executionsRes, postmortemRes, playbookReadinessRes] = await Promise.all([
+      const [leadsRes, runsRes, sdrStatsRes, pipelineSummaryRes, urgentRes, weeklyRes, activityRes, receiptsRes, governanceRes, governanceHistoryRes, governanceSuggestionsRes, governanceDecisionsRes, telemetryRes, guardrailsRes, predictiveRiskRes, playbooksRes, executionsRes, postmortemRes, playbookReadinessRes] = await Promise.all([
         fetch(`${API_BASE}/api/leads/?limit=120`),
         fetchWithFallback(
           `${API_BASE}/api/scraper/runs?limit=10`,
           `${API_BASE}/api/scraper/runs/?limit=10`
         ),
-        fetchWithFallback(`${API_BASE}/api/dashboard/kpis`, `${API_BASE}/api/dashboard/kpis/`),
-        fetchWithFallback(
-          `${API_BASE}/api/dashboard/funnel-summary`,
-          `${API_BASE}/api/dashboard/funnel-summary/`
-        ),
+        fetchWithFallback(`${API_BASE}/api/sdr/stats`, `${API_BASE}/api/sdr/stats/`),
+        fetchWithFallback(`${API_BASE}/api/pipeline/summary`, `${API_BASE}/api/pipeline/summary/`),
         fetchWithFallback(
           `${API_BASE}/api/dashboard/urgent-actions`,
           `${API_BASE}/api/dashboard/urgent-actions/`
@@ -203,8 +200,8 @@ export default function Dashboard({ onNavigate, activePath }) {
       const [
         leadsPayload,
         runsPayload,
-        kpisPayload,
-        funnelPayload,
+        sdrStatsPayload,
+        pipelineSummaryPayload,
         urgentPayload,
         weeklyPayload,
         activityPayload,
@@ -223,8 +220,8 @@ export default function Dashboard({ onNavigate, activePath }) {
       ] = await Promise.all([
         leadsRes.json(),
         runsRes.json(),
-        kpisRes.json(),
-        funnelRes.json(),
+        sdrStatsRes.json(),
+        pipelineSummaryRes.json(),
         urgentRes.json(),
         weeklyRes.json(),
         activityRes.json(),
@@ -251,11 +248,26 @@ export default function Dashboard({ onNavigate, activePath }) {
       if (runsRes.ok && Array.isArray(runsPayload?.runs)) {
         setScraperRuns(runsPayload.runs);
       }
-      if (kpisRes.ok && kpisPayload?.kpis) {
-        setDashboardKpis(kpisPayload.kpis);
+      if (sdrStatsRes.ok && sdrStatsPayload) {
+        setSdrStats({
+          total: Number(sdrStatsPayload.total || 0),
+          done_today: Number(sdrStatsPayload.done_today || 0),
+          pending: Number(sdrStatsPayload.pending || 0),
+          overdue: Number(sdrStatsPayload.overdue || 0),
+        });
+        setSdrStatsUnavailable(false);
+      } else {
+        setSdrStatsUnavailable(true);
       }
-      if (funnelRes.ok && funnelPayload?.summary) {
-        setFunnelSummary(funnelPayload.summary);
+      if (pipelineSummaryRes.ok && pipelineSummaryPayload) {
+        setFunnelSummary({
+          total: Number(pipelineSummaryPayload.total || 0),
+          overall_conversion: Number(pipelineSummaryPayload.overall_conversion || 0),
+          stages: Array.isArray(pipelineSummaryPayload.stages) ? pipelineSummaryPayload.stages : [],
+        });
+        setPipelineUnavailable(false);
+      } else {
+        setPipelineUnavailable(true);
       }
       if (urgentRes.ok && urgentPayload?.urgent_actions) {
         setUrgentActions(urgentPayload.urgent_actions);
@@ -382,46 +394,50 @@ export default function Dashboard({ onNavigate, activePath }) {
 
   const dashboardStats = useMemo(() => {
     const repliedLeads = leads.filter((lead) => lead.funnel_status === 'respondeu').length;
+    const convertedCount =
+      funnelSummary.stages.find((stage) => stage.status === 'convertido')?.count || 0;
     const uniqueCityCount = new Set(leads.map((lead) => lead.city).filter(Boolean)).size;
     return [
       {
         label: 'Leads válidos',
-        value: formatNumber(dashboardKpis.valid_leads),
+        value: formatNumber(leads.filter((lead) => lead.is_valid).length),
         delta: `${uniqueCityCount} cidades ativas`,
         icon: 'leads',
       },
       {
-        label: 'Coletas hoje',
-        value: formatNumber(dashboardKpis.jobs_today),
-        delta: `Última atualização ${lastRefresh ? formatRelativeDate(lastRefresh.toISOString()) : '--'}`,
-        icon: 'scraper',
-      },
-      {
-        label: 'Leads capturados (24h)',
-        value: formatNumber(dashboardKpis.leads_24h),
-        delta: `${formatNumber(repliedLeads)} responderam`,
-        icon: 'recent',
-      },
-      {
-        label: 'Leads contactados',
-        value: formatNumber(dashboardKpis.contacted_leads),
-        delta: 'Status diferente de Novo',
+        label: 'Fila SDR',
+        value: sdrStatsUnavailable ? 'Dados indisponíveis' : formatNumber(sdrStats.total),
+        delta: sdrStatsUnavailable ? 'Falha ao consultar /api/sdr/stats' : `${formatNumber(sdrStats.pending)} pendentes`,
         icon: 'activity',
       },
       {
-        label: 'Taxa de resposta',
-        value: formatPercent(dashboardKpis.reply_rate),
-        delta: 'Respondeu / Contactado',
+        label: 'Ações SDR hoje',
+        value: sdrStatsUnavailable ? 'Dados indisponíveis' : formatNumber(sdrStats.done_today),
+        delta: sdrStatsUnavailable
+          ? 'Verifique backend'
+          : `${formatNumber(sdrStats.overdue)} atrasados`,
         icon: 'whatsapp',
       },
       {
-        label: 'Conversões do mês',
-        value: formatNumber(dashboardKpis.monthly_conversions),
-        delta: 'Leads em Convertido',
+        label: 'Leads capturados',
+        value: formatNumber(leads.length),
+        delta: `Última atualização ${lastRefresh ? formatRelativeDate(lastRefresh.toISOString()) : '--'}`,
+        icon: 'recent',
+      },
+      {
+        label: 'Respostas',
+        value: formatNumber(repliedLeads),
+        delta: 'Leads em Respondeu',
+        icon: 'leads',
+      },
+      {
+        label: 'Conversões',
+        value: pipelineUnavailable ? 'Dados indisponíveis' : formatNumber(convertedCount),
+        delta: pipelineUnavailable ? 'Falha ao consultar /api/pipeline/summary' : 'Leads em Convertido',
         icon: 'campaigns',
       },
     ];
-  }, [dashboardKpis, leads, lastRefresh]);
+  }, [funnelSummary.stages, leads, lastRefresh, pipelineUnavailable, sdrStats, sdrStatsUnavailable]);
 
   const weeklyBars = useMemo(() => {
     const labels = weeklyPerformance.labels || [];
@@ -492,12 +508,12 @@ export default function Dashboard({ onNavigate, activePath }) {
     onNavigate(window.location.pathname);
   };
 
-  const openLeadsWithFunnel = (funnelStatus) => {
-    if (!funnelStatus) {
-      goTo('/leads');
-      return;
-    }
-    goTo(`/leads?funnel=${encodeURIComponent(funnelStatus)}`);
+  const openFunnel = () => {
+    goTo('/funil');
+  };
+
+  const openSdr = () => {
+    goTo('/sdr');
   };
 
   const openLeadDetails = (lead) => {
@@ -605,11 +621,14 @@ export default function Dashboard({ onNavigate, activePath }) {
               <Icon name="activity" />
               Mini-funil
             </h2>
-            <button className="fv-ghost small" type="button" onClick={() => goTo('/leads')}>
+            <button className="fv-ghost small" type="button" onClick={openFunnel}>
               Ver funil completo
             </button>
           </div>
-          <div className="fv-funnel-widget">
+          {pipelineUnavailable ? (
+            <div className="fv-row-sub">Dados indisponíveis (pipeline).</div>
+          ) : (
+            <div className="fv-funnel-widget">
             {(funnelSummary.stages || []).map((stage) => {
               const meta = funnelMeta[stage.status] || { label: stage.status, className: '' };
               return (
@@ -617,27 +636,28 @@ export default function Dashboard({ onNavigate, activePath }) {
                   key={stage.status}
                   className="fv-funnel-stage"
                   type="button"
-                  onClick={() => openLeadsWithFunnel(stage.status)}
+                  onClick={openFunnel}
                 >
                   <div className="fv-funnel-stage-head">
                     <span className={`fv-status ${meta.className}`}>{meta.label}</span>
                     <span className="fv-row-sub">
-                      {formatNumber(stage.count)} ({formatPercent(stage.percentage)})
+                      {formatNumber(stage.count)} ({formatPercent(stage.pct)})
                     </span>
                   </div>
                   <div className="fv-funnel-track">
                     <div
                       className={`fv-funnel-fill ${meta.className}`}
-                      style={{ width: `${Math.max(3, Number(stage.percentage || 0))}%` }}
+                      style={{ width: `${Math.max(3, Number(stage.pct || 0))}%` }}
                     />
                   </div>
                 </button>
               );
             })}
             <div className="fv-row-sub">
-              Taxa de conversão geral: <strong>{formatPercent(funnelSummary.conversion_rate)}</strong>
+              Taxa de conversão geral: <strong>{formatPercent(funnelSummary.overall_conversion)}</strong>
             </div>
-          </div>
+            </div>
+          )}
         </div>
 
         <div className="fv-panel">
@@ -646,7 +666,7 @@ export default function Dashboard({ onNavigate, activePath }) {
               <Icon name="recent" />
               Ações urgentes
             </h2>
-            <button className="fv-primary" type="button" onClick={() => goTo('/leads')}>
+            <button className="fv-primary" type="button" onClick={openSdr}>
               Abrir SDR
             </button>
           </div>
@@ -659,7 +679,7 @@ export default function Dashboard({ onNavigate, activePath }) {
                   key={alert.id}
                   type="button"
                   className={`fv-urgent-item ${alert.color}`}
-                  onClick={() => openLeadsWithFunnel(alert.funnel)}
+                  onClick={openSdr}
                 >
                   <span>{alert.label}</span>
                   <span className="fv-row-chip">{formatNumber(alert.count)}</span>

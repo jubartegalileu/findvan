@@ -1501,3 +1501,72 @@ body,
     width: 100%;
   }
 }
+
+.fv-lead-card.sdr-today {
+  border: 1px solid rgba(249, 168, 37, 0.35);
+}
+
+.fv-funnel-board {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(220px, 1fr));
+  gap: 14px;
+  align-items: start;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.fv-funnel-column {
+  background: #f6fcf7;
+  border: 1px solid rgba(32, 80, 114, 0.12);
+  border-radius: 16px;
+  padding: 12px;
+  min-height: 260px;
+}
+
+.fv-funnel-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.fv-funnel-column-header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.fv-funnel-column-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.fv-funnel-card {
+  background: white;
+  border: 1px solid rgba(32, 80, 114, 0.15);
+  border-radius: 12px;
+  padding: 10px;
+  cursor: grab;
+  box-shadow: 0 8px 18px rgba(32, 80, 114, 0.08);
+}
+
+.fv-funnel-card.is-moving {
+  opacity: 0.65;
+}
+
+@media (max-width: 1280px) {
+  .fv-funnel-board {
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 880px) {
+  .fv-funnel-board {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+
+.fv-funnel-column.is-over {
+  border-color: rgba(50, 157, 156, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(50, 157, 156, 0.2);
+}

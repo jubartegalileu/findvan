@@ -139,6 +139,149 @@ CREATE INDEX IF NOT EXISTS idx_interactions_lead_id ON lead_interactions(lead_id
 CREATE INDEX IF NOT EXISTS idx_interactions_created_at ON lead_interactions(created_at DESC);
 """
 
+SDR_ACTIVITIES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS sdr_activities (
+  id BIGSERIAL PRIMARY KEY,
+  lead_id BIGINT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  assigned_to TEXT,
+  prospect_status TEXT NOT NULL DEFAULT 'nao_contatado',
+  next_action_date TIMESTAMP,
+  next_action_description TEXT,
+  cadence_step INTEGER NOT NULL DEFAULT 0,
+  last_contact_at TIMESTAMP,
+  contact_count INTEGER NOT NULL DEFAULT 0,
+  notes JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_sdr_prospect_status CHECK (
+    prospect_status IN ('nao_contatado', 'contatado', 'cliente', 'fora_do_ramo')
+  ),
+  CONSTRAINT uq_sdr_lead UNIQUE (lead_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sdr_next_action ON sdr_activities(next_action_date) WHERE next_action_date IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_sdr_prospect_status ON sdr_activities(prospect_status);
+"""
+
+PIPELINE_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS pipeline (
+  id BIGSERIAL PRIMARY KEY,
+  lead_id BIGINT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  funnel_status TEXT NOT NULL DEFAULT 'novo',
+  entered_stage_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  loss_reason TEXT,
+  loss_reason_detail TEXT,
+  stage_history JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_pipeline_funnel_status CHECK (
+    funnel_status IN ('novo', 'contactado', 'respondeu', 'interessado', 'convertido', 'perdido')
+  ),
+  CONSTRAINT uq_pipeline_lead UNIQUE (lead_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pipeline_status_entered ON pipeline(funnel_status, entered_stage_at);
+"""
+
+TIMESTAMP_AND_TRIGGER_SQL = """
+CREATE OR REPLACE FUNCTION update_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS sdr_activities_update_timestamp_trigger ON sdr_activities;
+CREATE TRIGGER sdr_activities_update_timestamp_trigger
+  BEFORE UPDATE ON sdr_activities
+  FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+DROP TRIGGER IF EXISTS pipeline_update_timestamp_trigger ON pipeline;
+CREATE TRIGGER pipeline_update_timestamp_trigger
+  BEFORE UPDATE ON pipeline
+  FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE OR REPLACE FUNCTION auto_create_pipeline_and_sdr()
+RETURNS TRIGGER AS $$
+DECLARE
+  normalized_funnel TEXT;
+  normalized_prospect TEXT;
+BEGIN
+  normalized_funnel := LOWER(COALESCE(NULLIF(TRIM(NEW.funnel_status), ''), 'novo'));
+  IF normalized_funnel NOT IN ('novo', 'contactado', 'respondeu', 'interessado', 'convertido', 'perdido') THEN
+    normalized_funnel := 'novo';
+  END IF;
+
+  normalized_prospect := LOWER(COALESCE(NULLIF(TRIM(NEW.prospect_status), ''), 'nao_contatado'));
+  IF normalized_prospect NOT IN ('nao_contatado', 'contatado', 'cliente', 'fora_do_ramo') THEN
+    normalized_prospect := 'nao_contatado';
+  END IF;
+
+  INSERT INTO pipeline (
+    lead_id,
+    funnel_status,
+    entered_stage_at,
+    loss_reason
+  )
+  VALUES (
+    NEW.id,
+    normalized_funnel,
+    COALESCE(NEW.updated_at, NEW.created_at, NOW()),
+    NEW.loss_reason
+  )
+  ON CONFLICT (lead_id) DO NOTHING;
+
+  INSERT INTO sdr_activities (
+    lead_id,
+    prospect_status,
+    next_action_date,
+    next_action_description
+  )
+  VALUES (
+    NEW.id,
+    normalized_prospect,
+    NEW.next_action_date,
+    NEW.next_action_description
+  )
+  ON CONFLICT (lead_id) DO NOTHING;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS leads_auto_create_pipeline_and_sdr_trigger ON leads;
+CREATE TRIGGER leads_auto_create_pipeline_and_sdr_trigger
+  AFTER INSERT ON leads
+  FOR EACH ROW EXECUTE FUNCTION auto_create_pipeline_and_sdr();
+
+INSERT INTO pipeline (lead_id, funnel_status, entered_stage_at, loss_reason)
+SELECT
+  l.id,
+  CASE
+    WHEN LOWER(COALESCE(NULLIF(TRIM(l.funnel_status), ''), 'novo')) IN ('novo', 'contactado', 'respondeu', 'interessado', 'convertido', 'perdido')
+      THEN LOWER(COALESCE(NULLIF(TRIM(l.funnel_status), ''), 'novo'))
+    ELSE 'novo'
+  END,
+  COALESCE(l.updated_at, l.created_at, NOW()),
+  l.loss_reason
+FROM leads l
+LEFT JOIN pipeline p ON p.lead_id = l.id
+WHERE p.lead_id IS NULL;
+
+INSERT INTO sdr_activities (lead_id, prospect_status, next_action_date, next_action_description)
+SELECT
+  l.id,
+  CASE
+    WHEN LOWER(COALESCE(NULLIF(TRIM(l.prospect_status), ''), 'nao_contatado')) IN ('nao_contatado', 'contatado', 'cliente', 'fora_do_ramo')
+      THEN LOWER(COALESCE(NULLIF(TRIM(l.prospect_status), ''), 'nao_contatado'))
+    ELSE 'nao_contatado'
+  END,
+  l.next_action_date,
+  l.next_action_description
+FROM leads l
+LEFT JOIN sdr_activities s ON s.lead_id = l.id
+WHERE s.lead_id IS NULL;
+"""
+
 MESSAGING_RECEIPTS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS messaging_receipts (
   id BIGSERIAL PRIMARY KEY,
@@ -373,6 +516,9 @@ def ensure_schema():
             cur.execute(LEAD_NOTES_TABLE_SQL)
             cur.execute(LEAD_TAGS_TABLE_SQL)
             cur.execute(LEAD_INTERACTIONS_TABLE_SQL)
+            cur.execute(SDR_ACTIVITIES_TABLE_SQL)
+            cur.execute(PIPELINE_TABLE_SQL)
+            cur.execute(TIMESTAMP_AND_TRIGGER_SQL)
             cur.execute(MESSAGING_RECEIPTS_TABLE_SQL)
             cur.execute(JOB_LOCKS_TABLE_SQL)
             cur.execute(RETENTION_STATUS_TABLE_SQL)

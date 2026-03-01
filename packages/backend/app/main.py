@@ -10,7 +10,9 @@ import logging
 from pathlib import Path
 from .db import ensure_schema
 from .api import leads as leads_api
+from .api import pipeline as pipeline_api
 from .api import scraper as scraper_api
+from .api import sdr as sdr_api
 from .api import dashboard as dashboard_api
 from .api import activity as activity_api
 from .api import integrations as integrations_api
@@ -81,6 +83,8 @@ async def root():
 # API Routes
 # ============================================================
 app.include_router(leads_api.router, prefix="/api/leads", tags=["leads"])
+app.include_router(sdr_api.router, prefix="/api/sdr", tags=["sdr"])
+app.include_router(pipeline_api.router, prefix="/api/pipeline", tags=["pipeline"])
 app.include_router(scraper_api.router, prefix="/api/scraper", tags=["scraper"])
 app.include_router(dashboard_api.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(activity_api.router, prefix="/api/activity", tags=["activity"])

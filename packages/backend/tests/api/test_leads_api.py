@@ -187,3 +187,27 @@ def test_get_leads_rejects_mixed_invalid_status_and_funnel():
     response = client.get("/api/leads/?limit=10&status=novo&funnel=foo")
     assert response.status_code == 400
     assert "foo" in response.json()["detail"].lower()
+
+
+def test_post_lead_ok(monkeypatch):
+    monkeypatch.setattr(
+        leads_api,
+        "create_lead",
+        lambda payload: {"id": 101, "name": payload["name"], "city": payload["city"]},
+    )
+    client = build_client()
+    response = client.post(
+        "/api/leads/",
+        json={"source": "manual", "name": "Escola Alpha", "city": "Santos"},
+    )
+    assert response.status_code == 200
+    assert response.json()["lead"]["id"] == 101
+
+
+def test_patch_lead_ok(monkeypatch):
+    monkeypatch.setattr(leads_api, "get_lead_by_id", lambda lead_id: {"id": lead_id, "name": "Antes", "city": "Santos"})
+    monkeypatch.setattr(leads_api, "update_lead", lambda lead_id, payload: {"id": lead_id, "name": payload["name"], "city": payload["city"]})
+    client = build_client()
+    response = client.patch("/api/leads/7", json={"name": "Depois"})
+    assert response.status_code == 200
+    assert response.json()["lead"]["name"] == "Depois"

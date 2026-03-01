@@ -217,6 +217,52 @@ def get_lead_by_id(lead_id: int) -> dict | None:
     return _attach_tags_to_leads([lead])[0]
 
 
+def create_lead(data: dict) -> dict:
+    score = calculate_lead_score(data).get("total", 0)
+    query = """
+        INSERT INTO leads (
+          source, name, phone, email, address, city, state, company_name, cnpj, url,
+          score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status,
+          captured_at, next_action_date, next_action_description, is_valid, is_duplicate
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id;
+    """
+    values = (
+        data.get("source", "manual"),
+        data.get("name"),
+        data.get("phone"),
+        data.get("email"),
+        data.get("address"),
+        data.get("city"),
+        data.get("state"),
+        data.get("company_name"),
+        data.get("cnpj"),
+        data.get("url"),
+        score,
+        normalize_funnel_status(data.get("funnel_status")),
+        data.get("loss_reason"),
+        data.get("prospect_status", "nao_contatado"),
+        data.get("prospect_notes"),
+        data.get("campaign_status"),
+        data.get("captured_at"),
+        data.get("next_action_date"),
+        data.get("next_action_description"),
+        data.get("is_valid", True),
+        data.get("is_duplicate", False),
+    )
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, values)
+            row = cur.fetchone()
+        conn.commit()
+
+    created = get_lead_by_id(int(row[0]))
+    if created is None:
+        raise RuntimeError("Lead criado mas não encontrado na leitura subsequente")
+    return created
+
+
 def update_lead(lead_id: int, data: dict) -> dict | None:
     current = get_lead_by_id(lead_id)
     if not current:

@@ -6,6 +6,8 @@ const navItems = [
   { label: 'Dashboard', to: '/', icon: 'dashboard' },
   { label: 'Scraper', to: '/scraper', icon: 'scraper' },
   { label: 'Leads', to: '/leads', icon: 'leads' },
+  { label: 'SDR', to: '/sdr', icon: 'sdr' },
+  { label: 'Funil', to: '/funil', icon: 'funnel' },
   { label: 'WhatsApp', to: '/whatsapp', icon: 'whatsapp' },
   { label: 'Campanhas', to: '/campanhas', icon: 'campaigns' },
   { label: 'Configurações', to: '/configuracoes', icon: 'settings' },

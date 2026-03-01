@@ -4,116 +4,8 @@ import ScoreBadge from '../components/ScoreBadge.jsx';
 import ScoreBreakdown from '../components/ScoreBreakdown.jsx';
 import './dashboard.css';
 import { API_BASE } from '../lib/apiBase.js';
-import { addMessagingActivity } from '../lib/messagingActivity.js';
 
-const prospectStatusOptions = [
-  { value: 'cliente', label: 'CLIENTE', className: 'cliente' },
-  { value: 'contatado', label: 'CONTATADO', className: 'contatado' },
-  { value: 'nao_contatado', label: 'NÃO CONTATADO', className: 'nao-contatado' },
-  { value: 'fora_do_ramo', label: 'FORA DO RAMO', className: 'fora-do-ramo' },
-];
-
-const funnelStatusOptions = [
-  { value: 'novo', label: 'Novo', className: 'funnel-novo' },
-  { value: 'contactado', label: 'Contactado', className: 'funnel-contactado' },
-  { value: 'respondeu', label: 'Respondeu', className: 'funnel-respondeu' },
-  { value: 'interessado', label: 'Interessado', className: 'funnel-interessado' },
-  { value: 'convertido', label: 'Convertido', className: 'funnel-convertido' },
-  { value: 'perdido', label: 'Perdido', className: 'funnel-perdido' },
-];
-
-const funnelTransitions = {
-  novo: ['contactado', 'perdido'],
-  contactado: ['respondeu', 'perdido'],
-  respondeu: ['interessado', 'perdido'],
-  interessado: ['convertido', 'perdido'],
-  convertido: ['perdido'],
-  perdido: ['novo'],
-};
-
-const lossReasonOptions = [
-  { value: 'sem_interesse', label: 'Sem interesse' },
-  { value: 'ja_tem_fornecedor', label: 'Já tem fornecedor' },
-  { value: 'preco_alto', label: 'Preço alto' },
-  { value: 'sem_resposta_3_tentativas', label: 'Sem resposta (3 tentativas)' },
-  { value: 'numero_invalido_ou_bloqueado', label: 'Número inválido/bloqueado' },
-  { value: 'outro', label: 'Outro' },
-];
-
-const scoreRanges = [
-  { value: 'all', label: 'Score: Todos' },
-  { value: 'excellent', label: '90-100 (Excelente)' },
-  { value: 'good', label: '70-89 (Bom)' },
-  { value: 'regular', label: '50-69 (Regular)' },
-  { value: 'weak', label: '< 50 (Fraco)' },
-];
-
-const followUpFilterOptions = [
-  { value: 'all', label: 'Follow-up: Todos' },
-  { value: 'overdue', label: 'Follow-up: Vencido' },
-  { value: 'today', label: 'Follow-up: Hoje' },
-  { value: 'upcoming', label: 'Follow-up: Próximos' },
-  { value: 'none', label: 'Follow-up: Sem agenda' },
-];
-
-const slaFilterOptions = [
-  { value: 'all', label: 'SLA: Todos' },
-  { value: 'on_time', label: 'SLA: No prazo' },
-  { value: 'attention', label: 'SLA: Atenção' },
-  { value: 'violated', label: 'SLA: Violado' },
-];
-
-const modalTabs = [
-  { value: 'dados', label: 'Dados' },
-  { value: 'historico', label: 'Histórico' },
-  { value: 'score', label: 'Score' },
-  { value: 'notas', label: 'Notas' },
-];
-
-const SESSION_FILTER_KEY = 'findvan.leads.filters.v1';
-const EXECUTION_OUTCOME_KEY = 'findvan.leads.execution.outcomes.v1';
-const LEADS_CACHE_KEY = 'findvan.leads.cache.v1';
-const LEADS_CACHE_AT_KEY = 'findvan.leads.cacheAt.v1';
-
-const executionOutcomeOptions = [
-  { value: 'success', label: 'Sucesso' },
-  { value: 'no_response', label: 'Sem resposta' },
-  { value: 'reschedule', label: 'Reagendar' },
-  { value: 'lost', label: 'Perdido' },
-];
-
-const executionVariantOptions = [
-  { value: 'control', label: 'Controle' },
-  { value: 'copy_a', label: 'Copy A' },
-  { value: 'copy_b', label: 'Copy B' },
-  { value: 'window_morning', label: 'Janela manhã' },
-  { value: 'window_afternoon', label: 'Janela tarde' },
-];
-
-const normalizeExecutionVariant = (rawValue) => {
-  if (!rawValue || !rawValue.trim()) {
-    return executionVariantOptions[0];
-  }
-  const normalized = rawValue.trim().toLowerCase().replace(/\s+/g, '_');
-  const preset = executionVariantOptions.find((option) => option.value === normalized);
-  if (preset) return preset;
-  return {
-    value: normalized.slice(0, 40),
-    label: rawValue.trim().slice(0, 40),
-  };
-};
-
-const getExecutionVariantLabel = (value) =>
-  executionVariantOptions.find((option) => option.value === value)?.label || value || 'Controle';
-
-const getProspectClass = (value) =>
-  prospectStatusOptions.find((option) => option.value === value)?.className || 'nao-contatado';
-
-const getFunnelClass = (value) =>
-  funnelStatusOptions.find((option) => option.value === value)?.className || 'funnel-novo';
-
-const getFunnelLabel = (value) =>
-  funnelStatusOptions.find((option) => option.value === value)?.label || value || 'Novo';
+const PAGE_SIZE = 120;
 
 const toCsv = (rows) => {
   const headers = [
@@ -127,7 +19,6 @@ const toCsv = (rows) => {
     'address',
     'source',
     'score',
-    'funnel_status',
     'captured_at',
   ];
   const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -135,17 +26,10 @@ const toCsv = (rows) => {
   return [headers.join(','), ...lines].join('\n');
 };
 
-const formatDateTime = (value) => {
-  if (!value) return '--';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '--';
-  return date.toLocaleString('pt-BR');
-};
-
 const mapLead = (lead) => ({
   id: lead.id,
-  source: lead.source || 'google_maps',
-  name: lead.company_name || lead.name || '',
+  source: lead.source || 'manual',
+  name: lead.name || lead.company_name || '',
   company_name: lead.company_name || lead.name || '',
   city: lead.city || '',
   state: lead.state || '',
@@ -155,2035 +39,283 @@ const mapLead = (lead) => ({
   cnpj: lead.cnpj || '',
   url: lead.url || '',
   tags: Array.isArray(lead.tags) ? lead.tags : [],
-  prospect_status: lead.prospect_status || 'nao_contatado',
-  prospect_notes: lead.prospect_notes || '',
-  campaign_status: lead.campaign_status || '',
   captured_at: lead.captured_at || null,
   created_at: lead.created_at || null,
   updated_at: lead.updated_at || null,
-  next_action_date: lead.next_action_date || null,
-  next_action_description: lead.next_action_description || '',
   is_valid: !!lead.is_valid,
   is_duplicate: !!lead.is_duplicate,
   score: Number.isFinite(Number(lead.score)) ? Number(lead.score) : 0,
-  funnel_status: lead.funnel_status || 'novo',
-  loss_reason: (lead.loss_reason || '').startsWith('outro:') ? 'outro' : lead.loss_reason || '',
-  loss_reason_other: (lead.loss_reason || '').startsWith('outro:') ? (lead.loss_reason || '').slice(6) : '',
 });
 
-const getNextActionDateTimeValue = (dateValue) => {
-  if (!dateValue) return '';
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) return '';
-  const iso = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString();
-  return iso.slice(0, 16);
+const initialForm = {
+  name: '',
+  company_name: '',
+  city: '',
+  state: '',
+  phone: '',
+  email: '',
+  address: '',
+  cnpj: '',
+  url: '',
+  source: 'manual',
+  is_valid: true,
+  is_duplicate: false,
 };
 
-const getInteractionLabel = (type) => {
-  const labels = {
-    status_change: 'Mudança de status',
-    msg_sent: 'Mensagem enviada',
-    msg_received: 'Resposta recebida',
-    note: 'Nota',
-    scheduled: 'Agendamento',
-  };
-  return labels[type] || type;
-};
-
-const lossReasonLabelByValue = {
-  sem_interesse: 'Sem interesse',
-  ja_tem_fornecedor: 'Já tem fornecedor',
-  preco_alto: 'Preço alto',
-  sem_resposta_3_tentativas: 'Sem resposta (3 tentativas)',
-  numero_invalido_ou_bloqueado: 'Número inválido/bloqueado',
-  outro: 'Outro',
-};
-
-const formatLossReason = (rawReason) => {
-  const normalized = String(rawReason || '').trim();
-  if (!normalized) return '';
-  if (normalized.startsWith('outro:')) {
-    const detail = normalized.slice(6).trim();
-    return detail ? `Outro (${detail})` : 'Outro';
-  }
-  return lossReasonLabelByValue[normalized] || normalized;
-};
-
-const getInteractionContext = (item) => {
-  if (!item || typeof item !== 'object') return '';
-  let metadata = {};
-  if (item.metadata && typeof item.metadata === 'object') {
-    metadata = item.metadata;
-  } else if (typeof item.metadata === 'string') {
-    try {
-      const parsed = JSON.parse(item.metadata);
-      if (parsed && typeof parsed === 'object') metadata = parsed;
-    } catch (error) {
-      // no-op
-    }
-  }
-  if (item.type === 'status_change') {
-    const from = getFunnelLabel(metadata.old_status || 'n/d');
-    const to = getFunnelLabel(metadata.new_status || 'n/d');
-    const reasonLabel = formatLossReason(metadata.loss_reason);
-    const reason = reasonLabel ? ` • motivo: ${reasonLabel}` : '';
-    return `Transição: ${from} → ${to}${reason}`;
-  }
-  return '';
-};
-
-const isFollowUpOverdue = (lead) => {
-  if (!lead.next_action_date) return false;
-  const when = new Date(lead.next_action_date);
-  if (Number.isNaN(when.getTime())) return false;
-  return when < new Date() && !['convertido', 'perdido'].includes(lead.funnel_status);
-};
-
-const isFollowUpToday = (lead) => {
-  if (!lead.next_action_date) return false;
-  const when = new Date(lead.next_action_date);
-  if (Number.isNaN(when.getTime())) return false;
-  const now = new Date();
-  return (
-    when.getFullYear() === now.getFullYear() &&
-    when.getMonth() === now.getMonth() &&
-    when.getDate() === now.getDate() &&
-    !isFollowUpOverdue(lead)
-  );
-};
-
-const isFollowUpUpcoming = (lead) => {
-  if (!lead.next_action_date) return false;
-  const when = new Date(lead.next_action_date);
-  if (Number.isNaN(when.getTime())) return false;
-  if (isFollowUpOverdue(lead) || isFollowUpToday(lead)) return false;
-  return when > new Date() && !['convertido', 'perdido'].includes(lead.funnel_status);
-};
-
-const getCadenceMeta = (lead) => {
-  if (!lead || ['convertido', 'perdido'].includes(lead.funnel_status)) {
-    return { label: 'Cadência encerrada', className: 'fv-risk-chip ok' };
-  }
-  if (isFollowUpOverdue(lead)) {
-    return { label: 'Cadência vencida', className: 'fv-risk-chip high' };
-  }
-  if (isFollowUpToday(lead)) {
-    return { label: 'Cadência hoje', className: 'fv-risk-chip warn' };
-  }
-  if (isFollowUpUpcoming(lead)) {
-    return { label: 'Cadência planejada', className: 'fv-risk-chip ok' };
-  }
-  return { label: 'Sem próxima ação', className: 'fv-risk-chip warn' };
-};
-
-const getSlaMeta = (lead) => {
-  if (!lead || ['convertido', 'perdido'].includes(lead.funnel_status)) {
-    return { value: 'on_time', label: 'SLA encerrado', className: 'fv-alert-pill fv-alert-low' };
-  }
-  if (!lead.next_action_date) {
-    return { value: 'attention', label: 'SLA atenção', className: 'fv-alert-pill fv-alert-medium' };
-  }
-  const when = new Date(lead.next_action_date);
-  if (Number.isNaN(when.getTime())) {
-    return { value: 'attention', label: 'SLA atenção', className: 'fv-alert-pill fv-alert-medium' };
-  }
-  const now = new Date();
-  if (when < now) {
-    const delayHours = Math.floor((now.getTime() - when.getTime()) / (60 * 60 * 1000));
-    if (delayHours >= 24) {
-      return { value: 'violated', label: 'SLA violado', className: 'fv-alert-pill fv-alert-critical' };
-    }
-    return { value: 'attention', label: 'SLA atenção', className: 'fv-alert-pill fv-alert-high' };
-  }
-  return { value: 'on_time', label: 'SLA no prazo', className: 'fv-alert-pill fv-alert-low' };
-};
-
-const getScoreBand = (score) => {
-  if (score >= 90) return '90-100';
-  if (score >= 70) return '70-89';
-  if (score >= 50) return '50-69';
-  return '<50';
-};
-
-const getPreferredNextFunnelStatus = (currentStatus) => {
-  const preferredPath = {
-    novo: 'contactado',
-    contactado: 'respondeu',
-    respondeu: 'interessado',
-    interessado: 'convertido',
-    convertido: null,
-    perdido: 'novo',
-  };
-  return preferredPath[currentStatus] || null;
-};
-
-const getFunnelNextStatus = (currentStatus) => {
-  const sequence = {
-    novo: 'contactado',
-    contactado: 'respondeu',
-    respondeu: 'interessado',
-    interessado: 'convertido',
-    convertido: null,
-    perdido: null,
-  };
-  return sequence[currentStatus] || null;
+const formatDateTime = (value) => {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  return date.toLocaleString('pt-BR');
 };
 
 export default function Leads({ onNavigate, activePath }) {
-  const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState('');
-  const [cacheLoadedAt, setCacheLoadedAt] = useState('');
-  const [selectedState, setSelectedState] = useState('');
-  const [selectedCity, setSelectedCity] = useState('');
-  const [search, setSearch] = useState('');
-  const [selectedScoreRange, setSelectedScoreRange] = useState('all');
-  const [selectedFollowUpFilter, setSelectedFollowUpFilter] = useState('all');
-  const [selectedSlaFilter, setSelectedSlaFilter] = useState('all');
-  const [focusModeEnabled, setFocusModeEnabled] = useState(false);
-  const [selectedFunnels, setSelectedFunnels] = useState([]);
-  const [selectedSource, setSelectedSource] = useState('');
-  const [selectedTag, setSelectedTag] = useState('');
-  const [activeAlertFilter, setActiveAlertFilter] = useState('');
-  const [capturedDateFrom, setCapturedDateFrom] = useState('');
-  const [capturedDateTo, setCapturedDateTo] = useState('');
-  const [scoreSort, setScoreSort] = useState('desc');
-  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
-  const [batchBusy, setBatchBusy] = useState(false);
-  const [campaignBatchModalOpen, setCampaignBatchModalOpen] = useState(false);
-  const [campaignBatchStatus, setCampaignBatchStatus] = useState('Campanha Wave 2');
-  const [batchResult, setBatchResult] = useState(null);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
-  const [activeLead, setActiveLead] = useState(null);
-  const [formLead, setFormLead] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [modalMessage, setModalMessage] = useState('');
-  const [scoreBreakdown, setScoreBreakdown] = useState(null);
-  const [validTransitions, setValidTransitions] = useState([]);
-  const [transitionLabels, setTransitionLabels] = useState({});
-  const [interactions, setInteractions] = useState([]);
-  const [notes, setNotes] = useState([]);
-  const [noteDraft, setNoteDraft] = useState('');
-  const [notesBusy, setNotesBusy] = useState(false);
-  const [messagingBusy, setMessagingBusy] = useState(false);
-  const [executionOutcomes, setExecutionOutcomes] = useState([]);
-  const [activeTab, setActiveTab] = useState('dados');
-  const [tagDraft, setTagDraft] = useState('');
-  const [requestedLeadId, setRequestedLeadId] = useState(null);
-  const [page, setPage] = useState(1);
-  const pageSize = 12;
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  const loadLeads = async () => {
-    let syncSucceeded = false;
+  const [page, setPage] = useState(0);
+  const [leads, setLeads] = useState([]);
+
+  const [selectedCity, setSelectedCity] = useState('');
+  const [selectedSource, setSelectedSource] = useState('');
+  const [selectedValidity, setSelectedValidity] = useState('');
+  const [search, setSearch] = useState('');
+
+  const [activeLead, setActiveLead] = useState(null);
+  const [formLead, setFormLead] = useState(initialForm);
+  const [scoreBreakdown, setScoreBreakdown] = useState(null);
+  const [modalMessage, setModalMessage] = useState('');
+  const [newTag, setNewTag] = useState('');
+
+  const [didHandleLeadQuery, setDidHandleLeadQuery] = useState(false);
+
+  const loadLeads = async (targetPage = page) => {
+    setLoading(true);
+    setErrorMessage('');
+    setSuccessMessage('');
     try {
-      setLoading(true);
-      setLoadError('');
-      const response = await fetch(`${API_BASE}/api/leads/?limit=300`);
-      const payload = await response.json().catch(() => ({}));
-      if (response.ok && Array.isArray(payload?.leads)) {
-        const mapped = payload.leads.map(mapLead);
-        setLeads(mapped);
-        syncSucceeded = true;
-        try {
-          sessionStorage.setItem(LEADS_CACHE_KEY, JSON.stringify(mapped));
-          const nowIso = new Date().toISOString();
-          sessionStorage.setItem(LEADS_CACHE_AT_KEY, nowIso);
-          setCacheLoadedAt(nowIso);
-        } catch (error) {
-          // no-op
-        }
-      } else {
-        const detail = payload?.detail || 'Não foi possível carregar os leads no momento.';
-        setLoadError(`Erro ao carregar leads (HTTP ${response.status}). ${detail}`);
+      const offset = Math.max(0, targetPage) * PAGE_SIZE;
+      const response = await fetch(`${API_BASE}/api/leads/?limit=${PAGE_SIZE}&offset=${offset}`);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao carregar leads.');
       }
+      setLeads(Array.isArray(payload?.leads) ? payload.leads.map(mapLead) : []);
+      setPage(targetPage);
     } catch (error) {
-      setLoadError('Backend indisponível. Confirme API na porta 8000 e banco na 5432, depois tente novamente.');
+      setErrorMessage(error?.message || 'Falha ao carregar leads.');
     } finally {
       setLoading(false);
-      if (syncSucceeded) {
-        setLastUpdatedAt(new Date().toLocaleTimeString('pt-BR'));
-      }
     }
   };
 
   useEffect(() => {
-    try {
-      const cached = sessionStorage.getItem(LEADS_CACHE_KEY);
-      const cachedAt = sessionStorage.getItem(LEADS_CACHE_AT_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setLeads(parsed.map(mapLead));
-          setCacheLoadedAt(cachedAt || '');
-          if (cachedAt) {
-            const cachedDate = new Date(cachedAt);
-            if (!Number.isNaN(cachedDate.getTime())) {
-              setLastUpdatedAt(cachedDate.toLocaleTimeString('pt-BR'));
-            }
-          }
-        }
-      }
-    } catch (error) {
-      // no-op
-    }
-
-    try {
-      const saved = sessionStorage.getItem(SESSION_FILTER_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const validFunnels = Array.isArray(parsed.selectedFunnels)
-          ? parsed.selectedFunnels
-              .map((item) => String(item || '').trim().toLowerCase())
-              .filter((item) => funnelStatusOptions.some((option) => option.value === item))
-          : [];
-        const validScoreRange = scoreRanges.some((option) => option.value === parsed.selectedScoreRange)
-          ? parsed.selectedScoreRange
-          : 'all';
-        const validScoreSort = parsed.scoreSort === 'asc' || parsed.scoreSort === 'desc' ? parsed.scoreSort : 'desc';
-        const validFollowUpFilter = followUpFilterOptions.some(
-          (option) => option.value === parsed.selectedFollowUpFilter
-        )
-          ? parsed.selectedFollowUpFilter
-          : 'all';
-        const validSlaFilter = slaFilterOptions.some((option) => option.value === parsed.selectedSlaFilter)
-          ? parsed.selectedSlaFilter
-          : 'all';
-        const validFocusModeEnabled = parsed.focusModeEnabled === true;
-        setSelectedState(parsed.selectedState || '');
-        setSelectedCity(parsed.selectedCity || '');
-        setSearch(parsed.search || '');
-        setSelectedScoreRange(validScoreRange);
-        setSelectedFollowUpFilter(validFollowUpFilter);
-        setSelectedSlaFilter(validSlaFilter);
-        setFocusModeEnabled(validFocusModeEnabled);
-        setSelectedFunnels(validFunnels);
-        setSelectedSource(parsed.selectedSource || '');
-        setSelectedTag(parsed.selectedTag || '');
-        setActiveAlertFilter(parsed.activeAlertFilter || '');
-        setCapturedDateFrom(parsed.capturedDateFrom || '');
-        setCapturedDateTo(parsed.capturedDateTo || '');
-        setScoreSort(validScoreSort);
-      }
-    } catch (error) {
-      // no-op
-    }
-
-    try {
-      const outcomesSaved = sessionStorage.getItem(EXECUTION_OUTCOME_KEY);
-      if (outcomesSaved) {
-        const parsed = JSON.parse(outcomesSaved);
-        if (Array.isArray(parsed)) {
-          setExecutionOutcomes(parsed.slice(0, 100));
-        }
-      }
-    } catch (error) {
-      // no-op
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    const funnelParams = [...params.getAll('funnel'), ...params.getAll('status')];
-    const leadId = params.get('leadId');
-    if (funnelParams.length > 0) {
-      const values = [...new Set(
-        funnelParams
-          .flatMap((chunk) => String(chunk || '').split(','))
-          .map((item) => item.trim().toLowerCase())
-          .filter((item) => funnelStatusOptions.some((option) => option.value === item))
-      )];
-      setSelectedFunnels(values);
-    }
-    if (leadId) {
-      setRequestedLeadId(leadId);
-    }
-
-    loadLeads();
-
-    const onLeadsUpdated = () => loadLeads();
-    const onStorage = (event) => {
-      if (event.key === 'findvan.leads.lastRefresh') {
-        loadLeads();
-      }
-    };
-    window.addEventListener('findvan:leads-updated', onLeadsUpdated);
-    window.addEventListener('storage', onStorage);
-    return () => {
-      window.removeEventListener('findvan:leads-updated', onLeadsUpdated);
-      window.removeEventListener('storage', onStorage);
-    };
+    loadLeads(0);
   }, []);
 
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(EXECUTION_OUTCOME_KEY, JSON.stringify(executionOutcomes.slice(0, 100)));
-    } catch (error) {
-      // no-op
-    }
-  }, [executionOutcomes]);
-
-  useEffect(() => {
-    if (!requestedLeadId || leads.length === 0) return;
-    const target = leads.find((lead) => String(lead.id) === String(requestedLeadId));
-    if (target) {
-      openLeadModal(target);
-    }
-    setRequestedLeadId(null);
-  }, [requestedLeadId, leads]);
-
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(
-        SESSION_FILTER_KEY,
-        JSON.stringify({
-          selectedState,
-          selectedCity,
-          search,
-          selectedScoreRange,
-          selectedFollowUpFilter,
-          selectedSlaFilter,
-          focusModeEnabled,
-          selectedFunnels,
-          selectedSource,
-          selectedTag,
-          activeAlertFilter,
-          capturedDateFrom,
-          capturedDateTo,
-          scoreSort,
-        })
-      );
-    } catch (error) {
-      // no-op
-    }
-  }, [
-    selectedState,
-    selectedCity,
-    search,
-    selectedScoreRange,
-    selectedFollowUpFilter,
-    selectedSlaFilter,
-    focusModeEnabled,
-    selectedFunnels,
-    selectedSource,
-    selectedTag,
-    activeAlertFilter,
-    capturedDateFrom,
-    capturedDateTo,
-    scoreSort,
-  ]);
-
-  const stateOptions = useMemo(
-    () => [...new Set(leads.map((lead) => lead.state).filter(Boolean))].sort(),
+  const cities = useMemo(
+    () => [...new Set(leads.map((lead) => lead.city).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [leads]
   );
 
-  const cityOptions = useMemo(() => {
-    const scoped = selectedState ? leads.filter((lead) => lead.state === selectedState) : leads;
-    return [...new Set(scoped.map((lead) => lead.city).filter(Boolean))].sort((a, b) =>
-      a.localeCompare(b, 'pt-BR')
-    );
-  }, [leads, selectedState]);
-
-  const sourceOptions = useMemo(
-    () =>
-      [...new Set(leads.map((lead) => lead.source).filter(Boolean))].sort((a, b) =>
-        a.localeCompare(b, 'pt-BR')
-      ),
-    [leads]
-  );
-
-  const tagOptions = useMemo(
-    () =>
-      [...new Set(leads.flatMap((lead) => (Array.isArray(lead.tags) ? lead.tags : [])))]
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+  const sources = useMemo(
+    () => [...new Set(leads.map((lead) => lead.source).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [leads]
   );
 
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
-      if (selectedState && lead.state !== selectedState) return false;
       if (selectedCity && lead.city !== selectedCity) return false;
-      if (selectedFunnels.length > 0 && !selectedFunnels.includes(lead.funnel_status)) return false;
       if (selectedSource && lead.source !== selectedSource) return false;
-      if (selectedTag && !(lead.tags || []).includes(selectedTag)) return false;
-      if (activeAlertFilter === 'overdue' && !isFollowUpOverdue(lead)) return false;
-      if (selectedScoreRange === 'excellent' && !(lead.score >= 90)) return false;
-      if (selectedScoreRange === 'good' && !(lead.score >= 70 && lead.score <= 89)) return false;
-      if (selectedScoreRange === 'regular' && !(lead.score >= 50 && lead.score <= 69)) return false;
-      if (selectedScoreRange === 'weak' && !(lead.score < 50)) return false;
-      if (selectedFollowUpFilter === 'overdue' && !isFollowUpOverdue(lead)) return false;
-      if (selectedFollowUpFilter === 'today' && !isFollowUpToday(lead)) return false;
-      if (selectedFollowUpFilter === 'upcoming' && !isFollowUpUpcoming(lead)) return false;
-      if (selectedFollowUpFilter === 'none' && !!lead.next_action_date) return false;
-      const slaMeta = getSlaMeta(lead);
-      if (selectedSlaFilter === 'on_time' && slaMeta.value !== 'on_time') return false;
-      if (selectedSlaFilter === 'attention' && slaMeta.value !== 'attention') return false;
-      if (selectedSlaFilter === 'violated' && slaMeta.value !== 'violated') return false;
-
-      const capturedDate = lead.captured_at || lead.created_at;
-      if (capturedDateFrom) {
-        const from = new Date(`${capturedDateFrom}T00:00:00`);
-        if (!capturedDate || new Date(capturedDate) < from) return false;
-      }
-      if (capturedDateTo) {
-        const to = new Date(`${capturedDateTo}T23:59:59`);
-        if (!capturedDate || new Date(capturedDate) > to) return false;
-      }
-
+      if (selectedValidity === 'valid' && !lead.is_valid) return false;
+      if (selectedValidity === 'invalid' && lead.is_valid) return false;
       if (search.trim()) {
         const term = search.trim().toLowerCase();
         const haystack = [
           lead.name,
           lead.company_name,
-          lead.city,
-          lead.state,
           lead.phone,
           lead.email,
-          lead.address,
-          lead.source,
-          lead.cnpj,
+          lead.city,
+          lead.state,
           ...(lead.tags || []),
         ]
-          .filter(Boolean)
           .join(' ')
           .toLowerCase();
         if (!haystack.includes(term)) return false;
       }
       return true;
     });
-  }, [
-    leads,
-    selectedState,
-    selectedCity,
-    selectedFunnels,
-    selectedSource,
-    selectedTag,
-    activeAlertFilter,
-    selectedScoreRange,
-    selectedFollowUpFilter,
-    selectedSlaFilter,
-    capturedDateFrom,
-    capturedDateTo,
-    search,
-  ]);
+  }, [leads, search, selectedCity, selectedSource, selectedValidity]);
 
-  const sortedLeads = useMemo(() => {
-    const copy = [...filteredLeads];
-    copy.sort((a, b) => {
-      const slaRank = { violated: 3, attention: 2, on_time: 1 };
-      const slaA = slaRank[getSlaMeta(a).value] || 0;
-      const slaB = slaRank[getSlaMeta(b).value] || 0;
-      if (slaA !== slaB) return slaB - slaA;
-      const overdueA = isFollowUpOverdue(a) ? 1 : 0;
-      const overdueB = isFollowUpOverdue(b) ? 1 : 0;
-      if (overdueA !== overdueB) return overdueB - overdueA;
-      if (scoreSort === 'asc') return a.score - b.score;
-      return b.score - a.score;
-    });
-    return copy;
-  }, [filteredLeads, scoreSort]);
-
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(sortedLeads.length / pageSize)), [sortedLeads.length]);
-  const paginatedLeads = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return sortedLeads.slice(start, start + pageSize);
-  }, [sortedLeads, page]);
-
-  const hasActiveFilters = useMemo(
-    () =>
-      Boolean(
-        selectedState ||
-          selectedCity ||
-          search.trim() ||
-          selectedScoreRange !== 'all' ||
-          selectedFollowUpFilter !== 'all' ||
-          selectedSlaFilter !== 'all' ||
-          focusModeEnabled ||
-          selectedFunnels.length > 0 ||
-          selectedSource ||
-          selectedTag ||
-          activeAlertFilter ||
-          capturedDateFrom ||
-          capturedDateTo
-      ),
-    [
-      selectedState,
-      selectedCity,
-      search,
-      selectedScoreRange,
-      selectedFollowUpFilter,
-      selectedSlaFilter,
-      focusModeEnabled,
-      selectedFunnels,
-      selectedSource,
-      selectedTag,
-      activeAlertFilter,
-      capturedDateFrom,
-      capturedDateTo,
-    ]
-  );
-
-  const insights = useMemo(() => {
-    const scoped = filteredLeads;
-    const statusCount = funnelStatusOptions.reduce((acc, status) => {
-      acc[status.value] = scoped.filter((lead) => lead.funnel_status === status.value).length;
-      return acc;
-    }, {});
-
-    const scoreDistribution = {
-      '90-100': 0,
-      '70-89': 0,
-      '50-69': 0,
-      '<50': 0,
-    };
-
-    scoped.forEach((lead) => {
-      scoreDistribution[getScoreBand(lead.score)] += 1;
-    });
-
-    const cityMap = scoped.reduce((acc, lead) => {
-      const key = [lead.city, lead.state].filter(Boolean).join(' • ');
-      if (!key) return acc;
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {});
-
-    const topCities = Object.entries(cityMap)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3);
-
-    const conversion = {
-      novo_contactado: statusCount.novo ? Math.round((statusCount.contactado / statusCount.novo) * 100) : 0,
-      contactado_respondeu: statusCount.contactado
-        ? Math.round((statusCount.respondeu / statusCount.contactado) * 100)
-        : 0,
-      respondeu_interessado: statusCount.respondeu
-        ? Math.round((statusCount.interessado / statusCount.respondeu) * 100)
-        : 0,
-      interessado_convertido: statusCount.interessado
-        ? Math.round((statusCount.convertido / statusCount.interessado) * 100)
-        : 0,
-      total: scoped.length ? Math.round((statusCount.convertido / scoped.length) * 100) : 0,
-    };
-
-    const throughputByStage = funnelStatusOptions
-      .filter((status) => !['convertido', 'perdido'].includes(status.value))
-      .map((status) => {
-        const current = statusCount[status.value] || 0;
-        const nextStatus = getFunnelNextStatus(status.value);
-        const nextCount = nextStatus ? statusCount[nextStatus] || 0 : 0;
-        const progressionRate = current > 0 ? Math.round((nextCount / current) * 100) : 0;
-        const overdueCount = scoped.filter(
-          (lead) => lead.funnel_status === status.value && isFollowUpOverdue(lead)
-        ).length;
-        let severity = 'low';
-        if (current > 0 && (progressionRate < 20 || overdueCount >= Math.ceil(current * 0.35))) {
-          severity = 'critical';
-        } else if (current > 0 && (progressionRate < 40 || overdueCount >= Math.ceil(current * 0.2))) {
-          severity = 'high';
-        } else if (current > 0 && (progressionRate < 55 || overdueCount > 0)) {
-          severity = 'medium';
-        }
-        return {
-          stage: status.value,
-          label: status.label,
-          count: current,
-          progressionRate,
-          overdueCount,
-          severity,
-        };
-      });
-
-    const slaByStage = funnelStatusOptions.reduce((acc, status) => {
-      const scopedStage = scoped.filter((lead) => lead.funnel_status === status.value);
-      const stageSummary = scopedStage.reduce(
-        (row, lead) => {
-          const sla = getSlaMeta(lead).value;
-          if (sla === 'violated') row.violated += 1;
-          else if (sla === 'attention') row.attention += 1;
-          else row.on_time += 1;
-          return row;
-        },
-        { on_time: 0, attention: 0, violated: 0 }
-      );
-      acc[status.value] = stageSummary;
-      return acc;
-    }, {});
-
-    const capacityHeatmap = funnelStatusOptions.map((status) => {
-      const count = statusCount[status.value] || 0;
-      const overdueCount = scoped.filter(
-        (lead) => lead.funnel_status === status.value && isFollowUpOverdue(lead)
-      ).length;
-      const violatedCount = scoped.filter(
-        (lead) => lead.funnel_status === status.value && getSlaMeta(lead).value === 'violated'
-      ).length;
-      const workloadScore = count * 2 + overdueCount * 3 + violatedCount * 4;
-      let severity = 'low';
-      if (workloadScore >= 60) severity = 'critical';
-      else if (workloadScore >= 35) severity = 'high';
-      else if (workloadScore >= 18) severity = 'medium';
-
-      return {
-        stage: status.value,
-        label: status.label,
-        count,
-        overdueCount,
-        violatedCount,
-        workloadScore,
-        severity,
-      };
-    });
-
-    const backlogPriority = [...scoped]
-      .filter((lead) => !['convertido', 'perdido'].includes(lead.funnel_status))
-      .map((lead) => {
-        const sla = getSlaMeta(lead);
-        const overdue = isFollowUpOverdue(lead);
-        const weight = sla.value === 'violated' ? 3 : sla.value === 'attention' ? 2 : 1;
-        const score = weight * 100 + (overdue ? 30 : 0) + Math.max(0, 100 - lead.score);
-        return { lead, score, sla };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-
-    const queueGovernance = {
-      formula: 'score_op = peso_sla*100 + atraso_followup + (100 - score_lead)',
-      policy:
-        'Priorizar SLA violado > SLA atenção com follow-up vencido > demais itens por score operacional.',
-      queueSize: backlogPriority.length,
-      topSeverity: backlogPriority[0]?.sla?.value || 'on_time',
-    };
-
-    const governanceRecommendations = throughputByStage
-      .filter((item) => item.count > 0)
-      .sort((a, b) => {
-        const severityWeight = { critical: 3, high: 2, medium: 1, low: 0 };
-        if (severityWeight[b.severity] !== severityWeight[a.severity]) {
-          return severityWeight[b.severity] - severityWeight[a.severity];
-        }
-        return b.overdueCount - a.overdueCount;
-      })
-      .slice(0, 3)
-      .map((item) => ({
-        ...item,
-        recommendation:
-          item.severity === 'critical'
-            ? `Priorizar ${item.label}: atacar follow-ups vencidos imediatamente.`
-            : item.severity === 'high'
-              ? `Reforçar cadência em ${item.label}: revisar próximos contatos no turno atual.`
-              : item.severity === 'medium'
-                ? `Acompanhar ${item.label}: manter ritmo e evitar novos atrasos.`
-                : `${item.label} está estável.`,
-      }));
-
-    const highestCapacityStage = [...capacityHeatmap]
-      .filter((item) => !['convertido', 'perdido'].includes(item.stage))
-      .sort((a, b) => b.workloadScore - a.workloadScore)[0];
-
-    const playbookRecommendations = [];
-    const slaCriticalCount = scoped.filter((lead) => getSlaMeta(lead).value === 'violated').length;
-    if (slaCriticalCount > 0) {
-      playbookRecommendations.push({
-        id: 'sla-critical',
-        severity: 'critical',
-        title: 'Tratar SLA violado',
-        description: `Existem ${slaCriticalCount} leads com SLA violado no contexto atual.`,
-        action: { type: 'filter_sla', value: 'violated' },
-      });
-    }
-
-    if (highestCapacityStage && highestCapacityStage.workloadScore >= 18) {
-      playbookRecommendations.push({
-        id: 'capacity-stage',
-        severity: highestCapacityStage.severity,
-        title: `Destravar estágio ${highestCapacityStage.label}`,
-        description: `Carga ${highestCapacityStage.workloadScore} com ${highestCapacityStage.overdueCount} follow-ups vencidos.`,
-        action: { type: 'focus_stage', value: highestCapacityStage.stage },
-      });
-    }
-
-    const newLeadsCount = statusCount.novo || 0;
-    if (newLeadsCount > 0) {
-      playbookRecommendations.push({
-        id: 'new-leads',
-        severity: newLeadsCount > 30 ? 'high' : 'medium',
-        title: 'Rodada de primeiro contato',
-        description: `${newLeadsCount} leads novos aguardam primeira abordagem.`,
-        action: { type: 'focus_new_leads', value: 'novo' },
-      });
-    }
-
-    return {
-      total: scoped.length,
-      valid: scoped.filter((lead) => lead.is_valid).length,
-      duplicates: scoped.filter((lead) => lead.is_duplicate).length,
-      statusCount,
-      scoreDistribution,
-      topCities,
-      conversion,
-      alerts: {
-        pendingResponses: scoped.filter((lead) => lead.funnel_status === 'respondeu').length,
-        overdueFollowups: scoped.filter((lead) => isFollowUpOverdue(lead)).length,
-        newLeads: scoped.filter((lead) => lead.funnel_status === 'novo').length,
-        slaCritical: scoped.filter((lead) => getSlaMeta(lead).value === 'violated').length,
-      },
-      throughputByStage,
-      slaByStage,
-      capacityHeatmap,
-      backlogPriority,
-      queueGovernance,
-      governanceRecommendations,
-      playbookRecommendations: playbookRecommendations.slice(0, 3),
-    };
-  }, [filteredLeads]);
-
-  const scopedExecutionOutcomes = useMemo(() => {
-    const allowedIds = new Set(filteredLeads.map((lead) => String(lead.id)));
-    return executionOutcomes.filter((item) => allowedIds.has(String(item.lead_id)));
-  }, [executionOutcomes, filteredLeads]);
-
-  const executionOutcomeSummary = useMemo(() => {
-    const counts = executionOutcomeOptions.reduce((acc, option) => {
-      acc[option.value] = 0;
-      return acc;
-    }, {});
-    scopedExecutionOutcomes.forEach((item) => {
-      if (counts[item.outcome] !== undefined) counts[item.outcome] += 1;
-    });
-    return {
-      counts,
-      recent: scopedExecutionOutcomes.slice(0, 5),
-    };
-  }, [scopedExecutionOutcomes]);
-
-  const stageLearningSignals = useMemo(() => {
-    const severityWeight = { critical: 3, high: 2, medium: 1, low: 0 };
-    const byStage = funnelStatusOptions.map((status) => {
-      const scoped = scopedExecutionOutcomes.filter((item) => item.stage === status.value);
-      const total = scoped.length;
-      const counts = executionOutcomeOptions.reduce((acc, option) => {
-        acc[option.value] = 0;
-        return acc;
-      }, {});
-      scoped.forEach((item) => {
-        if (counts[item.outcome] !== undefined) counts[item.outcome] += 1;
-      });
-
-      const successRate = total ? Math.round((counts.success / total) * 100) : 0;
-      const lostRate = total ? Math.round((counts.lost / total) * 100) : 0;
-      const noResponseRate = total ? Math.round((counts.no_response / total) * 100) : 0;
-      const rescheduleRate = total ? Math.round((counts.reschedule / total) * 100) : 0;
-
-      let sampleLabel = 'Sem amostra';
-      if (total >= 10) sampleLabel = 'Amostra robusta';
-      else if (total >= 5) sampleLabel = 'Amostra moderada';
-      else if (total > 0) sampleLabel = 'Amostra baixa';
-
-      let severity = 'low';
-      if (total === 0) severity = 'medium';
-      else if (successRate < 30 || lostRate >= 35) severity = 'critical';
-      else if (successRate < 45 || noResponseRate >= 50) severity = 'high';
-      else if (successRate < 60 || rescheduleRate >= 35) severity = 'medium';
-
-      let recommendation = `${status.label} está estável no contexto atual.`;
-      if (total === 0) {
-        recommendation = `Sem histórico recente em ${status.label}. Coletar ao menos 5 execuções antes de ajustar playbook.`;
-      } else if (severity === 'critical') {
-        recommendation = `Baixa eficiência em ${status.label}. Revisar abordagem e priorizar contatos com melhor score.`;
-      } else if (severity === 'high') {
-        recommendation = `Eficiência em atenção em ${status.label}. Ajustar copy e janela de contato no turno atual.`;
-      } else if (severity === 'medium') {
-        recommendation = `Monitorar ${status.label}. Validar se reagendamentos estão convertendo em avanço real.`;
-      }
-
-      return {
-        stage: status.value,
-        label: status.label,
-        total,
-        counts,
-        successRate,
-        lostRate,
-        noResponseRate,
-        rescheduleRate,
-        sampleLabel,
-        severity,
-        recommendation,
-      };
-    });
-
-    const priority = [...byStage]
-      .filter((item) => item.total > 0 || item.severity !== 'low')
-      .sort((a, b) => {
-        if (severityWeight[b.severity] !== severityWeight[a.severity]) {
-          return severityWeight[b.severity] - severityWeight[a.severity];
-        }
-        return b.total - a.total;
-      })
-      .slice(0, 3);
-
-    return {
-      byStage,
-      priority,
-    };
-  }, [scopedExecutionOutcomes]);
-
-  const variantEfficiencySignals = useMemo(() => {
-    const byStage = funnelStatusOptions.map((status) => {
-      const scoped = scopedExecutionOutcomes.filter((item) => item.stage === status.value);
-      const grouped = scoped.reduce((acc, item) => {
-        const key = item.variant || 'control';
-        if (!acc[key]) {
-          acc[key] = {
-            variant: key,
-            label: item.variant_label || getExecutionVariantLabel(key),
-            total: 0,
-            success: 0,
-            no_response: 0,
-            reschedule: 0,
-            lost: 0,
-          };
-        }
-        acc[key].total += 1;
-        if (acc[key][item.outcome] !== undefined) acc[key][item.outcome] += 1;
-        return acc;
-      }, {});
-
-      const variants = Object.values(grouped)
-        .map((item) => {
-          const successRate = item.total ? Math.round((item.success / item.total) * 100) : 0;
-          const lostRate = item.total ? Math.round((item.lost / item.total) * 100) : 0;
-          let severity = 'low';
-          if (successRate < 30 || lostRate >= 35) severity = 'critical';
-          else if (successRate < 45) severity = 'high';
-          else if (successRate < 60) severity = 'medium';
-          return {
-            ...item,
-            successRate,
-            lostRate,
-            sampleLabel: item.total >= 10 ? 'Amostra robusta' : item.total >= 5 ? 'Amostra moderada' : 'Amostra baixa',
-            severity,
-          };
-        })
-        .sort((a, b) => {
-          if (b.successRate !== a.successRate) return b.successRate - a.successRate;
-          return b.total - a.total;
-        });
-
-      const best = variants[0] || null;
-      const worst = variants.length > 1 ? variants[variants.length - 1] : null;
-      const spread = best && worst ? best.successRate - worst.successRate : 0;
-
-      return {
-        stage: status.value,
-        label: status.label,
-        total: scoped.length,
-        variants,
-        best,
-        worst,
-        spread,
-      };
-    });
-
-    const priority = byStage
-      .filter((item) => item.total > 0 && item.variants.length > 1)
-      .sort((a, b) => b.spread - a.spread)
-      .slice(0, 3);
-
-    return {
-      byStage,
-      priority,
-    };
-  }, [scopedExecutionOutcomes]);
-
-  const workspaceStages = useMemo(() => {
-    return funnelStatusOptions.map((status) => ({
-      ...status,
-      leads: sortedLeads.filter((lead) => lead.funnel_status === status.value),
-    }));
-  }, [sortedLeads]);
-
-  const visiblePaginatedLeads = useMemo(() => {
-    if (!focusModeEnabled) return paginatedLeads;
-    return paginatedLeads.filter((lead) => {
-      const sla = getSlaMeta(lead).value;
-      return sla === 'violated' || (sla === 'attention' && isFollowUpOverdue(lead));
-    });
-  }, [focusModeEnabled, paginatedLeads]);
-
-  const focusedInsights = useMemo(() => {
-    if (!focusModeEnabled) {
-      return {
-        capacityHeatmap: insights.capacityHeatmap,
-        backlogPriority: insights.backlogPriority,
-        governanceRecommendations: insights.governanceRecommendations,
-        playbookRecommendations: insights.playbookRecommendations,
-      };
-    }
-    const severityWeight = { critical: 3, high: 2, medium: 1, low: 0 };
-    return {
-      capacityHeatmap: insights.capacityHeatmap.filter((item) => ['critical', 'high'].includes(item.severity)),
-      backlogPriority: insights.backlogPriority.filter(({ sla }) => ['violated', 'attention'].includes(sla.value)),
-      governanceRecommendations: insights.governanceRecommendations.filter(
-        (item) => (severityWeight[item.severity] || 0) >= 2
-      ),
-      playbookRecommendations: insights.playbookRecommendations.filter(
-        (item) => (severityWeight[item.severity] || 0) >= 2
-      ),
-    };
-  }, [focusModeEnabled, insights]);
-
-  const dailyBriefing = useMemo(() => {
-    const topPlaybook = (focusModeEnabled
-      ? focusedInsights.playbookRecommendations
-      : insights.playbookRecommendations
-    ).slice(0, 3);
-
-    const priorities = [];
-    if (insights.alerts.slaCritical > 0) priorities.push(`${insights.alerts.slaCritical} SLA violado`);
-    if (insights.alerts.overdueFollowups > 0) priorities.push(`${insights.alerts.overdueFollowups} follow-ups vencidos`);
-    if (insights.alerts.newLeads > 0) priorities.push(`${insights.alerts.newLeads} novos leads`);
-
-    return {
-      headline:
-        priorities.length > 0
-          ? `Prioridades do turno: ${priorities.slice(0, 3).join(' • ')}`
-          : 'Turno estável: sem alertas críticos no contexto atual.',
-      actions: topPlaybook,
-    };
-  }, [focusModeEnabled, focusedInsights.playbookRecommendations, insights.alerts, insights.playbookRecommendations]);
-
-  const continuousImprovementBrief = useMemo(() => {
-    const actions = [];
-
-    if (insights.alerts.slaCritical > 0) {
-      actions.push({
-        id: 'brief-sla-critical',
-        severity: 'critical',
-        title: 'Zerar SLA violado do turno',
-        description: `Há ${insights.alerts.slaCritical} leads com SLA violado no contexto atual.`,
-        evidence: 'Base: alerta de SLA crítico.',
-        execute: () => applyPlaybookAction({ type: 'filter_sla', value: 'violated' }),
-      });
-    }
-
-    stageLearningSignals.priority
-      .filter((item) => ['critical', 'high'].includes(item.severity) && item.total > 0)
-      .slice(0, 2)
-      .forEach((item) => {
-        actions.push({
-          id: `brief-stage-${item.stage}`,
-          severity: item.severity,
-          title: `Ajustar playbook em ${item.label}`,
-          description: `Sucesso ${item.successRate}% com amostra ${item.total}.`,
-          evidence: `Base: sem resposta ${item.noResponseRate}% • perdido ${item.lostRate}%.`,
-          execute: () => applyPlaybookAction({ type: 'focus_stage', value: item.stage }),
-        });
-      });
-
-    if (insights.alerts.newLeads > 0) {
-      actions.push({
-        id: 'brief-new-leads',
-        severity: insights.alerts.newLeads > 40 ? 'high' : 'medium',
-        title: 'Rodada de primeiro contato',
-        description: `${insights.alerts.newLeads} leads novos aguardando abordagem.`,
-        evidence: 'Base: distribuição atual do funil.',
-        execute: () => applyPlaybookAction({ type: 'focus_new_leads', value: 'novo' }),
-      });
-    }
-
-    const noResponse = executionOutcomeSummary.counts.no_response || 0;
-    const success = executionOutcomeSummary.counts.success || 0;
-    if (noResponse > success && noResponse > 0) {
-      actions.push({
-        id: 'brief-copy-window',
-        severity: 'medium',
-        title: 'Revisar copy e janela de envio',
-        description: 'Sem resposta acima de sucesso no turno atual.',
-        evidence: `Base: sem resposta ${noResponse} vs sucesso ${success}.`,
-        execute: () => setFocusModeEnabled(true),
-      });
-    }
-
-    if (actions.length < 3) {
-      actions.push({
-        id: 'brief-governance',
-        severity: 'medium',
-        title: 'Aplicar governança da fila',
-        description: 'Reordenar execução por criticidade operacional.',
-        evidence: 'Base: política de governança ativa no painel.',
-        execute: () => applyExecutionQueueGovernance(),
-      });
-    }
-
-    if (actions.length < 3) {
-      actions.push({
-        id: 'brief-stability',
-        severity: 'low',
-        title: 'Manter ritmo com monitoramento',
-        description: 'Sem gargalo crítico adicional detectado.',
-        evidence: 'Base: sinais atuais do contexto filtrado.',
-        execute: () => setFocusModeEnabled(false),
-      });
-    }
-
-    return actions.slice(0, 5);
-  }, [insights, stageLearningSignals.priority, executionOutcomeSummary.counts]);
-
-  const variantDecisionBrief = useMemo(() => {
-    const actions = [];
-    variantEfficiencySignals.byStage.forEach((stage) => {
-      if (stage.variants.length <= 1 || !stage.best) return;
-      const best = stage.best;
-      const worst = stage.worst;
-      const spread = stage.spread || 0;
-
-      if (best.total >= 5 && spread >= 20 && best.successRate >= 55) {
-        actions.push({
-          id: `promote-${stage.stage}`,
-          severity: 'high',
-          decision: 'Promover',
-          title: `${stage.label}: promover ${best.label}`,
-          description: `Melhor taxa de sucesso (${best.successRate}%) com amostra ${best.total}.`,
-          evidence: worst
-            ? `Gap de ${spread}% vs ${worst.label} (${worst.successRate}%).`
-            : `Amostra consistente no estágio ${stage.label}.`,
-          execute: () => applyPlaybookAction({ type: 'focus_stage', value: stage.stage }),
-        });
-        if (worst && worst.total >= 5 && worst.successRate <= 30) {
-          actions.push({
-            id: `rollback-${stage.stage}`,
-            severity: 'critical',
-            decision: 'Rollback',
-            title: `${stage.label}: rollback ${worst.label}`,
-            description: `Baixa eficiência (${worst.successRate}%) com amostra ${worst.total}.`,
-            evidence: `Perda relativa de ${spread}% frente à melhor variante.`,
-            execute: () => applyPlaybookAction({ type: 'focus_stage', value: stage.stage }),
-          });
-        }
-        return;
-      }
-
-      actions.push({
-        id: `hold-test-${stage.stage}`,
-        severity: 'medium',
-        decision: 'Manter em teste',
-        title: `${stage.label}: manter variantes em teste`,
-        description: `Diferença atual de ${spread}% ainda não conclusiva.`,
-        evidence: `Amostra melhor/pior: ${best.total}/${worst?.total || 0}.`,
-        execute: () => applyPlaybookAction({ type: 'focus_stage', value: stage.stage }),
-      });
-    });
-
-    if (actions.length === 0) {
-      actions.push({
-        id: 'hold-global',
-        severity: 'low',
-        decision: 'Manter em teste',
-        title: 'Sem decisão de promoção/rollback no momento',
-        description: 'Contexto atual ainda sem comparação robusta de variantes.',
-        evidence: 'Aguardar novas execuções para fortalecer amostra.',
-        execute: () => setFocusModeEnabled(false),
-      });
-    }
-
-    return actions.slice(0, 5);
-  }, [variantEfficiencySignals.byStage]);
-
-  useEffect(() => {
-    setPage(1);
-    setSelectedLeadIds([]);
-  }, [
-    selectedState,
-    selectedCity,
-    selectedFunnels,
-    selectedSource,
-    selectedTag,
-    activeAlertFilter,
-    selectedScoreRange,
-    selectedFollowUpFilter,
-    selectedSlaFilter,
-    capturedDateFrom,
-    capturedDateTo,
-    scoreSort,
-    search,
-  ]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
-  useEffect(() => {
-    const visibleIds = new Set(leads.map((lead) => lead.id));
-    setSelectedLeadIds((prev) => prev.filter((id) => visibleIds.has(id)));
-  }, [leads]);
-
-  const openLeadModal = (lead) => {
+  const openLeadModal = async (lead) => {
     setActiveLead(lead);
-    setFormLead({ ...lead });
+    setFormLead({
+      name: lead.name || '',
+      company_name: lead.company_name || '',
+      city: lead.city || '',
+      state: lead.state || '',
+      phone: lead.phone || '',
+      email: lead.email || '',
+      address: lead.address || '',
+      cnpj: lead.cnpj || '',
+      url: lead.url || '',
+      source: lead.source || 'manual',
+      is_valid: !!lead.is_valid,
+      is_duplicate: !!lead.is_duplicate,
+      tags: Array.isArray(lead.tags) ? lead.tags : [],
+      score: lead.score || 0,
+      captured_at: lead.captured_at,
+      updated_at: lead.updated_at,
+    });
     setModalMessage('');
-    setScoreBreakdown(null);
-    setValidTransitions([]);
-    setTransitionLabels({});
-    setInteractions([]);
-    setNotes([]);
-    setNoteDraft('');
-    setActiveTab('dados');
+    setNewTag('');
+
+    try {
+      const response = await fetch(`${API_BASE}/api/leads/${lead.id}/score`);
+      const payload = await response.json();
+      if (response.ok) {
+        setScoreBreakdown(payload?.breakdown || null);
+      } else {
+        setScoreBreakdown(null);
+      }
+    } catch {
+      setScoreBreakdown(null);
+    }
   };
+
+  useEffect(() => {
+    if (didHandleLeadQuery || !leads.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const leadId = Number(params.get('leadId'));
+    if (Number.isInteger(leadId) && leadId > 0) {
+      const fromList = leads.find((lead) => Number(lead.id) === leadId);
+      if (fromList) {
+        openLeadModal(fromList);
+      }
+    }
+    setDidHandleLeadQuery(true);
+  }, [leads, didHandleLeadQuery]);
 
   const closeLeadModal = () => {
     setActiveLead(null);
-    setFormLead(null);
-    setModalMessage('');
+    setFormLead(initialForm);
     setScoreBreakdown(null);
-    setValidTransitions([]);
-    setTransitionLabels({});
-    setInteractions([]);
-    setNotes([]);
-    setNoteDraft('');
-    setActiveTab('dados');
-  };
-
-  useEffect(() => {
-    if (!activeLead?.id) return;
-    let cancelled = false;
-    const loadLeadTabsData = async () => {
-      try {
-        const [scoreRes, transitionsRes, interactionsRes, notesRes] = await Promise.all([
-          fetch(`${API_BASE}/api/leads/${activeLead.id}/score`),
-          fetch(`${API_BASE}/api/leads/${activeLead.id}/transitions`),
-          fetch(`${API_BASE}/api/leads/${activeLead.id}/interactions?limit=30`),
-          fetch(`${API_BASE}/api/leads/${activeLead.id}/notes?limit=50`),
-        ]);
-
-        const scorePayload = await scoreRes.json().catch(() => ({}));
-        const transitionsPayload = await transitionsRes.json().catch(() => ({}));
-        const interactionsPayload = await interactionsRes.json().catch(() => ({}));
-        const notesPayload = await notesRes.json().catch(() => ({}));
-
-        if (!cancelled && scoreRes.ok) setScoreBreakdown(scorePayload);
-        if (!cancelled && transitionsRes.ok) {
-          setValidTransitions(Array.isArray(transitionsPayload?.transitions) ? transitionsPayload.transitions : []);
-          setTransitionLabels(
-            transitionsPayload?.transition_labels && typeof transitionsPayload.transition_labels === 'object'
-              ? transitionsPayload.transition_labels
-              : {}
-          );
-        }
-        if (!cancelled && interactionsRes.ok) {
-          setInteractions(Array.isArray(interactionsPayload?.interactions) ? interactionsPayload.interactions : []);
-        }
-        if (!cancelled && notesRes.ok) {
-          setNotes(Array.isArray(notesPayload?.notes) ? notesPayload.notes : []);
-        }
-      } catch (error) {
-        // no-op
-      }
-    };
-
-    loadLeadTabsData();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeLead?.id]);
-
-  const modalCurrentStatus = activeLead?.funnel_status || formLead?.funnel_status || 'novo';
-  const modalTransitionOptions = [
-    modalCurrentStatus,
-    ...(
-      validTransitions.length > 0
-        ? validTransitions
-        : (funnelTransitions[modalCurrentStatus] || [])
-    ),
-  ].filter((value, index, arr) => arr.indexOf(value) === index);
-  const modalLossReasonMissing = formLead?.funnel_status === 'perdido' && !formLead?.loss_reason;
-  const modalLossReasonOtherMissing =
-    formLead?.funnel_status === 'perdido' &&
-    formLead?.loss_reason === 'outro' &&
-    !(formLead?.loss_reason_other || '').trim();
-  const modalSaveDisabled = saving || modalLossReasonMissing || modalLossReasonOtherMissing;
-  const modalSaveBlockedReason = modalLossReasonMissing
-    ? 'Selecione um motivo de perda para salvar.'
-    : modalLossReasonOtherMissing
-      ? 'Preencha o detalhe do motivo "outro" para salvar.'
-      : '';
-
-  const addNote = async () => {
-    if (!activeLead?.id || !noteDraft.trim()) return;
-    try {
-      setNotesBusy(true);
-      const response = await fetch(`${API_BASE}/api/leads/${activeLead.id}/notes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: noteDraft.trim(), author: 'dashboard' }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.detail || 'Não foi possível salvar a nota.');
-      setNoteDraft('');
-      setNotes((prev) => [payload.note, ...prev]);
-      setModalMessage('Nota adicionada com sucesso.');
-    } catch (error) {
-      setModalMessage(error?.message || 'Erro ao salvar nota.');
-    } finally {
-      setNotesBusy(false);
-    }
+    setModalMessage('');
+    setNewTag('');
   };
 
   const saveLead = async () => {
-    if (!formLead) return;
+    if (!activeLead?.id) return;
+    setSaving(true);
+    setModalMessage('');
     try {
-      setSaving(true);
-      setModalMessage('');
-
-      if (formLead.funnel_status === 'perdido' && !formLead.loss_reason) {
-        setModalMessage('Selecione um motivo de perda para continuar.');
-        setSaving(false);
-        return;
-      }
-      if (
-        formLead.funnel_status === 'perdido' &&
-        formLead.loss_reason === 'outro' &&
-        !(formLead.loss_reason_other || '').trim()
-      ) {
-        setModalMessage('Preencha o detalhe do motivo "outro" para continuar.');
-        setSaving(false);
-        return;
-      }
-
-      if (activeLead && formLead.funnel_status !== activeLead.funnel_status) {
-        const confirmTransition = window.confirm(
-          `Confirmar mudança de funil: ${getFunnelLabel(activeLead.funnel_status)} -> ${getFunnelLabel(formLead.funnel_status)}?`
-        );
-        if (!confirmTransition) {
-          setSaving(false);
-          return;
-        }
-
-        const transitionResponse = await fetch(`${API_BASE}/api/leads/${formLead.id}/funnel-status`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: formLead.funnel_status,
-            reason: formLead.loss_reason || null,
-            reason_other: formLead.loss_reason_other || null,
-            author: 'dashboard',
-          }),
-        });
-        const transitionData = await transitionResponse.json();
-        if (!transitionResponse.ok) {
-          throw new Error(transitionData?.detail || 'Falha na transição de funil');
-        }
-      }
-
       const payload = {
-        name: formLead.name || '',
-        company_name: formLead.company_name || formLead.name || '',
-        phone: formLead.phone || null,
-        email: formLead.email || null,
-        address: formLead.address || null,
-        city: formLead.city || '',
-        state: formLead.state || null,
-        cnpj: formLead.cnpj || null,
-        url: formLead.url || null,
-        funnel_status: formLead.funnel_status || 'novo',
-        loss_reason:
-          formLead.funnel_status === 'perdido'
-            ? formLead.loss_reason === 'outro'
-              ? `outro:${formLead.loss_reason_other || ''}`
-              : formLead.loss_reason || null
-            : null,
-        prospect_status: formLead.prospect_status || 'nao_contatado',
-        prospect_notes: formLead.prospect_notes || null,
-        campaign_status: formLead.campaign_status || null,
-        next_action_date: formLead.next_action_date || null,
-        next_action_description: formLead.next_action_description || null,
+        name: (formLead.name || '').trim(),
+        company_name: (formLead.company_name || '').trim() || null,
+        city: (formLead.city || '').trim(),
+        state: (formLead.state || '').trim() || null,
+        phone: (formLead.phone || '').trim() || null,
+        email: (formLead.email || '').trim() || null,
+        address: (formLead.address || '').trim() || null,
+        cnpj: (formLead.cnpj || '').trim() || null,
+        url: (formLead.url || '').trim() || null,
+        source: (formLead.source || '').trim() || 'manual',
         is_valid: !!formLead.is_valid,
         is_duplicate: !!formLead.is_duplicate,
       };
 
-      const response = await fetch(`${API_BASE}/api/leads/${formLead.id}`, {
-        method: 'PUT',
+      if (payload.name.length < 2) {
+        throw new Error('Nome deve ter ao menos 2 caracteres.');
+      }
+      if (payload.city.length < 2) {
+        throw new Error('Cidade deve ter ao menos 2 caracteres.');
+      }
+
+      const response = await fetch(`${API_BASE}/api/leads/${activeLead.id}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await response.json();
+      const result = await response.json();
       if (!response.ok) {
-        throw new Error(data?.detail || 'Falha ao salvar lead');
+        throw new Error(result?.detail || 'Falha ao salvar lead.');
       }
 
+      const updated = mapLead(result?.lead || {});
+      setLeads((prev) => prev.map((lead) => (lead.id === updated.id ? updated : lead)));
+      setActiveLead(updated);
+      setFormLead((prev) => ({ ...prev, ...updated }));
       setModalMessage('Lead atualizado com sucesso.');
-      await loadLeads();
-      if (data?.lead) {
-        const updated = mapLead(data.lead);
-        setActiveLead(updated);
-        setFormLead(updated);
-      }
-
-      localStorage.setItem('findvan.leads.lastRefresh', String(Date.now()));
-      window.dispatchEvent(new CustomEvent('findvan:leads-updated'));
+      setSuccessMessage('Lead atualizado com sucesso.');
     } catch (error) {
-      setModalMessage(error?.message || 'Erro ao salvar');
+      setModalMessage(error?.message || 'Falha ao salvar lead.');
     } finally {
       setSaving(false);
     }
   };
 
-  const removeLead = async () => {
-    if (!formLead) return;
-    const confirmed = window.confirm(`Excluir lead "${formLead.name}"?`);
-    if (!confirmed) return;
-    try {
-      setDeleting(true);
-      setModalMessage('');
-      const response = await fetch(`${API_BASE}/api/leads/${formLead.id}`, {
-        method: 'DELETE',
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.detail || 'Falha ao excluir lead');
-      }
-      await loadLeads();
-      closeLeadModal();
-      localStorage.setItem('findvan.leads.lastRefresh', String(Date.now()));
-      window.dispatchEvent(new CustomEvent('findvan:leads-updated'));
-    } catch (error) {
-      setModalMessage(error?.message || 'Erro ao excluir');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const clearFilters = () => {
-    setSelectedState('');
-    setSelectedCity('');
-    setSearch('');
-    setSelectedScoreRange('all');
-    setSelectedFollowUpFilter('all');
-    setSelectedSlaFilter('all');
-    setFocusModeEnabled(false);
-    setSelectedFunnels([]);
-    setSelectedSource('');
-    setSelectedTag('');
-    setActiveAlertFilter('');
-    setCapturedDateFrom('');
-    setCapturedDateTo('');
-    setScoreSort('desc');
-    setBatchResult(null);
-    setLoadError('');
-    setRequestedLeadId(null);
-    try {
-      const cleanPath = window.location.pathname || '/leads';
-      window.history.replaceState({}, '', cleanPath);
-    } catch (error) {
-      // no-op
-    }
-    try {
-      sessionStorage.removeItem(SESSION_FILTER_KEY);
-    } catch (error) {
-      // no-op
-    }
-  };
-
-  const toggleLeadSelection = (leadId, checked) => {
-    if (checked) {
-      setSelectedLeadIds((prev) => (prev.includes(leadId) ? prev : [...prev, leadId]));
-    } else {
-      setSelectedLeadIds((prev) => prev.filter((id) => id !== leadId));
-    }
-  };
-
-  const toggleSelectCurrentPage = (checked) => {
-    const pageIds = (focusModeEnabled ? visiblePaginatedLeads : paginatedLeads)
-      .map((lead) => lead.id)
-      .filter(Boolean);
-    if (checked) {
-      setSelectedLeadIds((prev) => [...new Set([...prev, ...pageIds])]);
-    } else {
-      setSelectedLeadIds((prev) => prev.filter((id) => !pageIds.includes(id)));
-    }
-  };
-
-  const exportSelectedLeads = async () => {
-    if (selectedLeadIds.length === 0) return;
-    try {
-      setBatchBusy(true);
-      const response = await fetch(`${API_BASE}/api/leads/batch/export`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedLeadIds }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.detail || 'Falha ao exportar leads.');
-
-      const csv = toCsv(payload?.leads || []);
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `findvan-leads-batch-${Date.now()}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      const processed = Number(payload?.processed ?? selectedLeadIds.length);
-      const exported = Number(payload?.exported ?? (payload?.leads || []).length);
-      const failed = Number(payload?.failed ?? Math.max(processed - exported, 0));
-      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
-      setBatchResult({
-        type: failed > 0 ? 'warning' : 'success',
-        summary:
-          failed > 0
-            ? `Exportação parcial: ${exported}/${processed} leads exportados (${failed} falhas).`
-            : `Exportação concluída com ${exported}/${processed} leads.`,
-        processed,
-        updated: exported,
-        failed,
-        errors,
-      });
-    } catch (error) {
-      setBatchResult({ type: 'error', summary: error?.message || 'Erro ao exportar lote.' });
-    } finally {
-      setBatchBusy(false);
-    }
-  };
-
-  const batchUpdateStatus = async () => {
-    if (selectedLeadIds.length === 0) return;
-    const rawStatus = window.prompt(
-      'Novo status do funil (novo/contactado/respondeu/interessado/convertido/perdido):',
-      'contactado'
-    );
-    if (!rawStatus) return;
-    const newStatus = rawStatus.trim().toLowerCase();
-    if (!funnelStatusOptions.some((option) => option.value === newStatus)) {
-      setBatchResult({
-        type: 'error',
-        summary: `Status inválido: "${rawStatus}". Use um dos estágios do funil.`,
-      });
-      return;
-    }
-
-    let lossReason = null;
-    let lossReasonOther = null;
-    if (newStatus === 'perdido') {
-      const rawLossReason = window.prompt(
-        'Motivo de perda (sem_interesse/ja_tem_fornecedor/preco_alto/sem_resposta_3_tentativas/numero_invalido_ou_bloqueado/outro):',
-        'sem_interesse'
-      );
-      if (!rawLossReason) return;
-      lossReason = rawLossReason.trim().toLowerCase();
-      if (!lossReasonOptions.some((option) => option.value === lossReason)) {
-        setBatchResult({
-          type: 'error',
-          summary: `Motivo inválido: "${rawLossReason}".`,
-        });
-        return;
-      }
-      if (lossReason === 'outro') {
-        lossReasonOther = window.prompt('Detalhe do motivo "outro":', '');
-        if (!lossReasonOther || !lossReasonOther.trim()) {
-          setBatchResult({
-            type: 'error',
-            summary: 'Detalhe do motivo "outro" é obrigatório para marcar como perdido.',
-          });
-          return;
-        }
-        lossReasonOther = lossReasonOther.trim();
-      }
-    }
-
-    try {
-      setBatchBusy(true);
-      const response = await fetch(`${API_BASE}/api/leads/batch/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ids: selectedLeadIds,
-          status: newStatus,
-          reason: lossReason,
-          reason_other: lossReasonOther,
-          author: 'dashboard-batch',
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.detail || 'Falha ao atualizar status em lote.');
-      const processed = Number(payload?.processed ?? selectedLeadIds.length);
-      const updated = Number(payload?.updated ?? 0);
-      const failed = Number(payload?.failed ?? Math.max(processed - updated, 0));
-      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
-      setBatchResult({
-        type: failed > 0 ? 'warning' : 'success',
-        summary:
-          failed > 0
-            ? `Status atualizado parcialmente: ${updated}/${processed} (${failed} falhas).`
-            : `Status atualizado em ${updated}/${processed} leads.`,
-        processed,
-        updated,
-        failed,
-        errors,
-      });
-      setSelectedLeadIds([]);
-      await loadLeads();
-    } catch (error) {
-      setBatchResult({ type: 'error', summary: error?.message || 'Erro no batch de status.' });
-    } finally {
-      setBatchBusy(false);
-    }
-  };
-
-  const openBatchCampaignModal = () => {
-    if (selectedLeadIds.length === 0 || batchBusy) return;
-    setBatchResult(null);
-    setCampaignBatchModalOpen(true);
-  };
-
-  const batchUpdateCampaign = async () => {
-    if (selectedLeadIds.length === 0) return;
-    const campaignStatus = campaignBatchStatus.trim();
-    if (!campaignStatus) {
-      setBatchResult({
-        type: 'error',
-        summary: 'Informe o nome/status da campanha antes de confirmar.',
-      });
-      return;
-    }
-
-    try {
-      setBatchBusy(true);
-      setBatchResult(null);
-      const response = await fetch(`${API_BASE}/api/leads/batch/campaign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedLeadIds, campaign_status: campaignStatus }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.detail || 'Falha ao atualizar campanha em lote.');
-
-      const processed = Number(payload?.processed ?? selectedLeadIds.length);
-      const updated = Number(payload?.updated ?? 0);
-      const failed = Number(payload?.failed ?? Math.max(processed - updated, 0));
-      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
-      setBatchResult({
-        type: failed > 0 ? 'warning' : 'success',
-        summary:
-          failed > 0
-            ? `Execução parcial: ${updated}/${processed} leads atualizados (${failed} falhas).`
-            : `Campanha aplicada com sucesso em ${updated}/${processed} leads.`,
-        processed,
-        updated,
-        failed,
-        errors,
-      });
-
-      setCampaignBatchModalOpen(false);
-      setSelectedLeadIds([]);
-      await loadLeads();
-    } catch (error) {
-      setBatchResult({
-        type: 'error',
-        summary: error?.message || 'Erro no batch de campanha.',
-      });
-    } finally {
-      setBatchBusy(false);
-    }
-  };
-
-  const batchDeleteLeads = async () => {
-    if (selectedLeadIds.length === 0) return;
-    const confirmed = window.confirm(`Excluir (soft delete) ${selectedLeadIds.length} leads selecionados?`);
-    if (!confirmed) return;
-
-    try {
-      setBatchBusy(true);
-      const response = await fetch(`${API_BASE}/api/leads/batch/delete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedLeadIds }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.detail || 'Falha ao excluir leads em lote.');
-      const processed = Number(payload?.processed ?? selectedLeadIds.length);
-      const deleted = Number(payload?.deleted ?? 0);
-      const failed = Number(payload?.failed ?? Math.max(processed - deleted, 0));
-      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
-      setBatchResult({
-        type: failed > 0 ? 'warning' : 'success',
-        summary:
-          failed > 0
-            ? `Exclusão parcial: ${deleted}/${processed} leads removidos (${failed} falhas).`
-            : `${deleted}/${processed} leads removidos.`,
-        processed,
-        updated: deleted,
-        failed,
-        errors,
-      });
-      setSelectedLeadIds([]);
-      await loadLeads();
-    } catch (error) {
-      setBatchResult({ type: 'error', summary: error?.message || 'Erro no batch de exclusão.' });
-    } finally {
-      setBatchBusy(false);
-    }
-  };
-
-  const batchApplyTag = async () => {
-    if (selectedLeadIds.length === 0) return;
-    const tag = window.prompt('Tag para aplicar nos leads selecionados:', 'prioridade alta');
-    if (!tag || !tag.trim()) return;
-    try {
-      setBatchBusy(true);
-      const response = await fetch(`${API_BASE}/api/leads/batch/tag`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedLeadIds, tag: tag.trim() }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.detail || 'Falha ao aplicar tag em lote.');
-      const processed = Number(payload?.processed ?? selectedLeadIds.length);
-      const updated = Number(payload?.updated ?? 0);
-      const failed = Number(payload?.failed ?? Math.max(processed - updated, 0));
-      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
-      setBatchResult({
-        type: failed > 0 ? 'warning' : 'success',
-        summary:
-          failed > 0
-            ? `Tag aplicada parcialmente: ${updated}/${processed} leads (${failed} falhas).`
-            : `Tag aplicada em ${updated}/${processed} leads.`,
-        processed,
-        updated,
-        failed,
-        errors,
-      });
-      await loadLeads();
-    } catch (error) {
-      setBatchResult({ type: 'error', summary: error?.message || 'Erro ao aplicar tag em lote.' });
-    } finally {
-      setBatchBusy(false);
-    }
-  };
-
-  const addTagToActiveLead = async () => {
-    if (!activeLead?.id || !tagDraft.trim()) return;
+  const addTag = async () => {
+    if (!activeLead?.id) return;
+    const tag = newTag.trim();
+    if (!tag) return;
+    setModalMessage('');
     try {
       const response = await fetch(`${API_BASE}/api/leads/${activeLead.id}/tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tag: tagDraft.trim() }),
+        body: JSON.stringify({ tag }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.detail || 'Falha ao adicionar tag.');
-      setTagDraft('');
-      setFormLead((prev) => ({ ...prev, tags: payload.tags || [] }));
-      setLeads((prev) =>
-        prev.map((lead) =>
-          lead.id === activeLead.id ? { ...lead, tags: payload.tags || [] } : lead
-        )
-      );
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao adicionar tag.');
+      }
+      const tags = Array.isArray(payload?.tags) ? payload.tags : [];
+      setLeads((prev) => prev.map((lead) => (lead.id === activeLead.id ? { ...lead, tags } : lead)));
+      setFormLead((prev) => ({ ...prev, tags }));
+      setNewTag('');
     } catch (error) {
-      setModalMessage(error?.message || 'Erro ao adicionar tag.');
+      setModalMessage(error?.message || 'Falha ao adicionar tag.');
     }
   };
 
-  const removeTagFromActiveLead = async (tag) => {
+  const removeTag = async (tag) => {
     if (!activeLead?.id || !tag) return;
+    setModalMessage('');
     try {
       const response = await fetch(`${API_BASE}/api/leads/${activeLead.id}/tags/${encodeURIComponent(tag)}`, {
         method: 'DELETE',
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.detail || 'Falha ao remover tag.');
-      setFormLead((prev) => ({ ...prev, tags: payload.tags || [] }));
-      setLeads((prev) =>
-        prev.map((lead) =>
-          lead.id === activeLead.id ? { ...lead, tags: payload.tags || [] } : lead
-        )
-      );
-    } catch (error) {
-      setModalMessage(error?.message || 'Erro ao remover tag.');
-    }
-  };
-
-  const handleAlertFilter = (type) => {
-    setActiveAlertFilter(type);
-    if (type === 'respondeu') {
-      setSelectedFollowUpFilter('all');
-      setSelectedSlaFilter('all');
-      setSelectedFunnels(['respondeu']);
-      return;
-    }
-    if (type === 'overdue') {
-      setSelectedFollowUpFilter('overdue');
-      setSelectedSlaFilter('all');
-      setSelectedFunnels(['contactado', 'respondeu', 'interessado']);
-      return;
-    }
-    if (type === 'novo') {
-      setSelectedFollowUpFilter('all');
-      setSelectedSlaFilter('all');
-      setSelectedFunnels(['novo']);
-      return;
-    }
-    if (type === 'sla_critical') {
-      setSelectedFollowUpFilter('all');
-      setSelectedSlaFilter('violated');
-      setSelectedFunnels([]);
-    }
-  };
-
-  const applyPlaybookAction = (action) => {
-    if (!action?.type) return;
-    if (action.type === 'filter_sla') {
-      setSelectedSlaFilter(action.value || 'violated');
-      setSelectedFollowUpFilter('all');
-      setSelectedFunnels([]);
-      setActiveAlertFilter('sla_critical');
-      return;
-    }
-    if (action.type === 'focus_stage') {
-      setSelectedFunnels(action.value ? [action.value] : []);
-      setSelectedFollowUpFilter('overdue');
-      setSelectedSlaFilter('all');
-      setActiveAlertFilter('overdue');
-      return;
-    }
-    if (action.type === 'focus_new_leads') {
-      setSelectedFunnels(['novo']);
-      setSelectedFollowUpFilter('all');
-      setSelectedSlaFilter('all');
-      setActiveAlertFilter('novo');
-    }
-  };
-
-  const applyExecutionQueueGovernance = () => {
-    setFocusModeEnabled(true);
-    setSelectedSlaFilter('violated');
-    setSelectedFollowUpFilter('all');
-    setSelectedFunnels([]);
-    setScoreSort('desc');
-    setActiveAlertFilter('sla_critical');
-  };
-
-  const sendMessageForLead = async (lead) => {
-    if (!lead) return;
-
-    if (!lead.phone) {
-      setModalMessage('Este lead não possui telefone para envio de mensagem.');
-      return;
-    }
-
-    const modeInput = window.prompt('Modo de envio (dry_run/live):', 'dry_run');
-    if (!modeInput) return;
-    const normalizedMode = modeInput.trim().toLowerCase();
-    if (normalizedMode !== 'dry_run' && normalizedMode !== 'live') {
-      setModalMessage('Modo inválido. Use dry_run ou live.');
-      return;
-    }
-
-    const defaultText = `Olá, ${lead.name || lead.company_name || 'tudo bem'}? Podemos ajudar sua operação de transporte escolar.`;
-    const content = window.prompt('Mensagem a ser enviada:', defaultText);
-    if (!content || !content.trim()) return;
-
-    try {
-      setMessagingBusy(true);
-      setModalMessage('');
-      const response = await fetch(`${API_BASE}/api/integrations/messaging/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lead_id: String(lead.id),
-          to: lead.phone,
-          content: content.trim(),
-          dry_run: normalizedMode === 'dry_run',
-          provider: 'twilio',
-        }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload?.detail || 'Falha ao enviar mensagem para o lead.');
+        throw new Error(payload?.detail || 'Falha ao remover tag.');
       }
-
-      setModalMessage(
-        `Mensagem ${payload.mode === 'dry_run' ? 'simulada' : 'enviada'} via ${payload.provider}. Status: ${payload.receipt?.status || 'n/d'}.`
-      );
-      addMessagingActivity({
-        lead_id: String(lead.id),
-        to: lead.phone,
-        provider: payload.provider,
-        mode: payload.mode,
-        status: payload?.receipt?.status || 'queued',
-        message: content.trim(),
-      });
+      const tags = Array.isArray(payload?.tags) ? payload.tags : [];
+      setLeads((prev) => prev.map((lead) => (lead.id === activeLead.id ? { ...lead, tags } : lead)));
+      setFormLead((prev) => ({ ...prev, tags }));
     } catch (error) {
-      const message = error?.message || 'Erro de envio para o lead.';
-      setModalMessage(message);
-      addMessagingActivity({
-        lead_id: String(lead.id),
-        to: lead.phone || '',
-        provider: 'noop',
-        mode: normalizedMode,
-        status: 'failed',
-        message: content.trim(),
-        error: message,
-      });
-    } finally {
-      setMessagingBusy(false);
+      setModalMessage(error?.message || 'Falha ao remover tag.');
     }
   };
 
-  const handleContactLead = async (lead) => {
-    openLeadModal(lead);
-    await sendMessageForLead(lead);
-  };
-
-  const captureExecutionOutcome = (lead) => {
-    if (!lead?.id) return;
-    const selected = window.prompt(
-      'Resultado da execução (success/no_response/reschedule/lost):',
-      'success'
-    );
-    if (!selected) return;
-    const normalized = selected.trim().toLowerCase();
-    if (!executionOutcomeOptions.some((option) => option.value === normalized)) {
-      setBatchResult({
-        type: 'error',
-        summary: 'Resultado inválido. Use success, no_response, reschedule ou lost.',
-      });
+  const exportLeads = () => {
+    if (!filteredLeads.length) {
+      setErrorMessage('Nao ha leads para exportar.');
       return;
     }
-
-    const label =
-      executionOutcomeOptions.find((option) => option.value === normalized)?.label || normalized;
-    const rawVariant = window.prompt(
-      'Variante operacional (control/copy_a/copy_b/window_morning/window_afternoon):',
-      'control'
-    );
-    const variant = normalizeExecutionVariant(rawVariant);
-    const entry = {
-      id: `${lead.id}-${Date.now()}`,
-      lead_id: String(lead.id),
-      lead_name: lead.name || lead.company_name || String(lead.id),
-      stage: lead.funnel_status || 'novo',
-      outcome: normalized,
-      outcome_label: label,
-      variant: variant.value,
-      variant_label: variant.label,
-      created_at: new Date().toISOString(),
-    };
-    setExecutionOutcomes((prev) => [entry, ...prev].slice(0, 100));
-    setBatchResult({
-      type: 'success',
-      summary: `Resultado "${label}" (${variant.label}) registrado para ${entry.lead_name}.`,
-    });
-  };
-
-  const buildLeadUpdatePayload = (lead, overrides = {}) => {
-    const merged = { ...lead, ...overrides };
-    const normalizedLossReason =
-      merged.funnel_status === 'perdido'
-        ? merged.loss_reason === 'outro'
-          ? `outro:${merged.loss_reason_other || ''}`
-          : merged.loss_reason || null
-        : null;
-    return {
-      name: merged.name || '',
-      company_name: merged.company_name || merged.name || '',
-      phone: merged.phone || null,
-      email: merged.email || null,
-      address: merged.address || null,
-      city: merged.city || '',
-      state: merged.state || null,
-      cnpj: merged.cnpj || null,
-      url: merged.url || null,
-      funnel_status: merged.funnel_status || 'novo',
-      loss_reason: normalizedLossReason,
-      prospect_status: merged.prospect_status || 'nao_contatado',
-      prospect_notes: merged.prospect_notes || null,
-      campaign_status: merged.campaign_status || null,
-      next_action_date: merged.next_action_date || null,
-      next_action_description: merged.next_action_description || null,
-      is_valid: !!merged.is_valid,
-      is_duplicate: !!merged.is_duplicate,
-    };
-  };
-
-  const updateLeadCadence = async (lead, cadenceUpdates) => {
-    if (!lead?.id) return;
-    try {
-      setBatchBusy(true);
-      const response = await fetch(`${API_BASE}/api/leads/${lead.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildLeadUpdatePayload(lead, cadenceUpdates)),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.detail || 'Falha ao atualizar cadência.');
-      }
-      setBatchResult({
-        type: 'success',
-        summary: `Cadência atualizada para "${lead.name || lead.company_name || lead.id}".`,
-      });
-      await loadLeads();
-    } catch (error) {
-      setBatchResult({
-        type: 'error',
-        summary: error?.message || 'Erro ao atualizar cadência.',
-      });
-    } finally {
-      setBatchBusy(false);
-    }
-  };
-
-  const scheduleFollowUpInHours = async (lead, hours) => {
-    const when = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
-    const cadenceText = `Follow-up automático em ${hours}h`;
-    await updateLeadCadence(lead, {
-      next_action_date: when,
-      next_action_description: cadenceText,
-    });
-  };
-
-  const applyLeadFunnelTransition = async ({ lead, newStatus }) => {
-    if (!lead?.id || !newStatus) return;
-    try {
-      setBatchBusy(true);
-      const response = await fetch(`${API_BASE}/api/leads/${lead.id}/funnel-status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: newStatus,
-          author: 'dashboard-workspace',
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.detail || 'Falha ao alterar estágio do lead.');
-      }
-      setBatchResult({
-        type: 'success',
-        summary: `Lead "${lead.name || lead.company_name || lead.id}" movido para ${newStatus}.`,
-      });
-      await loadLeads();
-    } catch (error) {
-      setBatchResult({
-        type: 'error',
-        summary: error?.message || 'Erro ao alterar estágio do lead.',
-      });
-    } finally {
-      setBatchBusy(false);
-    }
-  };
-
-  const moveLeadToNextStage = async (lead) => {
-    const suggested = getPreferredNextFunnelStatus(lead?.funnel_status);
-    if (!suggested) return;
-    const confirm = window.confirm(
-      `Avançar lead "${lead.name || lead.company_name || lead.id}" de ${getFunnelLabel(lead.funnel_status)} para ${getFunnelLabel(suggested)}?`
-    );
-    if (!confirm) return;
-    await applyLeadFunnelTransition({ lead, newStatus: suggested });
+    const csv = toCsv(filteredLeads);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    link.href = url;
+    link.download = `findvan-leads-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -2191,1141 +323,282 @@ export default function Leads({ onNavigate, activePath }) {
       <header className="fv-header">
         <div>
           <h1>Leads</h1>
-          <p>Gerencie todo o pipeline de prospecção em tempo real.</p>
+          <p>Base de contatos com dados cadastrais, score e tags.</p>
         </div>
         <div className="fv-actions">
-          <button className="fv-ghost" type="button" onClick={() => setFocusModeEnabled((prev) => !prev)}>
-            {focusModeEnabled ? 'Desativar modo foco' : 'Ativar modo foco'}
+          <button className="fv-ghost" type="button" onClick={() => loadLeads(page)}>
+            {loading ? 'Atualizando...' : 'Atualizar'}
           </button>
-          <button className="fv-ghost" type="button" onClick={loadLeads}>
-            {loading ? 'Atualizando...' : 'Atualizar leads'}
+          <button className="fv-primary" type="button" onClick={exportLeads}>
+            Exportar
           </button>
         </div>
       </header>
 
-      <section className="fv-panel fv-panel-compact">
-        <div className="fv-inline-form">
-          <select
-            className="fv-input fv-input-state fv-select"
-            value={selectedState}
-            onChange={(event) => {
-              setSelectedState(event.target.value);
-              setSelectedCity('');
-            }}
-          >
-            <option value="">Todos os estados</option>
-            {stateOptions.map((state) => (
-              <option key={state} value={state}>
-                {state}
-              </option>
-            ))}
-          </select>
+      {errorMessage && <div className="fv-message">{errorMessage}</div>}
+      {successMessage && <div className="fv-message">{successMessage}</div>}
 
-          <select
-            className="fv-input fv-select"
-            value={selectedCity}
-            onChange={(event) => setSelectedCity(event.target.value)}
-          >
-            <option value="">Todas as cidades</option>
-            {cityOptions.map((city) => (
+      <section className="fv-filters">
+        <div className="fv-field">
+          <label htmlFor="filter-city">Cidade</label>
+          <select id="filter-city" value={selectedCity} onChange={(event) => setSelectedCity(event.target.value)}>
+            <option value="">Todas</option>
+            {cities.map((city) => (
               <option key={city} value={city}>
                 {city}
               </option>
             ))}
           </select>
+        </div>
 
-          <input
-            className="fv-input fv-select"
-            placeholder="Buscar por nome, empresa, telefone, email, tags..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-
-          <select
-            className="fv-input fv-select"
-            value={selectedScoreRange}
-            onChange={(event) => setSelectedScoreRange(event.target.value)}
-          >
-            {scoreRanges.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="fv-input fv-select"
-            value={selectedFollowUpFilter}
-            onChange={(event) => setSelectedFollowUpFilter(event.target.value)}
-          >
-            {followUpFilterOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="fv-input fv-select"
-            value={selectedSlaFilter}
-            onChange={(event) => setSelectedSlaFilter(event.target.value)}
-          >
-            {slaFilterOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-
-          <select className="fv-input fv-select" value={scoreSort} onChange={(event) => setScoreSort(event.target.value)}>
-            <option value="desc">Ordenar score: maior primeiro</option>
-            <option value="asc">Ordenar score: menor primeiro</option>
-          </select>
-
-          <div className="fv-funnel-filters">
-            {funnelStatusOptions.map((option) => (
-              <label key={option.value} className="fv-funnel-check">
-                <input
-                  type="checkbox"
-                  checked={selectedFunnels.includes(option.value)}
-                  onChange={(event) => {
-                    if (event.target.checked) {
-                      setSelectedFunnels((prev) => [...prev, option.value]);
-                    } else {
-                      setSelectedFunnels((prev) => prev.filter((item) => item !== option.value));
-                    }
-                  }}
-                />
-                {option.label}
-              </label>
-            ))}
-          </div>
-
-          <select
-            className="fv-input fv-select"
-            value={selectedSource}
-            onChange={(event) => setSelectedSource(event.target.value)}
-          >
-            <option value="">Todas as fontes</option>
-            {sourceOptions.map((source) => (
+        <div className="fv-field">
+          <label htmlFor="filter-source">Fonte</label>
+          <select id="filter-source" value={selectedSource} onChange={(event) => setSelectedSource(event.target.value)}>
+            <option value="">Todas</option>
+            {sources.map((source) => (
               <option key={source} value={source}>
                 {source}
               </option>
             ))}
           </select>
+        </div>
 
-          <select
-            className="fv-input fv-select"
-            value={selectedTag}
-            onChange={(event) => setSelectedTag(event.target.value)}
-          >
-            <option value="">Todas as tags</option>
-            {tagOptions.map((tag) => (
-              <option key={tag} value={tag}>
-                {tag}
-              </option>
-            ))}
+        <div className="fv-field">
+          <label htmlFor="filter-validity">Validade</label>
+          <select id="filter-validity" value={selectedValidity} onChange={(event) => setSelectedValidity(event.target.value)}>
+            <option value="">Todos</option>
+            <option value="valid">Validos</option>
+            <option value="invalid">Invalidos</option>
           </select>
+        </div>
 
-          <input className="fv-input fv-select" type="date" value={capturedDateFrom} onChange={(event) => setCapturedDateFrom(event.target.value)} />
-          <input className="fv-input fv-select" type="date" value={capturedDateTo} onChange={(event) => setCapturedDateTo(event.target.value)} />
-
-          <button className="fv-ghost small" type="button" onClick={clearFilters}>
-            Limpar filtros
-          </button>
-
-          <div className="fv-row-sub">
-            {sortedLeads.length} leads • Atualizado às {lastUpdatedAt || '--:--:--'} •{' '}
-            {focusModeEnabled ? 'Modo foco: ON' : 'Modo foco: OFF'}
-          </div>
+        <div className="fv-field fv-field-search">
+          <label htmlFor="filter-search">Busca</label>
+          <input
+            id="filter-search"
+            placeholder="Nome, empresa, telefone, email, tags"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
         </div>
       </section>
 
-      {loadError && (
-        <section className="fv-panel fv-panel-compact">
-          <div className="fv-batch-feedback error">
-            <div className="fv-batch-feedback-title">{loadError}</div>
-            {leads.length > 0 && (
-              <div className="fv-row-sub">
-                Exibindo dados em cache
-                {cacheLoadedAt ? ` • Última sincronização: ${formatDateTime(cacheLoadedAt)}` : ''}
-              </div>
-            )}
-            <button className="fv-ghost small" type="button" onClick={loadLeads} disabled={loading}>
-              {loading ? 'Tentando...' : 'Tentar novamente'}
-            </button>
-          </div>
-        </section>
-      )}
-
-      <section className="fv-columns fv-columns-leads">
-        <div className="fv-panel">
-          <div className="fv-panel-header">
-            <h2>Pipeline</h2>
-            <label className="fv-check-label">
-              <input
-                type="checkbox"
-                checked={
-                  visiblePaginatedLeads.length > 0 &&
-                  visiblePaginatedLeads.every((lead) => selectedLeadIds.includes(lead.id))
-                }
-                onChange={(event) => toggleSelectCurrentPage(event.target.checked)}
-              />
-              Selecionar página
-            </label>
-          </div>
-
-          {selectedLeadIds.length > 0 && (
-            <div className="fv-batch-bar">
-              <div className="fv-row-sub">{selectedLeadIds.length} selecionados</div>
-              <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={batchUpdateStatus}>
-                Alterar status
-              </button>
-              <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={openBatchCampaignModal}>
-                Adicionar campanha
-              </button>
-              <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={batchApplyTag}>
-                Tagear
-              </button>
-              <button className="fv-ghost small" type="button" disabled={batchBusy} onClick={exportSelectedLeads}>
-                Exportar CSV
-              </button>
-              <button className="fv-primary" type="button" disabled={batchBusy} onClick={batchDeleteLeads}>
-                Excluir
-              </button>
-            </div>
-          )}
-
-          {batchResult?.summary && (
-            <div className={`fv-batch-feedback ${batchResult.type || 'success'}`}>
-              <div className="fv-batch-feedback-title">{batchResult.summary}</div>
-              {Number.isFinite(batchResult.processed) && (
-                <div className="fv-row-sub">
-                  Processados: {batchResult.processed} • Sucessos: {batchResult.updated || 0} • Falhas:{' '}
-                  {batchResult.failed || 0}
-                </div>
-              )}
-              {Array.isArray(batchResult.errors) && batchResult.errors.length > 0 && (
-                <div className="fv-row-sub">
-                  IDs com falha: {batchResult.errors.map((item) => item.id).join(', ')}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="fv-workspace-board">
-            <div className="fv-panel-header">
-              <h2>Workspace do Funil</h2>
-              <div className="fv-row-sub">
-                {selectedFunnels.length > 0
-                  ? `Contexto ativo: ${selectedFunnels
-                      .map((value) => funnelStatusOptions.find((option) => option.value === value)?.label || value)
-                      .join(', ')}`
-                  : 'Contexto ativo: todos os estágios'}
-              </div>
-            </div>
-
-            <div className="fv-workspace-grid">
-              {workspaceStages.map((stage) => {
-                const stageLeads = focusModeEnabled
-                  ? stage.leads.filter((lead) => {
-                      const sla = getSlaMeta(lead).value;
-                      return sla === 'violated' || (sla === 'attention' && isFollowUpOverdue(lead));
-                    })
-                  : stage.leads;
-                return (
-                <section key={stage.value} className="fv-workspace-stage">
-                  <div className="fv-workspace-stage-head">
-                    <div className={`fv-status ${stage.className}`}>{stage.label}</div>
-                    <div className="fv-row-chip">{stageLeads.length}</div>
-                  </div>
-
-                  <div className="fv-row-sub">
-                    SLA: ✅ {insights.slaByStage[stage.value]?.on_time || 0} • ⚠️{' '}
-                    {insights.slaByStage[stage.value]?.attention || 0} • ⛔{' '}
-                    {insights.slaByStage[stage.value]?.violated || 0}
-                  </div>
-
-                  <div className="fv-workspace-stage-actions">
-                    <button
-                      className="fv-ghost small"
-                      type="button"
-                      onClick={() => setSelectedFunnels([stage.value])}
-                    >
-                      Ver estágio
-                    </button>
-                    <button
-                      className="fv-ghost small"
-                      type="button"
-                      onClick={() => {
-                        setSelectedFunnels([]);
-                        setActiveAlertFilter('');
-                        setSelectedFollowUpFilter('all');
-                        setSelectedSlaFilter('all');
-                      }}
-                    >
-                      Ver todos
-                    </button>
-                    <button
-                      className="fv-ghost small"
-                      type="button"
-                      onClick={() => {
-                        setSelectedFunnels([stage.value]);
-                        setSelectedSlaFilter('violated');
-                        setSelectedFollowUpFilter('all');
-                        setActiveAlertFilter('sla_critical');
-                      }}
-                    >
-                      Ver críticos
-                    </button>
-                  </div>
-
-                  <div className="fv-workspace-stage-list">
-                    {stageLeads.slice(0, 3).map((lead) => (
-                      <article key={`workspace-${stage.value}-${lead.id}`} className="fv-workspace-lead">
-                        <div className="fv-row-title">{lead.name || lead.company_name || 'Sem nome'}</div>
-                        <div className="fv-row-sub">
-                          {lead.city || 'Cidade não informada'}
-                          {lead.state ? ` • ${lead.state}` : ''}
-                        </div>
-                        <ScoreBadge score={lead.score} />
-                        <div className="fv-workspace-lead-actions">
-                          <button className="fv-ghost small" type="button" onClick={() => handleContactLead(lead)}>
-                            Contactar
-                          </button>
-                          <button className="fv-ghost small" type="button" onClick={() => captureExecutionOutcome(lead)}>
-                            Resultado
-                          </button>
-                          <button className="fv-ghost small" type="button" onClick={() => openLeadModal(lead)}>
-                            Ver
-                          </button>
-                          <button
-                            className="fv-ghost small"
-                            type="button"
-                            disabled={batchBusy}
-                            onClick={() => scheduleFollowUpInHours(lead, 24)}
-                          >
-                            +24h
-                          </button>
-                          <button
-                            className="fv-ghost small"
-                            type="button"
-                            disabled={batchBusy}
-                            onClick={() => moveLeadToNextStage(lead)}
-                          >
-                            Avançar
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                    {stageLeads.length === 0 && (
-                      <div className="fv-row-sub">Nenhum lead neste estágio com os filtros atuais.</div>
-                    )}
-                  </div>
-                </section>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="fv-table">
-            {visiblePaginatedLeads.map((lead, index) => {
-              const overdue = isFollowUpOverdue(lead);
-              const replied = lead.funnel_status === 'respondeu';
-              const cadenceMeta = getCadenceMeta(lead);
-              const slaMeta = getSlaMeta(lead);
-              const completeness = [
-                { key: 'Telefone', ok: !!lead.phone },
-                { key: 'Endereço', ok: !!lead.address },
-              ].filter((item) => item.ok);
-
-              return (
-                <div
-                  key={`${lead.id || lead.name}-${lead.city}-${index}`}
-                  className={`fv-row fv-row-selectable fv-lead-card ${replied ? 'replied' : ''} ${overdue ? 'overdue' : ''}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedLeadIds.includes(lead.id)}
-                    onChange={(event) => toggleLeadSelection(lead.id, event.target.checked)}
-                  />
-
-                  <div className="fv-row-main">
-                    <div className="fv-row-title">{lead.name || 'Sem nome'}</div>
-                    <div className="fv-row-sub">{lead.company_name || lead.name || 'Empresa não informada'}</div>
-                    <div className="fv-row-sub">
-                      {lead.city || 'Cidade não informada'}
-                      {lead.state ? ` • ${lead.state}` : ''} • {lead.phone || 'Sem telefone'}
-                    </div>
-                    <div className="fv-row-sub">{lead.address || 'Endereço não informado'} • Fonte {lead.source}</div>
-
-                    {completeness.length > 0 && (
-                      <div className="fv-lead-completeness">
-                        {completeness.map((item) => (
-                          <span key={item.key} className="fv-complete-item ok">
-                            ✓ {item.key}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {lead.tags?.length > 0 && (
-                      <div className="fv-lead-tags">
-                        {lead.tags.slice(0, 4).map((tag) => (
-                          <span key={`${lead.id}-${tag}`} className="fv-row-chip fv-row-chip-light">
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {overdue && <div className="fv-alert-pill">Follow-up vencido</div>}
-                    <div className="fv-row-sub">
-                      Próxima ação:{' '}
-                      {lead.next_action_date
-                        ? `${formatDateTime(lead.next_action_date)}${lead.next_action_description ? ` • ${lead.next_action_description}` : ''}`
-                        : 'não definida'}
-                    </div>
-                  </div>
-
-                  <div className="fv-lead-right">
-                    <div className={`fv-status ${getFunnelClass(lead.funnel_status)}`}>
-                      {funnelStatusOptions.find((f) => f.value === lead.funnel_status)?.label || 'Novo'}
-                    </div>
-                    <ScoreBadge score={lead.score} />
-                    <div className={`fv-row-chip ${cadenceMeta.className}`}>{cadenceMeta.label}</div>
-                    <div className={slaMeta.className}>{slaMeta.label}</div>
-                    <div className="fv-lead-actions">
-                      <button className="fv-ghost small" type="button" onClick={() => handleContactLead(lead)}>
-                        Contactar
-                      </button>
-                      <button className="fv-ghost small" type="button" onClick={() => captureExecutionOutcome(lead)}>
-                        Resultado
-                      </button>
-                      <button className="fv-ghost small" type="button" onClick={() => openLeadModal(lead)}>
-                        Ver
-                      </button>
-                      <button
-                        className="fv-ghost small"
-                        type="button"
-                        disabled={batchBusy}
-                        onClick={() => scheduleFollowUpInHours(lead, 24)}
-                      >
-                        +24h
-                      </button>
-                      <button
-                        className="fv-ghost small"
-                        type="button"
-                        disabled={batchBusy}
-                        onClick={() => updateLeadCadence(lead, { next_action_date: null, next_action_description: null })}
-                      >
-                        Limpar ação
-                      </button>
-                      <button className="fv-ghost small" type="button" onClick={() => window.alert('Menu rápido em evolução para a Wave 2.')}>
-                        Menu...
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {visiblePaginatedLeads.length === 0 && !loadError && (
-              <div className="fv-row-sub">
-                {hasActiveFilters ? 'Nenhum lead com os filtros atuais.' : 'Nenhum lead disponível no momento.'}{' '}
-                {hasActiveFilters && (
-                  <button className="fv-ghost small" type="button" onClick={clearFilters}>
-                    Limpar filtros
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="fv-pagination">
-            <button className="fv-ghost small" type="button" onClick={() => setPage((prev) => Math.max(1, prev - 1))} disabled={page <= 1}>
-              Anterior
-            </button>
-            <div className="fv-row-sub">Página {page} de {totalPages}</div>
-            <button className="fv-ghost small" type="button" onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))} disabled={page >= totalPages}>
-              Próxima
-            </button>
-          </div>
-        </div>
-
-        <aside className="fv-panel fv-insights-panel">
-          <div className="fv-panel-header">
-            <h2>Insights</h2>
-          </div>
-
-          <div className="fv-activity">
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Alertas</div>
-              <button className="fv-alert-btn red" type="button" onClick={() => handleAlertFilter('respondeu')}>
-                Respostas pendentes: {insights.alerts.pendingResponses}
-              </button>
-              <button className="fv-alert-btn yellow" type="button" onClick={() => handleAlertFilter('overdue')}>
-                Follow-ups vencidos: {insights.alerts.overdueFollowups}
-              </button>
-              <button className="fv-alert-btn red" type="button" onClick={() => handleAlertFilter('sla_critical')}>
-                SLA violado: {insights.alerts.slaCritical}
-              </button>
-              <button className="fv-alert-btn green" type="button" onClick={() => handleAlertFilter('novo')}>
-                Novos leads: {insights.alerts.newLeads}
-              </button>
-              {activeAlertFilter && (
-                <div className="fv-row-sub">
-                  Filtro ativo: {activeAlertFilter}{' '}
-                  <button
-                    className="fv-ghost small"
-                    type="button"
-                    onClick={() => {
-                      setActiveAlertFilter('');
-                      setSelectedFunnels([]);
-                      setSelectedFollowUpFilter('all');
-                      setSelectedSlaFilter('all');
-                    }}
-                  >
-                    Limpar alerta
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Resumo</div>
-              <div className="fv-row-sub">Total: {insights.total}</div>
-              <div className="fv-row-sub">Válidos: {insights.valid}</div>
-              <div className="fv-row-sub">Duplicados: {insights.duplicates}</div>
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Briefing diário</div>
-              <div className="fv-row-sub">{dailyBriefing.headline}</div>
-              {dailyBriefing.actions.length === 0 && (
-                <div className="fv-row-sub">Sem ações adicionais recomendadas para o início do turno.</div>
-              )}
-              {dailyBriefing.actions.map((item) => (
-                <div key={`briefing-${item.id}`} className="fv-row-sub">
-                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.title}</span> {item.description}{' '}
-                  <button className="fv-ghost small" type="button" onClick={() => applyPlaybookAction(item.action)}>
-                    Executar
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Brief de melhoria contínua</div>
-              {continuousImprovementBrief.map((item) => (
-                <div key={item.id} className="fv-row-sub">
-                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.title}</span> {item.description}{' '}
-                  {item.evidence}{' '}
-                  <button className="fv-ghost small" type="button" onClick={item.execute}>
-                    Executar agora
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Execução do turno</div>
-              <div className="fv-row-sub">
-                Sucesso: {executionOutcomeSummary.counts.success || 0} • Sem resposta:{' '}
-                {executionOutcomeSummary.counts.no_response || 0} • Reagendar:{' '}
-                {executionOutcomeSummary.counts.reschedule || 0} • Perdido:{' '}
-                {executionOutcomeSummary.counts.lost || 0}
-              </div>
-              {executionOutcomeSummary.recent.length === 0 && (
-                <div className="fv-row-sub">Sem resultados registrados no contexto atual.</div>
-              )}
-              {executionOutcomeSummary.recent.map((item) => (
-                <div key={item.id} className="fv-row-sub">
-                  {item.lead_name} • {item.outcome_label} • {item.variant_label || 'Controle'} •{' '}
-                  {formatRelativeDate(item.created_at)}
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Aprendizado por estágio</div>
-              {stageLearningSignals.byStage.map((item) => (
-                <div key={`learning-${item.stage}`} className="fv-row-sub">
-                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.label}</span> amostra {item.total} (
-                  {item.sampleLabel}) • sucesso {item.successRate}% • sem resposta {item.noResponseRate}% • reagendar{' '}
-                  {item.rescheduleRate}% • perdido {item.lostRate}%
-                </div>
-              ))}
-              {stageLearningSignals.priority.length === 0 && (
-                <div className="fv-row-sub">Sem recomendações de ajuste com os dados atuais.</div>
-              )}
-              {stageLearningSignals.priority.map((item) => (
-                <div key={`learning-rec-${item.stage}`} className="fv-row-sub">
-                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>Ajuste {item.label}</span> {item.recommendation}{' '}
-                  <button
-                    className="fv-ghost small"
-                    type="button"
-                    onClick={() => applyPlaybookAction({ type: 'focus_stage', value: item.stage })}
-                  >
-                    Focar estágio
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Comparativo por variante</div>
-              {variantEfficiencySignals.byStage
-                .filter((stage) => stage.total > 0)
-                .map((stage) => (
-                  <div key={`variant-stage-${stage.stage}`} className="fv-row-sub">
-                    <strong>{stage.label}</strong> • amostra {stage.total}
-                    {stage.best && (
-                      <span>
-                        {' '}
-                        • melhor: {stage.best.label} ({stage.best.successRate}%)
-                      </span>
-                    )}
-                    {stage.worst && (
-                      <span>
-                        {' '}
-                        • pior: {stage.worst.label} ({stage.worst.successRate}%)
-                      </span>
-                    )}
-                    {stage.variants.map((item) => (
-                      <div key={`variant-row-${stage.stage}-${item.variant}`} className="fv-row-sub">
-                        <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.label}</span> sucesso {item.successRate}% •
-                        perdido {item.lostRate}% • amostra {item.total} ({item.sampleLabel})
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              {variantEfficiencySignals.byStage.every((stage) => stage.total === 0) && (
-                <div className="fv-row-sub">Sem dados de variante no contexto atual.</div>
-              )}
-              {variantEfficiencySignals.priority.map((stage) => (
-                <div key={`variant-priority-${stage.stage}`} className="fv-row-sub">
-                  <span className="fv-alert-pill fv-alert-high">Gap relevante</span> {stage.label} com diferença de {stage.spread}% entre
-                  variantes.
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Decisão de variantes (promoção/rollback)</div>
-              {variantDecisionBrief.map((item) => (
-                <div key={item.id} className="fv-row-sub">
-                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.decision}</span> {item.title} • {item.description}{' '}
-                  {item.evidence}{' '}
-                  <button className="fv-ghost small" type="button" onClick={item.execute}>
-                    Aplicar contexto
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Por status</div>
-              {funnelStatusOptions.map((status) => (
-                <div key={status.value} className="fv-row-sub">
-                  {status.label}: {insights.statusCount[status.value] || 0}
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Conversão</div>
-              <div className="fv-row-sub">Novo → Contactado: {insights.conversion.novo_contactado}%</div>
-              <div className="fv-row-sub">Contactado → Respondeu: {insights.conversion.contactado_respondeu}%</div>
-              <div className="fv-row-sub">Respondeu → Interessado: {insights.conversion.respondeu_interessado}%</div>
-              <div className="fv-row-sub">Interessado → Convertido: {insights.conversion.interessado_convertido}%</div>
-              <div className="fv-row-sub">Conversão total: {insights.conversion.total}%</div>
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Throughput por estágio</div>
-              {insights.throughputByStage.map((item) => (
-                <div key={`throughput-${item.stage}`} className="fv-row-sub">
-                  {item.label}: {item.count} • avanço {item.progressionRate}% • vencidos {item.overdueCount}
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">SLA por estágio</div>
-              {funnelStatusOptions.map((status) => (
-                <div key={`sla-stage-${status.value}`} className="fv-row-sub">
-                  {status.label}: ✅ {insights.slaByStage[status.value]?.on_time || 0} • ⚠️{' '}
-                  {insights.slaByStage[status.value]?.attention || 0} • ⛔{' '}
-                  {insights.slaByStage[status.value]?.violated || 0}
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Heatmap de capacidade</div>
-              {focusedInsights.capacityHeatmap.map((item) => (
-                <div key={`capacity-${item.stage}`} className="fv-row-sub">
-                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.label}</span> carga {item.workloadScore}{' '}
-                  • backlog {item.count} • vencidos {item.overdueCount} • SLA violado {item.violatedCount}
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Prioridade de backlog</div>
-              {focusedInsights.backlogPriority.length === 0 && <div className="fv-row-sub">Sem backlog prioritário no contexto.</div>}
-              {focusedInsights.backlogPriority.map(({ lead, sla, score }) => (
-                <div key={`backlog-priority-${lead.id}`} className="fv-row-sub">
-                  <span className={sla.className}>{sla.label}</span> {lead.name || lead.company_name || lead.id} • score op. {score}{' '}
-                  <button className="fv-ghost small" type="button" onClick={() => openLeadModal(lead)}>
-                    Ver
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Governança da fila</div>
-              <div className="fv-row-sub">{insights.queueGovernance.formula}</div>
-              <div className="fv-row-sub">{insights.queueGovernance.policy}</div>
-              <div className="fv-row-sub">
-                Tamanho da fila: {insights.queueGovernance.queueSize} • severidade topo: {insights.queueGovernance.topSeverity}
-              </div>
-              <button className="fv-ghost small" type="button" onClick={applyExecutionQueueGovernance}>
-                Aplicar governança
-              </button>
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Governança operacional</div>
-              {focusedInsights.governanceRecommendations.length === 0 && (
-                <div className="fv-row-sub">Sem gargalos relevantes no contexto atual.</div>
-              )}
-              {focusedInsights.governanceRecommendations.map((item) => (
-                <div key={`governance-${item.stage}`} className="fv-row-sub">
-                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.label}</span> {item.recommendation}
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Playbook diário</div>
-              {focusedInsights.playbookRecommendations.length === 0 && (
-                <div className="fv-row-sub">Sem recomendações críticas no momento.</div>
-              )}
-              {focusedInsights.playbookRecommendations.map((item) => (
-                <div key={`playbook-${item.id}`} className="fv-row-sub">
-                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.title}</span> {item.description}{' '}
-                  <button className="fv-ghost small" type="button" onClick={() => applyPlaybookAction(item.action)}>
-                    Aplicar
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Distribuição de score</div>
-              {Object.entries(insights.scoreDistribution).map(([band, count]) => (
-                <div key={band} className="fv-row-sub">
-                  {band}: {count}
-                </div>
-              ))}
-            </div>
-
-            <div className="fv-activity-item">
-              <div className="fv-activity-title">Top cidades</div>
-              {insights.topCities.length === 0 && <div className="fv-row-sub">Sem dados</div>}
-              {insights.topCities.map(([city, count]) => (
-                <div key={city} className="fv-row-sub">
-                  {city}: {count}
-                </div>
-              ))}
-            </div>
-
-          </div>
-        </aside>
+      <section className="fv-row-sub" style={{ marginBottom: 12 }}>
+        Mostrando <strong>{filteredLeads.length}</strong> leads (pagina {page + 1})
       </section>
 
-      {campaignBatchModalOpen && (
-        <div className="fv-modal-backdrop" onClick={() => (batchBusy ? null : setCampaignBatchModalOpen(false))}>
-          <div className="fv-modal fv-compact-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="fv-panel-header">
-              <h2>Adicionar à campanha</h2>
-              <button
-                className="fv-ghost small"
-                type="button"
-                disabled={batchBusy}
-                onClick={() => setCampaignBatchModalOpen(false)}
-              >
-                ✕ Fechar
+      <section className="fv-leads-list">
+        {filteredLeads.map((lead) => (
+          <article key={lead.id} className="fv-lead-card">
+            <div className="fv-lead-top">
+              <div>
+                <h3>{lead.name || lead.company_name || `Lead ${lead.id}`}</h3>
+                <div className="fv-row-sub">
+                  {lead.company_name || '--'} • {lead.city || '--'} {lead.state || ''}
+                </div>
+              </div>
+              <ScoreBadge score={lead.score} />
+            </div>
+
+            <div className="fv-lead-meta">
+              <span>{lead.phone || '--'}</span>
+              <span>{lead.email || '--'}</span>
+              <span>{lead.source || '--'}</span>
+              <span className={lead.is_valid ? 'fv-status funnel-convertido' : 'fv-status funnel-perdido'}>
+                {lead.is_valid ? 'Valido' : 'Invalido'}
+              </span>
+            </div>
+
+            <div className="fv-lead-tags">
+              {(lead.tags || []).length > 0 ? (
+                lead.tags.map((tag) => (
+                  <span key={tag} className="fv-chip">
+                    #{tag}
+                  </span>
+                ))
+              ) : (
+                <span className="fv-row-sub">Sem tags</span>
+              )}
+            </div>
+
+            <div className="fv-actions" style={{ marginTop: 8 }}>
+              <button className="fv-ghost small" type="button" onClick={() => openLeadModal(lead)}>
+                Editar
               </button>
             </div>
+          </article>
+        ))}
 
-            <div className="fv-field">
-              <span>Campanha/Status alvo</span>
-              <input
-                className="fv-input"
-                placeholder="Ex: Campanha Wave 7"
-                value={campaignBatchStatus}
-                onChange={(event) => setCampaignBatchStatus(event.target.value)}
-                disabled={batchBusy}
-              />
-            </div>
+        {filteredLeads.length === 0 && <div className="fv-row-sub">Nenhum lead encontrado.</div>}
+      </section>
 
-            <div className="fv-message fv-message-neutral">
-              Confirma aplicar a campanha <strong>{campaignBatchStatus || '—'}</strong> para{' '}
-              <strong>{selectedLeadIds.length}</strong> leads selecionados?
-            </div>
+      <section className="fv-actions" style={{ marginTop: 16 }}>
+        <button
+          className="fv-ghost"
+          type="button"
+          onClick={() => loadLeads(Math.max(page - 1, 0))}
+          disabled={loading || page === 0}
+        >
+          Pagina anterior
+        </button>
+        <button className="fv-ghost" type="button" onClick={() => loadLeads(page + 1)} disabled={loading}>
+          Proxima pagina
+        </button>
+      </section>
 
-            <div className="fv-actions fv-modal-actions">
-              <button className="fv-ghost" type="button" disabled={batchBusy} onClick={() => setCampaignBatchModalOpen(false)}>
-                Cancelar
-              </button>
-              <button className="fv-primary" type="button" disabled={batchBusy} onClick={batchUpdateCampaign}>
-                {batchBusy ? 'Executando...' : 'Confirmar execução'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeLead && formLead && (
+      {activeLead && (
         <div className="fv-modal-backdrop" onClick={closeLeadModal}>
           <div className="fv-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="fv-panel-header">
-              <div className="fv-modal-title-wrap">
-                <h2 className="fv-modal-title">DETALHES DO LEAD</h2>
-                <select
-                  className={`fv-prospect-pill fv-state-inline ${getProspectClass(formLead.prospect_status)}`}
-                  value={formLead.prospect_status || 'nao_contatado'}
-                  onChange={(event) => setFormLead((prev) => ({ ...prev, prospect_status: event.target.value }))}
-                >
-                  {prospectStatusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="fv-actions">
-                <button
-                  className="fv-ghost small"
-                  type="button"
-                  disabled={messagingBusy}
-                  onClick={() => sendMessageForLead(formLead || activeLead)}
-                >
-                  {messagingBusy ? 'Enviando...' : 'Enviar mensagem'}
-                </button>
-                <button className="fv-ghost small" type="button" onClick={closeLeadModal}>
-                  ✕ Fechar
-                </button>
-              </div>
+            <div className="fv-modal-header">
+              <h2 className="fv-modal-title">Editar Lead #{activeLead.id}</h2>
+              <button className="fv-ghost small" type="button" onClick={closeLeadModal}>
+                Fechar
+              </button>
             </div>
 
-            <div className="fv-tabs">
-              {modalTabs.map((tab) => (
-                <button
-                  key={tab.value}
-                  type="button"
-                  className={`fv-tab ${activeTab === tab.value ? 'active' : ''}`}
-                  onClick={() => setActiveTab(tab.value)}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            <div className="fv-modal-grid">
+              <div className="fv-field">
+                <label htmlFor="lead-name">Nome</label>
+                <input
+                  id="lead-name"
+                  value={formLead.name || ''}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, name: event.target.value }))}
+                />
+              </div>
+              <div className="fv-field">
+                <label htmlFor="lead-company">Empresa</label>
+                <input
+                  id="lead-company"
+                  value={formLead.company_name || ''}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, company_name: event.target.value }))}
+                />
+              </div>
+              <div className="fv-field">
+                <label htmlFor="lead-city">Cidade</label>
+                <input
+                  id="lead-city"
+                  value={formLead.city || ''}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, city: event.target.value }))}
+                />
+              </div>
+              <div className="fv-field">
+                <label htmlFor="lead-state">UF</label>
+                <input
+                  id="lead-state"
+                  value={formLead.state || ''}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, state: event.target.value }))}
+                />
+              </div>
+              <div className="fv-field">
+                <label htmlFor="lead-phone">Telefone</label>
+                <input
+                  id="lead-phone"
+                  value={formLead.phone || ''}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, phone: event.target.value }))}
+                />
+              </div>
+              <div className="fv-field">
+                <label htmlFor="lead-email">Email</label>
+                <input
+                  id="lead-email"
+                  value={formLead.email || ''}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, email: event.target.value }))}
+                />
+              </div>
+              <div className="fv-field">
+                <label htmlFor="lead-address">Endereco</label>
+                <input
+                  id="lead-address"
+                  value={formLead.address || ''}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, address: event.target.value }))}
+                />
+              </div>
+              <div className="fv-field">
+                <label htmlFor="lead-cnpj">CNPJ</label>
+                <input
+                  id="lead-cnpj"
+                  value={formLead.cnpj || ''}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, cnpj: event.target.value }))}
+                />
+              </div>
+              <div className="fv-field">
+                <label htmlFor="lead-url">URL</label>
+                <input
+                  id="lead-url"
+                  value={formLead.url || ''}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, url: event.target.value }))}
+                />
+              </div>
+              <div className="fv-field">
+                <label htmlFor="lead-source">Fonte</label>
+                <input
+                  id="lead-source"
+                  value={formLead.source || ''}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, source: event.target.value }))}
+                />
+              </div>
+
+              <label className="fv-field fv-field-inline">
+                <input
+                  type="checkbox"
+                  checked={!!formLead.is_valid}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, is_valid: event.target.checked }))}
+                />
+                <span>Lead valido</span>
+              </label>
+
+              <label className="fv-field fv-field-inline">
+                <input
+                  type="checkbox"
+                  checked={!!formLead.is_duplicate}
+                  onChange={(event) => setFormLead((prev) => ({ ...prev, is_duplicate: event.target.checked }))}
+                />
+                <span>Duplicado</span>
+              </label>
             </div>
 
-            {activeTab === 'dados' && (
-              <>
-                <div className="fv-prospect-bar">
-                  <div className="fv-field fv-prospect-notes">
-                    <span>Status de Campanha</span>
-                    <textarea
-                      className="fv-input fv-textarea"
-                      placeholder="Ex: Não iniciada, Ativa, Pausada..."
-                      value={formLead.campaign_status || ''}
-                      onChange={(event) => setFormLead((prev) => ({ ...prev, campaign_status: event.target.value }))}
-                    />
-                  </div>
-                  <label className="fv-field fv-prospect-notes">
-                    <span>Observações</span>
-                    <textarea
-                      className="fv-input fv-textarea"
-                      placeholder="Adicione observações da prospecção..."
-                      value={formLead.prospect_notes || ''}
-                      onChange={(event) => setFormLead((prev) => ({ ...prev, prospect_notes: event.target.value }))}
-                    />
-                  </label>
-                </div>
+            <div className="fv-row-sub" style={{ marginTop: 12 }}>
+              Capturado em {formatDateTime(formLead.captured_at)} • Atualizado em {formatDateTime(formLead.updated_at)}
+            </div>
 
-                <div className="fv-field fv-field-full">
-                  <span>Tags</span>
-                  <div className="fv-lead-tags">
-                    {(formLead.tags || []).map((tag) => (
-                      <button
-                        key={`tag-${tag}`}
-                        type="button"
-                        className="fv-row-chip fv-row-chip-light fv-tag-remove"
-                        onClick={() => removeTagFromActiveLead(tag)}
-                      >
-                        #{tag} ✕
-                      </button>
-                    ))}
-                    {(formLead.tags || []).length === 0 && <span className="fv-row-sub">Sem tags.</span>}
-                  </div>
-                  <div className="fv-inline-form">
-                    <input
-                      className="fv-input"
-                      list="fv-tag-options"
-                      placeholder="Adicionar tag..."
-                      value={tagDraft}
-                      onChange={(event) => setTagDraft(event.target.value)}
-                    />
-                    <datalist id="fv-tag-options">
-                      {tagOptions.map((tag) => (
-                        <option key={`tag-opt-${tag}`} value={tag} />
-                      ))}
-                    </datalist>
-                    <button className="fv-ghost small" type="button" onClick={addTagToActiveLead}>
-                      Adicionar tag
-                    </button>
-                  </div>
-                </div>
+            <div style={{ marginTop: 16 }}>
+              <h3 className="fv-row-sub">Score</h3>
+              <ScoreBadge score={formLead.score || 0} />
+              <ScoreBreakdown breakdown={scoreBreakdown} />
+            </div>
 
-                <div className="fv-funnel-row">
-                  <label className="fv-field">
-                    <span>Status do Funil</span>
-                    <select
-                      className="fv-input fv-select"
-                      value={formLead.funnel_status || 'novo'}
-                      onChange={(event) =>
-                        setFormLead((prev) => {
-                          const nextStatus = event.target.value;
-                          if (nextStatus !== 'perdido') {
-                            return {
-                              ...prev,
-                              funnel_status: nextStatus,
-                              loss_reason: '',
-                              loss_reason_other: '',
-                            };
-                          }
-                          return { ...prev, funnel_status: nextStatus };
-                        })
-                      }
-                    >
-                      {modalTransitionOptions.map((value) => (
-                          <option key={value} value={value}>
-                            {transitionLabels[value] || getFunnelLabel(value)}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-
-                  {formLead.funnel_status === 'perdido' && (
-                    <>
-                      <label className="fv-field">
-                        <span>Motivo de perda</span>
-                        <select
-                          className="fv-input fv-select"
-                          value={formLead.loss_reason || ''}
-                          onChange={(event) => setFormLead((prev) => ({ ...prev, loss_reason: event.target.value }))}
-                        >
-                          <option value="">Selecione</option>
-                          {lossReasonOptions.map((reason) => (
-                            <option key={reason.value} value={reason.value}>
-                              {reason.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      {formLead.loss_reason === 'outro' && (
-                        <label className="fv-field">
-                          <span>Detalhe do motivo</span>
-                          <input
-                            className="fv-input"
-                            value={formLead.loss_reason_other || ''}
-                            onChange={(event) =>
-                              setFormLead((prev) => ({ ...prev, loss_reason_other: event.target.value }))
-                            }
-                          />
-                        </label>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                <div className="fv-modal-grid">
-                  <label className="fv-field">
-                    <span>Nome</span>
-                    <input className="fv-input" value={formLead.name} onChange={(event) => setFormLead((prev) => ({ ...prev, name: event.target.value }))} />
-                  </label>
-                  <label className="fv-field">
-                    <span>Empresa</span>
-                    <input className="fv-input" value={formLead.company_name} onChange={(event) => setFormLead((prev) => ({ ...prev, company_name: event.target.value }))} />
-                  </label>
-                  <label className="fv-field">
-                    <span>Telefone</span>
-                    <input className="fv-input" value={formLead.phone} onChange={(event) => setFormLead((prev) => ({ ...prev, phone: event.target.value }))} />
-                  </label>
-                  <label className="fv-field">
-                    <span>Email</span>
-                    <input className="fv-input" value={formLead.email} onChange={(event) => setFormLead((prev) => ({ ...prev, email: event.target.value }))} />
-                  </label>
-                  <label className="fv-field">
-                    <span>Estado</span>
-                    <input
-                      className="fv-input"
-                      value={formLead.state}
-                      onChange={(event) =>
-                        setFormLead((prev) => ({ ...prev, state: event.target.value.toUpperCase().slice(0, 2) }))
-                      }
-                    />
-                  </label>
-                  <label className="fv-field">
-                    <span>Cidade</span>
-                    <input className="fv-input" value={formLead.city} onChange={(event) => setFormLead((prev) => ({ ...prev, city: event.target.value }))} />
-                  </label>
-                  <label className="fv-field fv-field-full">
-                    <span>Endereço</span>
-                    <input className="fv-input" value={formLead.address} onChange={(event) => setFormLead((prev) => ({ ...prev, address: event.target.value }))} />
-                  </label>
-                  <label className="fv-field fv-field-full">
-                    <span>URL</span>
-                    <input className="fv-input" value={formLead.url} onChange={(event) => setFormLead((prev) => ({ ...prev, url: event.target.value }))} />
-                    {formLead.url ? (
-                      <a className="fv-link" href={formLead.url} target="_blank" rel="noopener noreferrer">
-                        Abrir link em nova aba
-                      </a>
-                    ) : null}
-                  </label>
-                  <label className="fv-field">
-                    <span>CNPJ</span>
-                    <input className="fv-input" value={formLead.cnpj} onChange={(event) => setFormLead((prev) => ({ ...prev, cnpj: event.target.value }))} />
-                  </label>
-                  <label className="fv-field">
-                    <span>Fonte</span>
-                    <input className="fv-input" value={formLead.source} disabled />
-                  </label>
-                  <label className="fv-field">
-                    <span>Próxima ação (data/hora)</span>
-                    <input
-                      className="fv-input"
-                      type="datetime-local"
-                      value={getNextActionDateTimeValue(formLead.next_action_date)}
-                      onChange={(event) =>
-                        setFormLead((prev) => ({
-                          ...prev,
-                          next_action_date: event.target.value ? new Date(event.target.value).toISOString() : null,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label className="fv-field">
-                    <span>Próxima ação (descrição)</span>
-                    <input
-                      className="fv-input"
-                      value={formLead.next_action_description || ''}
-                      onChange={(event) =>
-                        setFormLead((prev) => ({ ...prev, next_action_description: event.target.value }))
-                      }
-                    />
-                  </label>
-                  <label className="fv-field">
-                    <span>Capturado em</span>
-                    <input className="fv-input" value={formatDateTime(formLead.captured_at)} disabled />
-                  </label>
-                  <label className="fv-field">
-                    <span>Atualizado em</span>
-                    <input className="fv-input" value={formatDateTime(formLead.updated_at)} disabled />
-                  </label>
-                  <label className="fv-field">
-                    <span className="fv-check-label">
-                      <input type="checkbox" checked={!!formLead.is_valid} onChange={(event) => setFormLead((prev) => ({ ...prev, is_valid: event.target.checked }))} />
-                      Lead válido
-                    </span>
-                  </label>
-                  <label className="fv-field">
-                    <span className="fv-check-label">
-                      <input type="checkbox" checked={!!formLead.is_duplicate} onChange={(event) => setFormLead((prev) => ({ ...prev, is_duplicate: event.target.checked }))} />
-                      Marcado como duplicado
-                    </span>
-                  </label>
-                </div>
-              </>
-            )}
-
-            {activeTab === 'historico' && (
-              <div className="fv-interactions">
-                <div className="fv-activity-title">Histórico de interações</div>
-                {interactions.length === 0 && <div className="fv-row-sub">Sem histórico ainda.</div>}
-                {interactions.map((item) => (
-                  <div key={item.id} className="fv-activity-item status-change">
-                    <div className="fv-activity-head">
-                      <div className="fv-activity-title">{getInteractionLabel(item.type)}</div>
-                      <span className="fv-activity-time">{formatDateTime(item.created_at)}</span>
-                    </div>
-                    <div className="fv-row-sub">{item.content || 'Sem conteúdo'}</div>
-                    {getInteractionContext(item) && <div className="fv-row-sub">{getInteractionContext(item)}</div>}
-                    <div className="fv-row-sub">Autor: {item.author || 'sistema'}</div>
-                  </div>
+            <div style={{ marginTop: 16 }}>
+              <h3 className="fv-row-sub">Tags</h3>
+              <div className="fv-lead-tags">
+                {(formLead.tags || []).map((tag) => (
+                  <button key={tag} type="button" className="fv-chip" onClick={() => removeTag(tag)}>
+                    #{tag} ✕
+                  </button>
                 ))}
+                {(formLead.tags || []).length === 0 && <span className="fv-row-sub">Sem tags</span>}
               </div>
-            )}
-
-            {activeTab === 'score' && (
-              <div className="fv-score-breakdown">
-                <ScoreBadge score={formLead.score} />
-                <ScoreBreakdown breakdown={scoreBreakdown?.breakdown} />
-                <div className="fv-row-sub">Dica: para aumentar score, complete email, endereço e CNPJ.</div>
+              <div className="fv-actions" style={{ marginTop: 8 }}>
+                <input
+                  placeholder="Nova tag"
+                  value={newTag}
+                  onChange={(event) => setNewTag(event.target.value)}
+                />
+                <button className="fv-ghost small" type="button" onClick={addTag}>
+                  Adicionar tag
+                </button>
               </div>
-            )}
-
-            {activeTab === 'notas' && (
-              <div className="fv-notes-tab">
-                <div className="fv-field">
-                  <span>Nova nota</span>
-                  <textarea
-                    className="fv-input fv-textarea"
-                    placeholder="Registre contexto da negociação, objeções e próximos passos..."
-                    value={noteDraft}
-                    onChange={(event) => setNoteDraft(event.target.value)}
-                  />
-                  <div className="fv-actions">
-                    <button className="fv-primary" type="button" onClick={addNote} disabled={notesBusy || !noteDraft.trim()}>
-                      {notesBusy ? 'Salvando...' : 'Adicionar nota'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="fv-activity">
-                  {notes.length === 0 && <div className="fv-row-sub">Nenhuma nota cadastrada.</div>}
-                  {notes.map((note) => (
-                    <div key={note.id} className="fv-activity-item">
-                      <div className="fv-activity-head">
-                        <div className="fv-activity-title">{note.author || 'dashboard'}</div>
-                        <span className="fv-activity-time">{formatDateTime(note.created_at)}</span>
-                      </div>
-                      <div className="fv-row-sub">{note.content}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            </div>
 
             {modalMessage && <div className="fv-message">{modalMessage}</div>}
 
             <div className="fv-actions fv-modal-actions">
-              <button className="fv-ghost" type="button" onClick={removeLead} disabled={deleting}>
-                {deleting ? 'Excluindo...' : 'Excluir lead'}
+              <button className="fv-ghost" type="button" onClick={closeLeadModal}>
+                Cancelar
               </button>
-              <button className="fv-primary" type="button" onClick={saveLead} disabled={modalSaveDisabled}>
-                {saving ? 'Salvando...' : 'Salvar alterações'}
+              <button className="fv-primary" type="button" onClick={saveLead} disabled={saving}>
+                {saving ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
-            {modalSaveBlockedReason && <div className="fv-row-sub">{modalSaveBlockedReason}</div>}
           </div>
         </div>
       )}

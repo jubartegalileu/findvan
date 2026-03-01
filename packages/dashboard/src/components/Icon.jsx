@@ -23,6 +23,19 @@ const iconPaths = {
       <path d="M14.5 20a4.5 4.5 0 0 1 9 0" />
     </>
   ),
+  sdr: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <path d="M8 11h8" />
+      <path d="M8 15h5" />
+      <circle cx="17.5" cy="15.5" r="2.5" />
+    </>
+  ),
+  funnel: (
+    <>
+      <path d="M3 4h18l-6 7v6l-6 3v-9L3 4z" />
+    </>
+  ),
   whatsapp: (
     <>
       <path d="M12 3a9 9 0 0 1 7.8 13.5L21 21l-4.8-1.2A9 9 0 1 1 12 3Z" />

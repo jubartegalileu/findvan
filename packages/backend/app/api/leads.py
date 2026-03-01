@@ -6,6 +6,7 @@ from ..services.leads_service import (
     batch_add_tag,
     batch_soft_delete,
     batch_update_campaign,
+    create_lead,
     delete_lead,
     list_lead_notes,
     remove_lead_tag,
@@ -41,6 +42,7 @@ class LeadsResponse(BaseModel):
 @router.get("/")
 def get_leads(
     limit: int = 50,
+    offset: int = 0,
     status: list[str] | None = Query(default=None),
     funnel: list[str] | None = Query(default=None),
 ):
@@ -61,7 +63,13 @@ def get_leads(
                 detail=f"Status inválido: {', '.join(invalid)}. Use: {', '.join(sorted(ALLOWED_FUNNEL_STATUSES))}",
             )
         statuses = sorted(set(parsed))
-    return {"leads": list_leads(limit=limit, statuses=statuses)}
+    scoped_limit = max(limit + max(offset, 0), limit)
+    leads = list_leads(limit=scoped_limit, statuses=statuses)
+    if offset > 0:
+        leads = leads[offset: offset + limit]
+    else:
+        leads = leads[:limit]
+    return {"leads": leads}
 
 
 @router.get("/{lead_id}")
@@ -89,6 +97,7 @@ def patch_score(lead_id: int):
 
 
 class LeadUpdateRequest(BaseModel):
+    source: str | None = None
     name: str = Field(..., min_length=2)
     company_name: str | None = None
     phone: str | None = None
@@ -161,6 +170,59 @@ class BatchTagRequest(BaseModel):
     tag: str = Field(..., min_length=1, max_length=50)
 
 
+class LeadCreateRequest(BaseModel):
+    source: str = Field(default="manual", min_length=2)
+    name: str = Field(..., min_length=2)
+    company_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    address: str | None = None
+    city: str = Field(..., min_length=2)
+    state: str | None = Field(default=None, min_length=2, max_length=2)
+    cnpj: str | None = None
+    url: str | None = None
+    funnel_status: str | None = None
+    loss_reason: str | None = None
+    prospect_status: str = Field(default="nao_contatado")
+    prospect_notes: str | None = None
+    campaign_status: str | None = None
+    next_action_date: str | None = None
+    next_action_description: str | None = None
+    is_valid: bool = True
+    is_duplicate: bool = False
+
+
+class LeadPatchRequest(BaseModel):
+    source: str | None = None
+    name: str | None = Field(default=None, min_length=2)
+    company_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    address: str | None = None
+    city: str | None = Field(default=None, min_length=2)
+    state: str | None = Field(default=None, min_length=2, max_length=2)
+    cnpj: str | None = None
+    url: str | None = None
+    funnel_status: str | None = None
+    loss_reason: str | None = None
+    prospect_status: str | None = None
+    prospect_notes: str | None = None
+    campaign_status: str | None = None
+    next_action_date: str | None = None
+    next_action_description: str | None = None
+    is_valid: bool | None = None
+    is_duplicate: bool | None = None
+
+
+@router.post("/")
+def post_lead(payload: LeadCreateRequest):
+    try:
+        lead = create_lead(payload.model_dump())
+        return {"lead": lead}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.patch("/{lead_id}/funnel-status")
 def patch_funnel_status(lead_id: int, payload: FunnelStatusRequest):
     target_status = (payload.new_status or payload.status or "").strip().lower()
@@ -187,6 +249,19 @@ def patch_funnel_status(lead_id: int, payload: FunnelStatusRequest):
 def patch_status_alias(lead_id: int, payload: FunnelStatusRequest):
     # API alias to preserve compatibility with PRD naming.
     return patch_funnel_status(lead_id, payload)
+
+
+@router.patch("/{lead_id}")
+def patch_lead(lead_id: int, payload: LeadPatchRequest):
+    current = get_lead_by_id(lead_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    updates = payload.model_dump(exclude_unset=True)
+    merged = {**current, **updates}
+    updated = update_lead(lead_id, merged)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return {"lead": updated}
 
 
 @router.get("/{lead_id}/transitions")

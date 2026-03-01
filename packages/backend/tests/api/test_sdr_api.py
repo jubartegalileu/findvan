@@ -1,0 +1,77 @@
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api import sdr as sdr_api
+
+
+def build_client() -> TestClient:
+    app = FastAPI()
+    app.include_router(sdr_api.router, prefix="/api/sdr")
+    return TestClient(app)
+
+
+def test_get_queue_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "get_queue",
+        lambda **kwargs: [
+            {
+                "lead_id": 1,
+                "name": "Alpha",
+                "score": 80,
+                "cadence_bucket": "overdue",
+            }
+        ],
+    )
+    client = build_client()
+    response = client.get("/api/sdr/queue?cadence=overdue")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["queue"][0]["lead_id"] == 1
+
+
+def test_get_queue_invalid_filter(monkeypatch):
+    def _raise(**kwargs):
+        raise ValueError("cadence inválido")
+
+    monkeypatch.setattr(sdr_api, "get_queue", _raise)
+    client = build_client()
+    response = client.get("/api/sdr/queue?cadence=foo")
+    assert response.status_code == 400
+
+
+def test_patch_action_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "register_action",
+        lambda **kwargs: {"lead_id": kwargs["lead_id"], "contact_count": 2},
+    )
+    client = build_client()
+    response = client.patch("/api/sdr/10/action", json={"action_type": "done"})
+    assert response.status_code == 200
+    assert response.json()["sdr"]["contact_count"] == 2
+
+
+def test_patch_notes_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "add_note",
+        lambda **kwargs: {"lead_id": kwargs["lead_id"], "notes": [{"note": kwargs["note"]}]},
+    )
+    client = build_client()
+    response = client.patch("/api/sdr/10/notes", json={"note": "ligar amanhã"})
+    assert response.status_code == 200
+    assert response.json()["lead_id"] == 10
+
+
+def test_get_stats_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "get_stats",
+        lambda: {"total": 5, "done_today": 2, "pending": 3, "overdue": 1},
+    )
+    client = build_client()
+    response = client.get("/api/sdr/stats")
+    assert response.status_code == 200
+    assert response.json()["pending"] == 3

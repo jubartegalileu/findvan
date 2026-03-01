@@ -169,6 +169,18 @@ const getScoreBand = (score) => {
   return '<50';
 };
 
+const getPreferredNextFunnelStatus = (currentStatus) => {
+  const preferredPath = {
+    novo: 'contactado',
+    contactado: 'respondeu',
+    respondeu: 'interessado',
+    interessado: 'convertido',
+    convertido: 'perdido',
+    perdido: 'novo',
+  };
+  return preferredPath[currentStatus] || null;
+};
+
 export default function Leads({ onNavigate, activePath }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -484,6 +496,13 @@ export default function Leads({ onNavigate, activePath }) {
       },
     };
   }, [filteredLeads]);
+
+  const workspaceStages = useMemo(() => {
+    return funnelStatusOptions.map((status) => ({
+      ...status,
+      leads: sortedLeads.filter((lead) => lead.funnel_status === status.value),
+    }));
+  }, [sortedLeads]);
 
   useEffect(() => {
     setPage(1);
@@ -849,7 +868,7 @@ export default function Leads({ onNavigate, activePath }) {
     if (selectedLeadIds.length === 0) return;
     const campaignStatus = campaignBatchStatus.trim();
     if (!campaignStatus) {
-      setCampaignBatchResult({
+      setBatchResult({
         type: 'error',
         summary: 'Informe o nome/status da campanha antes de confirmar.',
       });
@@ -1099,6 +1118,47 @@ export default function Leads({ onNavigate, activePath }) {
     await sendMessageForLead(lead);
   };
 
+  const applyLeadFunnelTransition = async ({ lead, newStatus }) => {
+    if (!lead?.id || !newStatus) return;
+    try {
+      setBatchBusy(true);
+      const response = await fetch(`${API_BASE}/api/leads/${lead.id}/funnel-status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          new_status: newStatus,
+          author: 'dashboard-workspace',
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao alterar estágio do lead.');
+      }
+      setBatchResult({
+        type: 'success',
+        summary: `Lead "${lead.name || lead.company_name || lead.id}" movido para ${newStatus}.`,
+      });
+      await loadLeads();
+    } catch (error) {
+      setBatchResult({
+        type: 'error',
+        summary: error?.message || 'Erro ao alterar estágio do lead.',
+      });
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const moveLeadToNextStage = async (lead) => {
+    const suggested = getPreferredNextFunnelStatus(lead?.funnel_status);
+    if (!suggested) return;
+    const confirm = window.confirm(
+      `Avançar lead "${lead.name || lead.company_name || lead.id}" de ${lead.funnel_status} para ${suggested}?`
+    );
+    if (!confirm) return;
+    await applyLeadFunnelTransition({ lead, newStatus: suggested });
+  };
+
   return (
     <Layout onNavigate={onNavigate} activePath={activePath}>
       <header className="fv-header">
@@ -1277,6 +1337,81 @@ export default function Leads({ onNavigate, activePath }) {
               )}
             </div>
           )}
+
+          <div className="fv-workspace-board">
+            <div className="fv-panel-header">
+              <h2>Workspace do Funil</h2>
+              <div className="fv-row-sub">
+                {selectedFunnels.length > 0
+                  ? `Contexto ativo: ${selectedFunnels
+                      .map((value) => funnelStatusOptions.find((option) => option.value === value)?.label || value)
+                      .join(', ')}`
+                  : 'Contexto ativo: todos os estágios'}
+              </div>
+            </div>
+
+            <div className="fv-workspace-grid">
+              {workspaceStages.map((stage) => (
+                <section key={stage.value} className="fv-workspace-stage">
+                  <div className="fv-workspace-stage-head">
+                    <div className={`fv-status ${stage.className}`}>{stage.label}</div>
+                    <div className="fv-row-chip">{stage.leads.length}</div>
+                  </div>
+
+                  <div className="fv-workspace-stage-actions">
+                    <button
+                      className="fv-ghost small"
+                      type="button"
+                      onClick={() => setSelectedFunnels([stage.value])}
+                    >
+                      Ver estágio
+                    </button>
+                    <button
+                      className="fv-ghost small"
+                      type="button"
+                      onClick={() => {
+                        setSelectedFunnels([]);
+                        setActiveAlertFilter('');
+                      }}
+                    >
+                      Ver todos
+                    </button>
+                  </div>
+
+                  <div className="fv-workspace-stage-list">
+                    {stage.leads.slice(0, 3).map((lead) => (
+                      <article key={`workspace-${stage.value}-${lead.id}`} className="fv-workspace-lead">
+                        <div className="fv-row-title">{lead.name || lead.company_name || 'Sem nome'}</div>
+                        <div className="fv-row-sub">
+                          {lead.city || 'Cidade não informada'}
+                          {lead.state ? ` • ${lead.state}` : ''}
+                        </div>
+                        <div className="fv-workspace-lead-actions">
+                          <button className="fv-ghost small" type="button" onClick={() => handleContactLead(lead)}>
+                            Contactar
+                          </button>
+                          <button className="fv-ghost small" type="button" onClick={() => openLeadModal(lead)}>
+                            Ver
+                          </button>
+                          <button
+                            className="fv-ghost small"
+                            type="button"
+                            disabled={batchBusy}
+                            onClick={() => moveLeadToNextStage(lead)}
+                          >
+                            Avançar
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                    {stage.leads.length === 0 && (
+                      <div className="fv-row-sub">Nenhum lead neste estágio com os filtros atuais.</div>
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
 
           <div className="fv-table">
             {paginatedLeads.map((lead, index) => {

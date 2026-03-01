@@ -1185,6 +1185,59 @@ body,
   color: #b71c1c;
 }
 
+.fv-workspace-board {
+  margin-bottom: 14px;
+  border-radius: 14px;
+  background: #edf9f0;
+  padding: 12px;
+}
+
+.fv-workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.fv-workspace-stage {
+  background: #f6fcf7;
+  border: 1px solid rgba(32, 80, 114, 0.12);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.fv-workspace-stage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fv-workspace-stage-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fv-workspace-stage-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fv-workspace-lead {
+  background: #edf9f0;
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.fv-workspace-lead-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .fv-compact-modal {
   width: min(620px, calc(100vw - 48px));
 }
@@ -1321,6 +1374,10 @@ body,
   }
 
   .fv-slo-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fv-workspace-grid {
     grid-template-columns: 1fr;
   }
 

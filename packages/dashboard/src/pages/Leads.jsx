@@ -686,6 +686,14 @@ export default function Leads({ onNavigate, activePath }) {
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
 
+    const queueGovernance = {
+      formula: 'score_op = peso_sla*100 + atraso_followup + (100 - score_lead)',
+      policy:
+        'Priorizar SLA violado > SLA atenção com follow-up vencido > demais itens por score operacional.',
+      queueSize: backlogPriority.length,
+      topSeverity: backlogPriority[0]?.sla?.value || 'on_time',
+    };
+
     const governanceRecommendations = throughputByStage
       .filter((item) => item.count > 0)
       .sort((a, b) => {
@@ -763,6 +771,7 @@ export default function Leads({ onNavigate, activePath }) {
       slaByStage,
       capacityHeatmap,
       backlogPriority,
+      queueGovernance,
       governanceRecommendations,
       playbookRecommendations: playbookRecommendations.slice(0, 3),
     };
@@ -1387,6 +1396,15 @@ export default function Leads({ onNavigate, activePath }) {
       setSelectedSlaFilter('all');
       setActiveAlertFilter('novo');
     }
+  };
+
+  const applyExecutionQueueGovernance = () => {
+    setFocusModeEnabled(true);
+    setSelectedSlaFilter('violated');
+    setSelectedFollowUpFilter('all');
+    setSelectedFunnels([]);
+    setScoreSort('desc');
+    setActiveAlertFilter('sla_critical');
   };
 
   const sendMessageForLead = async (lead) => {
@@ -2112,6 +2130,18 @@ export default function Leads({ onNavigate, activePath }) {
                   </button>
                 </div>
               ))}
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Governança da fila</div>
+              <div className="fv-row-sub">{insights.queueGovernance.formula}</div>
+              <div className="fv-row-sub">{insights.queueGovernance.policy}</div>
+              <div className="fv-row-sub">
+                Tamanho da fila: {insights.queueGovernance.queueSize} • severidade topo: {insights.queueGovernance.topSeverity}
+              </div>
+              <button className="fv-ghost small" type="button" onClick={applyExecutionQueueGovernance}>
+                Aplicar governança
+              </button>
             </div>
 
             <div className="fv-activity-item">

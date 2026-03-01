@@ -703,6 +703,43 @@ export default function Leads({ onNavigate, activePath }) {
                 : `${item.label} está estável.`,
       }));
 
+    const highestCapacityStage = [...capacityHeatmap]
+      .filter((item) => !['convertido', 'perdido'].includes(item.stage))
+      .sort((a, b) => b.workloadScore - a.workloadScore)[0];
+
+    const playbookRecommendations = [];
+    const slaCriticalCount = scoped.filter((lead) => getSlaMeta(lead).value === 'violated').length;
+    if (slaCriticalCount > 0) {
+      playbookRecommendations.push({
+        id: 'sla-critical',
+        severity: 'critical',
+        title: 'Tratar SLA violado',
+        description: `Existem ${slaCriticalCount} leads com SLA violado no contexto atual.`,
+        action: { type: 'filter_sla', value: 'violated' },
+      });
+    }
+
+    if (highestCapacityStage && highestCapacityStage.workloadScore >= 18) {
+      playbookRecommendations.push({
+        id: 'capacity-stage',
+        severity: highestCapacityStage.severity,
+        title: `Destravar estágio ${highestCapacityStage.label}`,
+        description: `Carga ${highestCapacityStage.workloadScore} com ${highestCapacityStage.overdueCount} follow-ups vencidos.`,
+        action: { type: 'focus_stage', value: highestCapacityStage.stage },
+      });
+    }
+
+    const newLeadsCount = statusCount.novo || 0;
+    if (newLeadsCount > 0) {
+      playbookRecommendations.push({
+        id: 'new-leads',
+        severity: newLeadsCount > 30 ? 'high' : 'medium',
+        title: 'Rodada de primeiro contato',
+        description: `${newLeadsCount} leads novos aguardam primeira abordagem.`,
+        action: { type: 'focus_new_leads', value: 'novo' },
+      });
+    }
+
     return {
       total: scoped.length,
       valid: scoped.filter((lead) => lead.is_valid).length,
@@ -722,6 +759,7 @@ export default function Leads({ onNavigate, activePath }) {
       capacityHeatmap,
       backlogPriority,
       governanceRecommendations,
+      playbookRecommendations: playbookRecommendations.slice(0, 3),
     };
   }, [filteredLeads]);
 
@@ -1286,6 +1324,30 @@ export default function Leads({ onNavigate, activePath }) {
       setSelectedFollowUpFilter('all');
       setSelectedSlaFilter('violated');
       setSelectedFunnels([]);
+    }
+  };
+
+  const applyPlaybookAction = (action) => {
+    if (!action?.type) return;
+    if (action.type === 'filter_sla') {
+      setSelectedSlaFilter(action.value || 'violated');
+      setSelectedFollowUpFilter('all');
+      setSelectedFunnels([]);
+      setActiveAlertFilter('sla_critical');
+      return;
+    }
+    if (action.type === 'focus_stage') {
+      setSelectedFunnels(action.value ? [action.value] : []);
+      setSelectedFollowUpFilter('overdue');
+      setSelectedSlaFilter('all');
+      setActiveAlertFilter('overdue');
+      return;
+    }
+    if (action.type === 'focus_new_leads') {
+      setSelectedFunnels(['novo']);
+      setSelectedFollowUpFilter('all');
+      setSelectedSlaFilter('all');
+      setActiveAlertFilter('novo');
     }
   };
 
@@ -2007,6 +2069,21 @@ export default function Leads({ onNavigate, activePath }) {
               {insights.governanceRecommendations.map((item) => (
                 <div key={`governance-${item.stage}`} className="fv-row-sub">
                   <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.label}</span> {item.recommendation}
+                </div>
+              ))}
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Playbook diário</div>
+              {insights.playbookRecommendations.length === 0 && (
+                <div className="fv-row-sub">Sem recomendações críticas no momento.</div>
+              )}
+              {insights.playbookRecommendations.map((item) => (
+                <div key={`playbook-${item.id}`} className="fv-row-sub">
+                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.title}</span> {item.description}{' '}
+                  <button className="fv-ghost small" type="button" onClick={() => applyPlaybookAction(item.action)}>
+                    Aplicar
+                  </button>
                 </div>
               ))}
             </div>

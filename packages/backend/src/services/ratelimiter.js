@@ -79,8 +79,8 @@ class RateLimiter {
 
 export const campaignRateLimiter = new RateLimiter();
 
-export function createCampaignRateLimiter(messagesPerMinute = 5) {
-  return new RateLimiter(messagesPerMinute);
+export function createCampaignRateLimiter(messagesPerMinute = 5, windowMs = 60000) {
+  return new RateLimiter(messagesPerMinute, windowMs);
 }
 
 export default campaignRateLimiter;

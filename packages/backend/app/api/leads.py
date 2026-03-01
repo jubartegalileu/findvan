@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from ..services.leads_service import (
     add_lead_tag,
@@ -12,13 +12,18 @@ from ..services.leads_service import (
     get_leads_by_ids,
     get_lead_by_id,
     get_lead_score_breakdown,
+    recalculate_lead_score,
     list_leads,
+    normalize_funnel_status,
     normalize_leads_consistency,
     recalculate_all_scores,
     update_lead,
 )
 from ..services.funnel_service import (
-    LOSS_REASONS,
+    FUNNEL_STATUSES,
+    FUNNEL_STATUS_LABELS,
+    LOSS_REASON_LABELS,
+    LOSS_REASON_OPTIONS,
     change_status,
     get_lead_interactions,
     get_valid_transitions,
@@ -26,6 +31,7 @@ from ..services.funnel_service import (
 
 
 router = APIRouter()
+ALLOWED_FUNNEL_STATUSES = set(FUNNEL_STATUSES)
 
 
 class LeadsResponse(BaseModel):
@@ -33,8 +39,29 @@ class LeadsResponse(BaseModel):
 
 
 @router.get("/")
-def get_leads(limit: int = 50):
-    return {"leads": list_leads(limit)}
+def get_leads(
+    limit: int = 50,
+    status: list[str] | None = Query(default=None),
+    funnel: list[str] | None = Query(default=None),
+):
+    statuses = None
+    raw_filters = []
+    if status:
+        raw_filters.extend(status)
+    if funnel:
+        raw_filters.extend(funnel)
+    if raw_filters:
+        parsed: list[str] = []
+        for chunk in raw_filters:
+            parsed.extend([item.strip().lower() for item in str(chunk).split(",") if item.strip()])
+        invalid = sorted({item for item in parsed if item not in ALLOWED_FUNNEL_STATUSES})
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Status inválido: {', '.join(invalid)}. Use: {', '.join(sorted(ALLOWED_FUNNEL_STATUSES))}",
+            )
+        statuses = sorted(set(parsed))
+    return {"leads": list_leads(limit=limit, statuses=statuses)}
 
 
 @router.get("/{lead_id}")
@@ -48,6 +75,14 @@ def get_lead(lead_id: int):
 @router.get("/{lead_id}/score")
 def get_score(lead_id: int):
     score_data = get_lead_score_breakdown(lead_id)
+    if not score_data:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return score_data
+
+
+@router.patch("/{lead_id}/score")
+def patch_score(lead_id: int):
+    score_data = recalculate_lead_score(lead_id)
     if not score_data:
         raise HTTPException(status_code=404, detail="Lead not found")
     return score_data
@@ -83,8 +118,11 @@ def put_lead(lead_id: int, payload: LeadUpdateRequest):
 
 
 class FunnelStatusRequest(BaseModel):
-    new_status: str
+    status: str | None = None
+    new_status: str | None = None
+    reason: str | None = None
     loss_reason: str | None = None
+    reason_other: str | None = None
     loss_reason_other: str | None = None
     author: str | None = None
 
@@ -100,8 +138,11 @@ class BatchCampaignRequest(BaseModel):
 
 class BatchStatusRequest(BaseModel):
     ids: list[int]
-    new_status: str
+    status: str | None = None
+    new_status: str | None = None
+    reason: str | None = None
     loss_reason: str | None = None
+    reason_other: str | None = None
     loss_reason_other: str | None = None
     author: str | None = None
 
@@ -122,12 +163,17 @@ class BatchTagRequest(BaseModel):
 
 @router.patch("/{lead_id}/funnel-status")
 def patch_funnel_status(lead_id: int, payload: FunnelStatusRequest):
+    target_status = (payload.new_status or payload.status or "").strip().lower()
+    target_loss_reason = payload.loss_reason or payload.reason
+    target_loss_reason_other = payload.loss_reason_other or payload.reason_other
+    if not target_status:
+        raise HTTPException(status_code=400, detail="Campo 'status' é obrigatório.")
     try:
         updated = change_status(
             lead_id=lead_id,
-            new_status=payload.new_status,
-            loss_reason=payload.loss_reason,
-            loss_reason_other=payload.loss_reason_other,
+            new_status=target_status,
+            loss_reason=target_loss_reason,
+            loss_reason_other=target_loss_reason_other,
             author=payload.author,
         )
         if not updated:
@@ -148,8 +194,15 @@ def get_transitions(lead_id: int):
     lead = get_lead_by_id(lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    current = lead.get("funnel_status") or "novo"
-    return {"status": "ok", "current": current, "transitions": get_valid_transitions(current)}
+    current = normalize_funnel_status(lead.get("funnel_status"))
+    transitions = get_valid_transitions(current)
+    return {
+        "status": "ok",
+        "current": current,
+        "current_label": FUNNEL_STATUS_LABELS.get(current, current),
+        "transitions": transitions,
+        "transition_labels": {item: FUNNEL_STATUS_LABELS.get(item, item) for item in transitions},
+    }
 
 
 @router.get("/{lead_id}/interactions")
@@ -198,9 +251,11 @@ def delete_tag(lead_id: int, tag: str):
 @router.get("/funnel/meta")
 def get_funnel_meta():
     return {
-        "statuses": ["novo", "contactado", "respondeu", "interessado", "convertido", "perdido"],
-        "loss_reasons": sorted(LOSS_REASONS),
-        "transitions": {status: get_valid_transitions(status) for status in ["novo", "contactado", "respondeu", "interessado", "convertido", "perdido"]},
+        "statuses": FUNNEL_STATUSES,
+        "status_labels": FUNNEL_STATUS_LABELS,
+        "loss_reasons": LOSS_REASON_OPTIONS,
+        "loss_reason_labels": LOSS_REASON_LABELS,
+        "transitions": {status: get_valid_transitions(status) for status in FUNNEL_STATUSES},
     }
 
 
@@ -288,6 +343,11 @@ def post_batch_export(payload: BatchIdsRequest):
 def post_batch_status(payload: BatchStatusRequest):
     if not payload.ids:
         raise HTTPException(status_code=400, detail="Nenhum lead selecionado.")
+    target_status = (payload.new_status or payload.status or "").strip().lower()
+    target_loss_reason = payload.loss_reason or payload.reason
+    target_loss_reason_other = payload.loss_reason_other or payload.reason_other
+    if not target_status:
+        raise HTTPException(status_code=400, detail="Campo 'status' é obrigatório.")
     unique_ids = sorted({lead_id for lead_id in payload.ids})
     updated = 0
     errors: list[dict] = []
@@ -295,9 +355,9 @@ def post_batch_status(payload: BatchStatusRequest):
         try:
             result = change_status(
                 lead_id=lead_id,
-                new_status=payload.new_status,
-                loss_reason=payload.loss_reason,
-                loss_reason_other=payload.loss_reason_other,
+                new_status=target_status,
+                loss_reason=target_loss_reason,
+                loss_reason_other=target_loss_reason_other,
                 author=payload.author or "batch",
             )
             if result:

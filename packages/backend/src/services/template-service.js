@@ -186,5 +186,6 @@ class TemplateService {
   }
 }
 
+export { TemplateService };
 export const templateService = new TemplateService();
 export default templateService;

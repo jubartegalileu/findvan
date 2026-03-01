@@ -119,19 +119,29 @@ def insert_leads(leads: Iterable[dict]) -> dict:
     return {"inserted": inserted, "duplicates": duplicates}
 
 
-def list_leads(limit: int = 50) -> list[dict]:
+def list_leads(limit: int = 50, statuses: list[str] | None = None) -> list[dict]:
     query = """
         SELECT id, source, name, phone, email, address, city, state, company_name,
                cnpj, url, score, funnel_status, loss_reason, prospect_status, prospect_notes, campaign_status, captured_at, next_action_date, next_action_description, is_valid, is_duplicate, created_at, updated_at
         FROM leads
         WHERE deleted_at IS NULL
+    """
+    params: list[object] = []
+    normalized_statuses = sorted(
+        {normalize_funnel_status(status) for status in (statuses or []) if str(status).strip()}
+    )
+    if normalized_statuses:
+        query += " AND COALESCE(funnel_status, 'novo') = ANY(%s)"
+        params.append(normalized_statuses)
+    query += """
         ORDER BY created_at DESC
         LIMIT %s;
     """
+    params.append(limit)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query, (limit,))
+            cur.execute(query, tuple(params))
             rows = cur.fetchall()
 
     keys = [
@@ -321,6 +331,28 @@ def get_lead_score_breakdown(lead_id: int) -> dict | None:
     }
 
 
+def recalculate_lead_score(lead_id: int) -> dict | None:
+    lead = get_lead_by_id(lead_id)
+    if not lead:
+        return None
+
+    score_data = calculate_lead_score(lead)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE leads SET score = %s, updated_at = NOW() WHERE id = %s;",
+                (score_data["total"], lead_id),
+            )
+        conn.commit()
+
+    return {
+        "lead_id": lead_id,
+        "score": score_data["total"],
+        "breakdown": score_data["breakdown"],
+    }
+
+
 def recalculate_all_scores() -> dict:
     select_query = """
         SELECT id, source, name, phone, email, address, city, state, company_name, cnpj, url
@@ -330,6 +362,12 @@ def recalculate_all_scores() -> dict:
 
     updated = 0
     score_sum = 0
+    score_distribution = {
+        "90-100": 0,
+        "70-89": 0,
+        "50-69": 0,
+        "<50": 0,
+    }
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(select_query)
@@ -352,10 +390,22 @@ def recalculate_all_scores() -> dict:
                 cur.execute(update_query, (score, lead["id"]))
                 updated += 1
                 score_sum += score
+                if score >= 90:
+                    score_distribution["90-100"] += 1
+                elif score >= 70:
+                    score_distribution["70-89"] += 1
+                elif score >= 50:
+                    score_distribution["50-69"] += 1
+                else:
+                    score_distribution["<50"] += 1
         conn.commit()
 
     avg_score = round(score_sum / updated, 2) if updated else 0
-    return {"updated": updated, "avg_score": avg_score}
+    return {
+        "updated": updated,
+        "avg_score": avg_score,
+        "score_distribution": score_distribution,
+    }
 
 
 def normalize_leads_consistency() -> dict:

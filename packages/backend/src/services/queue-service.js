@@ -184,5 +184,6 @@ class QueueService {
   }
 }
 
+export { QueueService };
 export const queueService = new QueueService();
 export default queueService;

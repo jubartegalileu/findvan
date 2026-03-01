@@ -28,14 +28,14 @@ test('RateLimiter - Token Bucket Algorithm', async (t) => {
 
   await t.test('refills tokens after time passes', (t) => {
     return new Promise((resolve) => {
-      const limiter4 = createCampaignRateLimiter(2); // 2 tokens per minute
+      const limiter4 = createCampaignRateLimiter(2, 100); // 2 tokens per 100ms
       assert.ok(limiter4.isAllowed('user5', 2)); // Use all
       assert.equal(limiter4.isAllowed('user5', 1), false); // Deny
 
       setTimeout(() => {
         assert.ok(limiter4.isAllowed('user5', 1)); // After refill, allow
         resolve();
-      }, 150);
+      }, 120);
     });
   });
 

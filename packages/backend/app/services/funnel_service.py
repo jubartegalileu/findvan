@@ -2,6 +2,16 @@ import json
 from ..db import get_connection
 
 
+FUNNEL_STATUSES = ["novo", "contactado", "respondeu", "interessado", "convertido", "perdido"]
+FUNNEL_STATUS_LABELS = {
+    "novo": "Novo",
+    "contactado": "Contactado",
+    "respondeu": "Respondeu",
+    "interessado": "Interessado",
+    "convertido": "Convertido",
+    "perdido": "Perdido",
+}
+
 FUNNEL_TRANSITIONS = {
     "novo": {"contactado", "perdido"},
     "contactado": {"respondeu", "perdido"},
@@ -12,14 +22,25 @@ FUNNEL_TRANSITIONS = {
 }
 
 
-LOSS_REASONS = {
+LOSS_REASON_OPTIONS = [
     "sem_interesse",
     "ja_tem_fornecedor",
     "preco_alto",
     "sem_resposta_3_tentativas",
     "numero_invalido_ou_bloqueado",
     "outro",
+]
+
+LOSS_REASON_LABELS = {
+    "sem_interesse": "Sem interesse",
+    "ja_tem_fornecedor": "Já tem fornecedor",
+    "preco_alto": "Preço alto",
+    "sem_resposta_3_tentativas": "Sem resposta (3 tentativas)",
+    "numero_invalido_ou_bloqueado": "Número inválido/bloqueado",
+    "outro": "Outro",
 }
+
+LOSS_REASONS = set(LOSS_REASON_OPTIONS)
 
 
 def get_valid_transitions(current_status: str) -> list[str]:

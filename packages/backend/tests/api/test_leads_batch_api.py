@@ -72,6 +72,122 @@ def test_status_alias_and_transitions(monkeypatch):
     transitions = client.get("/api/leads/1/transitions")
     assert transitions.status_code == 200
     assert transitions.json()["transitions"] == ["contactado", "perdido"]
+    assert transitions.json()["current_label"] == "Novo"
+    assert transitions.json()["transition_labels"]["contactado"] == "Contactado"
+
+
+def test_transitions_normalizes_invalid_current_status(monkeypatch):
+    monkeypatch.setattr(
+        leads_api,
+        "get_lead_by_id",
+        lambda lead_id: {"id": lead_id, "funnel_status": "STATUS_INVALIDO"} if lead_id == 1 else None,
+    )
+    monkeypatch.setattr(leads_api, "get_valid_transitions", lambda status: ["contactado", "perdido"] if status == "novo" else [])
+    client = build_client()
+    response = client.get("/api/leads/1/transitions")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["current"] == "novo"
+    assert payload["current_label"] == "Novo"
+    assert payload["transitions"] == ["contactado", "perdido"]
+
+
+def test_transitions_contract_includes_label_map_for_all_returned_transitions(monkeypatch):
+    monkeypatch.setattr(
+        leads_api,
+        "get_lead_by_id",
+        lambda lead_id: {"id": lead_id, "funnel_status": "respondeu"} if lead_id == 1 else None,
+    )
+    monkeypatch.setattr(leads_api, "get_valid_transitions", lambda status: ["interessado", "perdido"])
+    client = build_client()
+    response = client.get("/api/leads/1/transitions")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["current"] == "respondeu"
+    assert payload["current_label"] == "Respondeu"
+    assert payload["transitions"] == ["interessado", "perdido"]
+    assert payload["transition_labels"] == {"interessado": "Interessado", "perdido": "Perdido"}
+
+
+def test_funnel_meta_contract():
+    client = build_client()
+    response = client.get("/api/leads/funnel/meta")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["statuses"] == ["novo", "contactado", "respondeu", "interessado", "convertido", "perdido"]
+    assert payload["loss_reasons"] == [
+        "sem_interesse",
+        "ja_tem_fornecedor",
+        "preco_alto",
+        "sem_resposta_3_tentativas",
+        "numero_invalido_ou_bloqueado",
+        "outro",
+    ]
+    assert payload["status_labels"]["contactado"] == "Contactado"
+    assert payload["loss_reason_labels"]["preco_alto"] == "Preço alto"
+    assert payload["transitions"]["novo"] == ["contactado", "perdido"]
+    assert set(payload["status_labels"].keys()) == set(payload["statuses"])
+    assert set(payload["transitions"].keys()) == set(payload["statuses"])
+    assert set(payload["loss_reason_labels"].keys()) == set(payload["loss_reasons"])
+
+
+def test_status_alias_accepts_status_field(monkeypatch):
+    monkeypatch.setattr(
+        leads_api,
+        "change_status",
+        lambda **kwargs: {"id": kwargs["lead_id"], "funnel_status": kwargs["new_status"]},
+    )
+    client = build_client()
+    patch_response = client.patch("/api/leads/1/status", json={"status": "contactado"})
+    assert patch_response.status_code == 200
+    assert patch_response.json()["lead"]["funnel_status"] == "contactado"
+
+
+def test_status_alias_requires_status_field():
+    client = build_client()
+    patch_response = client.patch("/api/leads/1/status", json={})
+    assert patch_response.status_code == 400
+    assert "status" in patch_response.json()["detail"].lower()
+
+
+def test_status_alias_accepts_reason_alias(monkeypatch):
+    captured = {}
+
+    def _change_status(**kwargs):
+        captured.update(kwargs)
+        return {"id": kwargs["lead_id"], "funnel_status": kwargs["new_status"]}
+
+    monkeypatch.setattr(leads_api, "change_status", _change_status)
+    client = build_client()
+    patch_response = client.patch(
+        "/api/leads/1/status",
+        json={"status": "perdido", "reason": "sem_interesse", "author": "qa"},
+    )
+    assert patch_response.status_code == 200
+    assert captured["new_status"] == "perdido"
+    assert captured["loss_reason"] == "sem_interesse"
+
+
+def test_status_alias_returns_400_for_invalid_transition(monkeypatch):
+    def _change_status(**kwargs):
+        raise ValueError("Transição inválida: novo -> convertido")
+
+    monkeypatch.setattr(leads_api, "change_status", _change_status)
+    client = build_client()
+    response = client.patch("/api/leads/1/status", json={"status": "convertido"})
+    assert response.status_code == 400
+    assert "transição inválida" in response.json()["detail"].lower()
+
+
+def test_status_alias_returns_400_when_loss_reason_missing(monkeypatch):
+    def _change_status(**kwargs):
+        raise ValueError("Motivo de perda é obrigatório para status perdido.")
+
+    monkeypatch.setattr(leads_api, "change_status", _change_status)
+    client = build_client()
+    response = client.patch("/api/leads/1/status", json={"status": "perdido"})
+    assert response.status_code == 400
+    assert "motivo de perda" in response.json()["detail"].lower()
 
 
 def test_lead_notes_endpoints(monkeypatch):
@@ -189,3 +305,74 @@ def test_batch_status_reports_processed_and_failures(monkeypatch):
     assert payload["updated"] == 2
     assert payload["failed"] == 1
     assert payload["errors"] == [{"id": 2, "error": "Lead not found"}]
+
+
+def test_batch_status_accepts_status_field(monkeypatch):
+    monkeypatch.setattr(
+        leads_api,
+        "change_status",
+        lambda **kwargs: {"id": kwargs["lead_id"], "funnel_status": kwargs["new_status"]},
+    )
+    client = build_client()
+    response = client.post(
+        "/api/leads/batch/status",
+        json={"ids": [1, 2], "status": "contactado", "author": "qa"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed"] == 2
+    assert payload["updated"] == 2
+    assert payload["failed"] == 0
+
+
+def test_batch_status_requires_status_field():
+    client = build_client()
+    response = client.post("/api/leads/batch/status", json={"ids": [1, 2]})
+    assert response.status_code == 400
+    assert "status" in response.json()["detail"].lower()
+
+
+def test_batch_status_accepts_reason_alias(monkeypatch):
+    captured = []
+
+    def _change_status(**kwargs):
+        captured.append(kwargs)
+        return {"id": kwargs["lead_id"], "funnel_status": kwargs["new_status"]}
+
+    monkeypatch.setattr(leads_api, "change_status", _change_status)
+    client = build_client()
+    response = client.post(
+        "/api/leads/batch/status",
+        json={
+            "ids": [1, 2],
+            "status": "perdido",
+            "reason": "outro",
+            "reason_other": "fora de cobertura",
+            "author": "qa",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["updated"] == 2
+    assert len(captured) == 2
+    assert all(item["loss_reason"] == "outro" for item in captured)
+    assert all(item["loss_reason_other"] == "fora de cobertura" for item in captured)
+
+
+def test_batch_status_reports_validation_errors(monkeypatch):
+    def _change_status(**kwargs):
+        if kwargs["lead_id"] == 2:
+            raise ValueError("Motivo de perda é obrigatório para status perdido.")
+        return {"id": kwargs["lead_id"], "funnel_status": kwargs["new_status"]}
+
+    monkeypatch.setattr(leads_api, "change_status", _change_status)
+    client = build_client()
+    response = client.post(
+        "/api/leads/batch/status",
+        json={"ids": [1, 2, 3], "status": "perdido", "author": "qa"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed"] == 3
+    assert payload["updated"] == 2
+    assert payload["failed"] == 1
+    assert payload["errors"] == [{"id": 2, "error": "Motivo de perda é obrigatório para status perdido."}]

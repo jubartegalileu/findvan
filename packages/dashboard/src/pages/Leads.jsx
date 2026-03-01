@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout.jsx';
+import ScoreBadge from '../components/ScoreBadge.jsx';
+import ScoreBreakdown from '../components/ScoreBreakdown.jsx';
 import './dashboard.css';
 import { API_BASE } from '../lib/apiBase.js';
 import { addMessagingActivity } from '../lib/messagingActivity.js';
@@ -70,6 +72,8 @@ const modalTabs = [
 
 const SESSION_FILTER_KEY = 'findvan.leads.filters.v1';
 const EXECUTION_OUTCOME_KEY = 'findvan.leads.execution.outcomes.v1';
+const LEADS_CACHE_KEY = 'findvan.leads.cache.v1';
+const LEADS_CACHE_AT_KEY = 'findvan.leads.cacheAt.v1';
 
 const executionOutcomeOptions = [
   { value: 'success', label: 'Sucesso' },
@@ -108,12 +112,8 @@ const getProspectClass = (value) =>
 const getFunnelClass = (value) =>
   funnelStatusOptions.find((option) => option.value === value)?.className || 'funnel-novo';
 
-const getScoreMeta = (score) => {
-  if (score >= 90) return { label: 'Excelente', className: 'excellent' };
-  if (score >= 70) return { label: 'Bom', className: 'good' };
-  if (score >= 50) return { label: 'Regular', className: 'regular' };
-  return { label: 'Fraco', className: 'weak' };
-};
+const getFunnelLabel = (value) =>
+  funnelStatusOptions.find((option) => option.value === value)?.label || value || 'Novo';
 
 const toCsv = (rows) => {
   const headers = [
@@ -165,7 +165,7 @@ const mapLead = (lead) => ({
   next_action_description: lead.next_action_description || '',
   is_valid: !!lead.is_valid,
   is_duplicate: !!lead.is_duplicate,
-  score: Number.isFinite(Number(lead.score)) ? Number(lead.score) : lead.is_valid ? 80 : 60,
+  score: Number.isFinite(Number(lead.score)) ? Number(lead.score) : 0,
   funnel_status: lead.funnel_status || 'novo',
   loss_reason: (lead.loss_reason || '').startsWith('outro:') ? 'outro' : lead.loss_reason || '',
   loss_reason_other: (lead.loss_reason || '').startsWith('outro:') ? (lead.loss_reason || '').slice(6) : '',
@@ -190,13 +190,43 @@ const getInteractionLabel = (type) => {
   return labels[type] || type;
 };
 
+const lossReasonLabelByValue = {
+  sem_interesse: 'Sem interesse',
+  ja_tem_fornecedor: 'Já tem fornecedor',
+  preco_alto: 'Preço alto',
+  sem_resposta_3_tentativas: 'Sem resposta (3 tentativas)',
+  numero_invalido_ou_bloqueado: 'Número inválido/bloqueado',
+  outro: 'Outro',
+};
+
+const formatLossReason = (rawReason) => {
+  const normalized = String(rawReason || '').trim();
+  if (!normalized) return '';
+  if (normalized.startsWith('outro:')) {
+    const detail = normalized.slice(6).trim();
+    return detail ? `Outro (${detail})` : 'Outro';
+  }
+  return lossReasonLabelByValue[normalized] || normalized;
+};
+
 const getInteractionContext = (item) => {
   if (!item || typeof item !== 'object') return '';
-  const metadata = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+  let metadata = {};
+  if (item.metadata && typeof item.metadata === 'object') {
+    metadata = item.metadata;
+  } else if (typeof item.metadata === 'string') {
+    try {
+      const parsed = JSON.parse(item.metadata);
+      if (parsed && typeof parsed === 'object') metadata = parsed;
+    } catch (error) {
+      // no-op
+    }
+  }
   if (item.type === 'status_change') {
-    const from = metadata.old_status || 'n/d';
-    const to = metadata.new_status || 'n/d';
-    const reason = metadata.loss_reason ? ` • motivo: ${metadata.loss_reason}` : '';
+    const from = getFunnelLabel(metadata.old_status || 'n/d');
+    const to = getFunnelLabel(metadata.new_status || 'n/d');
+    const reasonLabel = formatLossReason(metadata.loss_reason);
+    const reason = reasonLabel ? ` • motivo: ${reasonLabel}` : '';
     return `Transição: ${from} → ${to}${reason}`;
   }
   return '';
@@ -281,7 +311,7 @@ const getPreferredNextFunnelStatus = (currentStatus) => {
     contactado: 'respondeu',
     respondeu: 'interessado',
     interessado: 'convertido',
-    convertido: 'perdido',
+    convertido: null,
     perdido: 'novo',
   };
   return preferredPath[currentStatus] || null;
@@ -302,6 +332,8 @@ const getFunnelNextStatus = (currentStatus) => {
 export default function Leads({ onNavigate, activePath }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [cacheLoadedAt, setCacheLoadedAt] = useState('');
   const [selectedState, setSelectedState] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
   const [search, setSearch] = useState('');
@@ -328,6 +360,8 @@ export default function Leads({ onNavigate, activePath }) {
   const [deleting, setDeleting] = useState(false);
   const [modalMessage, setModalMessage] = useState('');
   const [scoreBreakdown, setScoreBreakdown] = useState(null);
+  const [validTransitions, setValidTransitions] = useState([]);
+  const [transitionLabels, setTransitionLabels] = useState({});
   const [interactions, setInteractions] = useState([]);
   const [notes, setNotes] = useState([]);
   const [noteDraft, setNoteDraft] = useState('');
@@ -341,29 +375,67 @@ export default function Leads({ onNavigate, activePath }) {
   const pageSize = 12;
 
   const loadLeads = async () => {
+    let syncSucceeded = false;
     try {
       setLoading(true);
+      setLoadError('');
       const response = await fetch(`${API_BASE}/api/leads/?limit=300`);
-      const payload = await response.json();
+      const payload = await response.json().catch(() => ({}));
       if (response.ok && Array.isArray(payload?.leads)) {
         const mapped = payload.leads.map(mapLead);
         setLeads(mapped);
+        syncSucceeded = true;
+        try {
+          sessionStorage.setItem(LEADS_CACHE_KEY, JSON.stringify(mapped));
+          const nowIso = new Date().toISOString();
+          sessionStorage.setItem(LEADS_CACHE_AT_KEY, nowIso);
+          setCacheLoadedAt(nowIso);
+        } catch (error) {
+          // no-op
+        }
+      } else {
+        const detail = payload?.detail || 'Não foi possível carregar os leads no momento.';
+        setLoadError(`Erro ao carregar leads (HTTP ${response.status}). ${detail}`);
       }
     } catch (error) {
-      // no-op
+      setLoadError('Backend indisponível. Confirme API na porta 8000 e banco na 5432, depois tente novamente.');
     } finally {
       setLoading(false);
-      setLastUpdatedAt(new Date().toLocaleTimeString('pt-BR'));
+      if (syncSucceeded) {
+        setLastUpdatedAt(new Date().toLocaleTimeString('pt-BR'));
+      }
     }
   };
 
   useEffect(() => {
     try {
+      const cached = sessionStorage.getItem(LEADS_CACHE_KEY);
+      const cachedAt = sessionStorage.getItem(LEADS_CACHE_AT_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setLeads(parsed.map(mapLead));
+          setCacheLoadedAt(cachedAt || '');
+          if (cachedAt) {
+            const cachedDate = new Date(cachedAt);
+            if (!Number.isNaN(cachedDate.getTime())) {
+              setLastUpdatedAt(cachedDate.toLocaleTimeString('pt-BR'));
+            }
+          }
+        }
+      }
+    } catch (error) {
+      // no-op
+    }
+
+    try {
       const saved = sessionStorage.getItem(SESSION_FILTER_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         const validFunnels = Array.isArray(parsed.selectedFunnels)
-          ? parsed.selectedFunnels.filter((item) => funnelStatusOptions.some((option) => option.value === item))
+          ? parsed.selectedFunnels
+              .map((item) => String(item || '').trim().toLowerCase())
+              .filter((item) => funnelStatusOptions.some((option) => option.value === item))
           : [];
         const validScoreRange = scoreRanges.some((option) => option.value === parsed.selectedScoreRange)
           ? parsed.selectedScoreRange
@@ -410,13 +482,15 @@ export default function Leads({ onNavigate, activePath }) {
     }
 
     const params = new URLSearchParams(window.location.search);
-    const funnel = params.get('funnel');
+    const funnelParams = [...params.getAll('funnel'), ...params.getAll('status')];
     const leadId = params.get('leadId');
-    if (funnel) {
-      const values = funnel
-        .split(',')
-        .map((item) => item.trim())
-        .filter((item) => funnelStatusOptions.some((option) => option.value === item));
+    if (funnelParams.length > 0) {
+      const values = [...new Set(
+        funnelParams
+          .flatMap((chunk) => String(chunk || '').split(','))
+          .map((item) => item.trim().toLowerCase())
+          .filter((item) => funnelStatusOptions.some((option) => option.value === item))
+      )];
       setSelectedFunnels(values);
     }
     if (leadId) {
@@ -614,6 +688,40 @@ export default function Leads({ onNavigate, activePath }) {
     const start = (page - 1) * pageSize;
     return sortedLeads.slice(start, start + pageSize);
   }, [sortedLeads, page]);
+
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(
+        selectedState ||
+          selectedCity ||
+          search.trim() ||
+          selectedScoreRange !== 'all' ||
+          selectedFollowUpFilter !== 'all' ||
+          selectedSlaFilter !== 'all' ||
+          focusModeEnabled ||
+          selectedFunnels.length > 0 ||
+          selectedSource ||
+          selectedTag ||
+          activeAlertFilter ||
+          capturedDateFrom ||
+          capturedDateTo
+      ),
+    [
+      selectedState,
+      selectedCity,
+      search,
+      selectedScoreRange,
+      selectedFollowUpFilter,
+      selectedSlaFilter,
+      focusModeEnabled,
+      selectedFunnels,
+      selectedSource,
+      selectedTag,
+      activeAlertFilter,
+      capturedDateFrom,
+      capturedDateTo,
+    ]
+  );
 
   const insights = useMemo(() => {
     const scoped = filteredLeads;
@@ -1215,6 +1323,8 @@ export default function Leads({ onNavigate, activePath }) {
     setFormLead({ ...lead });
     setModalMessage('');
     setScoreBreakdown(null);
+    setValidTransitions([]);
+    setTransitionLabels({});
     setInteractions([]);
     setNotes([]);
     setNoteDraft('');
@@ -1226,6 +1336,8 @@ export default function Leads({ onNavigate, activePath }) {
     setFormLead(null);
     setModalMessage('');
     setScoreBreakdown(null);
+    setValidTransitions([]);
+    setTransitionLabels({});
     setInteractions([]);
     setNotes([]);
     setNoteDraft('');
@@ -1237,17 +1349,27 @@ export default function Leads({ onNavigate, activePath }) {
     let cancelled = false;
     const loadLeadTabsData = async () => {
       try {
-        const [scoreRes, interactionsRes, notesRes] = await Promise.all([
+        const [scoreRes, transitionsRes, interactionsRes, notesRes] = await Promise.all([
           fetch(`${API_BASE}/api/leads/${activeLead.id}/score`),
+          fetch(`${API_BASE}/api/leads/${activeLead.id}/transitions`),
           fetch(`${API_BASE}/api/leads/${activeLead.id}/interactions?limit=30`),
           fetch(`${API_BASE}/api/leads/${activeLead.id}/notes?limit=50`),
         ]);
 
         const scorePayload = await scoreRes.json().catch(() => ({}));
+        const transitionsPayload = await transitionsRes.json().catch(() => ({}));
         const interactionsPayload = await interactionsRes.json().catch(() => ({}));
         const notesPayload = await notesRes.json().catch(() => ({}));
 
         if (!cancelled && scoreRes.ok) setScoreBreakdown(scorePayload);
+        if (!cancelled && transitionsRes.ok) {
+          setValidTransitions(Array.isArray(transitionsPayload?.transitions) ? transitionsPayload.transitions : []);
+          setTransitionLabels(
+            transitionsPayload?.transition_labels && typeof transitionsPayload.transition_labels === 'object'
+              ? transitionsPayload.transition_labels
+              : {}
+          );
+        }
         if (!cancelled && interactionsRes.ok) {
           setInteractions(Array.isArray(interactionsPayload?.interactions) ? interactionsPayload.interactions : []);
         }
@@ -1265,6 +1387,27 @@ export default function Leads({ onNavigate, activePath }) {
       cancelled = true;
     };
   }, [activeLead?.id]);
+
+  const modalCurrentStatus = activeLead?.funnel_status || formLead?.funnel_status || 'novo';
+  const modalTransitionOptions = [
+    modalCurrentStatus,
+    ...(
+      validTransitions.length > 0
+        ? validTransitions
+        : (funnelTransitions[modalCurrentStatus] || [])
+    ),
+  ].filter((value, index, arr) => arr.indexOf(value) === index);
+  const modalLossReasonMissing = formLead?.funnel_status === 'perdido' && !formLead?.loss_reason;
+  const modalLossReasonOtherMissing =
+    formLead?.funnel_status === 'perdido' &&
+    formLead?.loss_reason === 'outro' &&
+    !(formLead?.loss_reason_other || '').trim();
+  const modalSaveDisabled = saving || modalLossReasonMissing || modalLossReasonOtherMissing;
+  const modalSaveBlockedReason = modalLossReasonMissing
+    ? 'Selecione um motivo de perda para salvar.'
+    : modalLossReasonOtherMissing
+      ? 'Preencha o detalhe do motivo "outro" para salvar.'
+      : '';
 
   const addNote = async () => {
     if (!activeLead?.id || !noteDraft.trim()) return;
@@ -1298,10 +1441,19 @@ export default function Leads({ onNavigate, activePath }) {
         setSaving(false);
         return;
       }
+      if (
+        formLead.funnel_status === 'perdido' &&
+        formLead.loss_reason === 'outro' &&
+        !(formLead.loss_reason_other || '').trim()
+      ) {
+        setModalMessage('Preencha o detalhe do motivo "outro" para continuar.');
+        setSaving(false);
+        return;
+      }
 
       if (activeLead && formLead.funnel_status !== activeLead.funnel_status) {
         const confirmTransition = window.confirm(
-          `Confirmar mudança de funil: ${activeLead.funnel_status} -> ${formLead.funnel_status}?`
+          `Confirmar mudança de funil: ${getFunnelLabel(activeLead.funnel_status)} -> ${getFunnelLabel(formLead.funnel_status)}?`
         );
         if (!confirmTransition) {
           setSaving(false);
@@ -1312,9 +1464,9 @@ export default function Leads({ onNavigate, activePath }) {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            new_status: formLead.funnel_status,
-            loss_reason: formLead.loss_reason || null,
-            loss_reason_other: formLead.loss_reason_other || null,
+            status: formLead.funnel_status,
+            reason: formLead.loss_reason || null,
+            reason_other: formLead.loss_reason_other || null,
             author: 'dashboard',
           }),
         });
@@ -1418,6 +1570,14 @@ export default function Leads({ onNavigate, activePath }) {
     setCapturedDateTo('');
     setScoreSort('desc');
     setBatchResult(null);
+    setLoadError('');
+    setRequestedLeadId(null);
+    try {
+      const cleanPath = window.location.pathname || '/leads';
+      window.history.replaceState({}, '', cleanPath);
+    } catch (error) {
+      // no-op
+    }
     try {
       sessionStorage.removeItem(SESSION_FILTER_KEY);
     } catch (error) {
@@ -1490,19 +1650,47 @@ export default function Leads({ onNavigate, activePath }) {
 
   const batchUpdateStatus = async () => {
     if (selectedLeadIds.length === 0) return;
-    const newStatus = window.prompt(
+    const rawStatus = window.prompt(
       'Novo status do funil (novo/contactado/respondeu/interessado/convertido/perdido):',
       'contactado'
     );
-    if (!newStatus) return;
+    if (!rawStatus) return;
+    const newStatus = rawStatus.trim().toLowerCase();
+    if (!funnelStatusOptions.some((option) => option.value === newStatus)) {
+      setBatchResult({
+        type: 'error',
+        summary: `Status inválido: "${rawStatus}". Use um dos estágios do funil.`,
+      });
+      return;
+    }
 
     let lossReason = null;
+    let lossReasonOther = null;
     if (newStatus === 'perdido') {
-      lossReason = window.prompt(
+      const rawLossReason = window.prompt(
         'Motivo de perda (sem_interesse/ja_tem_fornecedor/preco_alto/sem_resposta_3_tentativas/numero_invalido_ou_bloqueado/outro):',
         'sem_interesse'
       );
-      if (!lossReason) return;
+      if (!rawLossReason) return;
+      lossReason = rawLossReason.trim().toLowerCase();
+      if (!lossReasonOptions.some((option) => option.value === lossReason)) {
+        setBatchResult({
+          type: 'error',
+          summary: `Motivo inválido: "${rawLossReason}".`,
+        });
+        return;
+      }
+      if (lossReason === 'outro') {
+        lossReasonOther = window.prompt('Detalhe do motivo "outro":', '');
+        if (!lossReasonOther || !lossReasonOther.trim()) {
+          setBatchResult({
+            type: 'error',
+            summary: 'Detalhe do motivo "outro" é obrigatório para marcar como perdido.',
+          });
+          return;
+        }
+        lossReasonOther = lossReasonOther.trim();
+      }
     }
 
     try {
@@ -1512,8 +1700,9 @@ export default function Leads({ onNavigate, activePath }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ids: selectedLeadIds,
-          new_status: newStatus,
-          loss_reason: lossReason,
+          status: newStatus,
+          reason: lossReason,
+          reason_other: lossReasonOther,
           author: 'dashboard-batch',
         }),
       });
@@ -1964,7 +2153,7 @@ export default function Leads({ onNavigate, activePath }) {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          new_status: newStatus,
+          status: newStatus,
           author: 'dashboard-workspace',
         }),
       });
@@ -1991,7 +2180,7 @@ export default function Leads({ onNavigate, activePath }) {
     const suggested = getPreferredNextFunnelStatus(lead?.funnel_status);
     if (!suggested) return;
     const confirm = window.confirm(
-      `Avançar lead "${lead.name || lead.company_name || lead.id}" de ${lead.funnel_status} para ${suggested}?`
+      `Avançar lead "${lead.name || lead.company_name || lead.id}" de ${getFunnelLabel(lead.funnel_status)} para ${getFunnelLabel(suggested)}?`
     );
     if (!confirm) return;
     await applyLeadFunnelTransition({ lead, newStatus: suggested });
@@ -2152,6 +2341,23 @@ export default function Leads({ onNavigate, activePath }) {
         </div>
       </section>
 
+      {loadError && (
+        <section className="fv-panel fv-panel-compact">
+          <div className="fv-batch-feedback error">
+            <div className="fv-batch-feedback-title">{loadError}</div>
+            {leads.length > 0 && (
+              <div className="fv-row-sub">
+                Exibindo dados em cache
+                {cacheLoadedAt ? ` • Última sincronização: ${formatDateTime(cacheLoadedAt)}` : ''}
+              </div>
+            )}
+            <button className="fv-ghost small" type="button" onClick={loadLeads} disabled={loading}>
+              {loading ? 'Tentando...' : 'Tentar novamente'}
+            </button>
+          </div>
+        </section>
+      )}
+
       <section className="fv-columns fv-columns-leads">
         <div className="fv-panel">
           <div className="fv-panel-header">
@@ -2282,6 +2488,7 @@ export default function Leads({ onNavigate, activePath }) {
                           {lead.city || 'Cidade não informada'}
                           {lead.state ? ` • ${lead.state}` : ''}
                         </div>
+                        <ScoreBadge score={lead.score} />
                         <div className="fv-workspace-lead-actions">
                           <button className="fv-ghost small" type="button" onClick={() => handleContactLead(lead)}>
                             Contactar
@@ -2323,7 +2530,6 @@ export default function Leads({ onNavigate, activePath }) {
 
           <div className="fv-table">
             {visiblePaginatedLeads.map((lead, index) => {
-              const scoreMeta = getScoreMeta(lead.score);
               const overdue = isFollowUpOverdue(lead);
               const replied = lead.funnel_status === 'respondeu';
               const cadenceMeta = getCadenceMeta(lead);
@@ -2386,7 +2592,7 @@ export default function Leads({ onNavigate, activePath }) {
                     <div className={`fv-status ${getFunnelClass(lead.funnel_status)}`}>
                       {funnelStatusOptions.find((f) => f.value === lead.funnel_status)?.label || 'Novo'}
                     </div>
-                    <div className={`fv-row-chip ${scoreMeta.className}`}>Score {lead.score} • {scoreMeta.label}</div>
+                    <ScoreBadge score={lead.score} />
                     <div className={`fv-row-chip ${cadenceMeta.className}`}>{cadenceMeta.label}</div>
                     <div className={slaMeta.className}>{slaMeta.label}</div>
                     <div className="fv-lead-actions">
@@ -2424,8 +2630,15 @@ export default function Leads({ onNavigate, activePath }) {
               );
             })}
 
-            {visiblePaginatedLeads.length === 0 && (
-              <div className="fv-row-sub">Nenhum lead encontrado com os filtros atuais.</div>
+            {visiblePaginatedLeads.length === 0 && !loadError && (
+              <div className="fv-row-sub">
+                {hasActiveFilters ? 'Nenhum lead com os filtros atuais.' : 'Nenhum lead disponível no momento.'}{' '}
+                {hasActiveFilters && (
+                  <button className="fv-ghost small" type="button" onClick={clearFilters}>
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
@@ -2887,13 +3100,24 @@ export default function Leads({ onNavigate, activePath }) {
                     <select
                       className="fv-input fv-select"
                       value={formLead.funnel_status || 'novo'}
-                      onChange={(event) => setFormLead((prev) => ({ ...prev, funnel_status: event.target.value }))}
+                      onChange={(event) =>
+                        setFormLead((prev) => {
+                          const nextStatus = event.target.value;
+                          if (nextStatus !== 'perdido') {
+                            return {
+                              ...prev,
+                              funnel_status: nextStatus,
+                              loss_reason: '',
+                              loss_reason_other: '',
+                            };
+                          }
+                          return { ...prev, funnel_status: nextStatus };
+                        })
+                      }
                     >
-                      {[formLead.funnel_status || 'novo', ...(funnelTransitions[formLead.funnel_status || 'novo'] || [])]
-                        .filter((value, index, arr) => arr.indexOf(value) === index)
-                        .map((value) => (
+                      {modalTransitionOptions.map((value) => (
                           <option key={value} value={value}>
-                            {funnelStatusOptions.find((f) => f.value === value)?.label || value}
+                            {transitionLabels[value] || getFunnelLabel(value)}
                           </option>
                         ))}
                     </select>
@@ -3053,21 +3277,8 @@ export default function Leads({ onNavigate, activePath }) {
 
             {activeTab === 'score' && (
               <div className="fv-score-breakdown">
-                <div className={`fv-row-chip ${getScoreMeta(formLead.score).className}`}>
-                  Score {formLead.score} • {getScoreMeta(formLead.score).label}
-                </div>
-                {scoreBreakdown?.breakdown ? (
-                  <div className="fv-score-grid">
-                    {Object.entries(scoreBreakdown.breakdown).map(([key, ok]) => (
-                      <div key={key} className="fv-score-item">
-                        <span>{ok ? '✓' : '✕'}</span>
-                        <span>{key}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="fv-row-sub">Sem detalhamento de score.</div>
-                )}
+                <ScoreBadge score={formLead.score} />
+                <ScoreBreakdown breakdown={scoreBreakdown?.breakdown} />
                 <div className="fv-row-sub">Dica: para aumentar score, complete email, endereço e CNPJ.</div>
               </div>
             )}
@@ -3110,10 +3321,11 @@ export default function Leads({ onNavigate, activePath }) {
               <button className="fv-ghost" type="button" onClick={removeLead} disabled={deleting}>
                 {deleting ? 'Excluindo...' : 'Excluir lead'}
               </button>
-              <button className="fv-primary" type="button" onClick={saveLead} disabled={saving}>
+              <button className="fv-primary" type="button" onClick={saveLead} disabled={modalSaveDisabled}>
                 {saving ? 'Salvando...' : 'Salvar alterações'}
               </button>
             </div>
+            {modalSaveBlockedReason && <div className="fv-row-sub">{modalSaveBlockedReason}</div>}
           </div>
         </div>
       )}

@@ -326,5 +326,6 @@ class CampaignService {
   }
 }
 
+export { CampaignService };
 export const campaignService = new CampaignService();
 export default campaignService;

@@ -1,7 +1,7 @@
 # Epic 20 — Wave 16 SDR SLA and Capacity Orchestration
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade pós-Wave 15)
-**Status:** Ready
+**Status:** Done
 **Prioridade:** P1 (Operação SDR)
 **Wave:** 16
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Transformar os sinais operacionais da Wave 15 em execução orientada por SLA, c
 
 ## Definition of Done
 
-- [ ] Stories 20.1, 20.2 e 20.3 implementadas e aprovadas
-- [ ] SLA operacional por estágio visível e acionável
-- [ ] Priorização de backlog por criticidade funcional
-- [ ] Recomendações operacionais orientando execução diária
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 20.1, 20.2 e 20.3 implementadas e aprovadas
+- [x] SLA operacional por estágio visível e acionável
+- [x] Priorização de backlog por criticidade funcional
+- [x] Recomendações operacionais orientando execução diária
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

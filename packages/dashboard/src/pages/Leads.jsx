@@ -226,6 +226,18 @@ const getPreferredNextFunnelStatus = (currentStatus) => {
   return preferredPath[currentStatus] || null;
 };
 
+const getFunnelNextStatus = (currentStatus) => {
+  const sequence = {
+    novo: 'contactado',
+    contactado: 'respondeu',
+    respondeu: 'interessado',
+    interessado: 'convertido',
+    convertido: null,
+    perdido: null,
+  };
+  return sequence[currentStatus] || null;
+};
+
 export default function Leads({ onNavigate, activePath }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -543,6 +555,56 @@ export default function Leads({ onNavigate, activePath }) {
       total: scoped.length ? Math.round((statusCount.convertido / scoped.length) * 100) : 0,
     };
 
+    const throughputByStage = funnelStatusOptions
+      .filter((status) => !['convertido', 'perdido'].includes(status.value))
+      .map((status) => {
+        const current = statusCount[status.value] || 0;
+        const nextStatus = getFunnelNextStatus(status.value);
+        const nextCount = nextStatus ? statusCount[nextStatus] || 0 : 0;
+        const progressionRate = current > 0 ? Math.round((nextCount / current) * 100) : 0;
+        const overdueCount = scoped.filter(
+          (lead) => lead.funnel_status === status.value && isFollowUpOverdue(lead)
+        ).length;
+        let severity = 'low';
+        if (current > 0 && (progressionRate < 20 || overdueCount >= Math.ceil(current * 0.35))) {
+          severity = 'critical';
+        } else if (current > 0 && (progressionRate < 40 || overdueCount >= Math.ceil(current * 0.2))) {
+          severity = 'high';
+        } else if (current > 0 && (progressionRate < 55 || overdueCount > 0)) {
+          severity = 'medium';
+        }
+        return {
+          stage: status.value,
+          label: status.label,
+          count: current,
+          progressionRate,
+          overdueCount,
+          severity,
+        };
+      });
+
+    const governanceRecommendations = throughputByStage
+      .filter((item) => item.count > 0)
+      .sort((a, b) => {
+        const severityWeight = { critical: 3, high: 2, medium: 1, low: 0 };
+        if (severityWeight[b.severity] !== severityWeight[a.severity]) {
+          return severityWeight[b.severity] - severityWeight[a.severity];
+        }
+        return b.overdueCount - a.overdueCount;
+      })
+      .slice(0, 3)
+      .map((item) => ({
+        ...item,
+        recommendation:
+          item.severity === 'critical'
+            ? `Priorizar ${item.label}: atacar follow-ups vencidos imediatamente.`
+            : item.severity === 'high'
+              ? `Reforçar cadência em ${item.label}: revisar próximos contatos no turno atual.`
+              : item.severity === 'medium'
+                ? `Acompanhar ${item.label}: manter ritmo e evitar novos atrasos.`
+                : `${item.label} está estável.`,
+      }));
+
     return {
       total: scoped.length,
       valid: scoped.filter((lead) => lead.is_valid).length,
@@ -556,6 +618,8 @@ export default function Leads({ onNavigate, activePath }) {
         overdueFollowups: scoped.filter((lead) => isFollowUpOverdue(lead)).length,
         newLeads: scoped.filter((lead) => lead.funnel_status === 'novo').length,
       },
+      throughputByStage,
+      governanceRecommendations,
     };
   }, [filteredLeads]);
 
@@ -1740,6 +1804,27 @@ export default function Leads({ onNavigate, activePath }) {
               <div className="fv-row-sub">Respondeu → Interessado: {insights.conversion.respondeu_interessado}%</div>
               <div className="fv-row-sub">Interessado → Convertido: {insights.conversion.interessado_convertido}%</div>
               <div className="fv-row-sub">Conversão total: {insights.conversion.total}%</div>
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Throughput por estágio</div>
+              {insights.throughputByStage.map((item) => (
+                <div key={`throughput-${item.stage}`} className="fv-row-sub">
+                  {item.label}: {item.count} • avanço {item.progressionRate}% • vencidos {item.overdueCount}
+                </div>
+              ))}
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Governança operacional</div>
+              {insights.governanceRecommendations.length === 0 && (
+                <div className="fv-row-sub">Sem gargalos relevantes no contexto atual.</div>
+              )}
+              {insights.governanceRecommendations.map((item) => (
+                <div key={`governance-${item.stage}`} className="fv-row-sub">
+                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.label}</span> {item.recommendation}
+                </div>
+              ))}
             </div>
 
             <div className="fv-activity-item">

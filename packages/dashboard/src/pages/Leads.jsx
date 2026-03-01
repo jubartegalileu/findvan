@@ -644,6 +644,43 @@ export default function Leads({ onNavigate, activePath }) {
       return acc;
     }, {});
 
+    const capacityHeatmap = funnelStatusOptions.map((status) => {
+      const count = statusCount[status.value] || 0;
+      const overdueCount = scoped.filter(
+        (lead) => lead.funnel_status === status.value && isFollowUpOverdue(lead)
+      ).length;
+      const violatedCount = scoped.filter(
+        (lead) => lead.funnel_status === status.value && getSlaMeta(lead).value === 'violated'
+      ).length;
+      const workloadScore = count * 2 + overdueCount * 3 + violatedCount * 4;
+      let severity = 'low';
+      if (workloadScore >= 60) severity = 'critical';
+      else if (workloadScore >= 35) severity = 'high';
+      else if (workloadScore >= 18) severity = 'medium';
+
+      return {
+        stage: status.value,
+        label: status.label,
+        count,
+        overdueCount,
+        violatedCount,
+        workloadScore,
+        severity,
+      };
+    });
+
+    const backlogPriority = [...scoped]
+      .filter((lead) => !['convertido', 'perdido'].includes(lead.funnel_status))
+      .map((lead) => {
+        const sla = getSlaMeta(lead);
+        const overdue = isFollowUpOverdue(lead);
+        const weight = sla.value === 'violated' ? 3 : sla.value === 'attention' ? 2 : 1;
+        const score = weight * 100 + (overdue ? 30 : 0) + Math.max(0, 100 - lead.score);
+        return { lead, score, sla };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+
     const governanceRecommendations = throughputByStage
       .filter((item) => item.count > 0)
       .sort((a, b) => {
@@ -682,6 +719,8 @@ export default function Leads({ onNavigate, activePath }) {
       },
       throughputByStage,
       slaByStage,
+      capacityHeatmap,
+      backlogPriority,
       governanceRecommendations,
     };
   }, [filteredLeads]);
@@ -1933,6 +1972,29 @@ export default function Leads({ onNavigate, activePath }) {
                   {status.label}: ✅ {insights.slaByStage[status.value]?.on_time || 0} • ⚠️{' '}
                   {insights.slaByStage[status.value]?.attention || 0} • ⛔{' '}
                   {insights.slaByStage[status.value]?.violated || 0}
+                </div>
+              ))}
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Heatmap de capacidade</div>
+              {insights.capacityHeatmap.map((item) => (
+                <div key={`capacity-${item.stage}`} className="fv-row-sub">
+                  <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.label}</span> carga {item.workloadScore}{' '}
+                  • backlog {item.count} • vencidos {item.overdueCount} • SLA violado {item.violatedCount}
+                </div>
+              ))}
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Prioridade de backlog</div>
+              {insights.backlogPriority.length === 0 && <div className="fv-row-sub">Sem backlog prioritário no contexto.</div>}
+              {insights.backlogPriority.map(({ lead, sla, score }) => (
+                <div key={`backlog-priority-${lead.id}`} className="fv-row-sub">
+                  <span className={sla.className}>{sla.label}</span> {lead.name || lead.company_name || lead.id} • score op. {score}{' '}
+                  <button className="fv-ghost small" type="button" onClick={() => openLeadModal(lead)}>
+                    Ver
+                  </button>
                 </div>
               ))}
             </div>

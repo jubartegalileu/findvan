@@ -1,0 +1,1 @@
+../../../../.codex/agents/nano-banana-generator.md

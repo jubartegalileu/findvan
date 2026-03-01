@@ -62,4 +62,14 @@ Interprete os atalhos abaixo carregando o arquivo correspondente em `.aios-core/
 - `@ux-design-expert`, `/ux-design-expert`, `/ux-design-expert.md` -> `.aios-core/development/agents/ux-design-expert.md`
 - `@squad-creator`, `/squad-creator`, `/squad-creator.md` -> `.aios-core/development/agents/squad-creator.md`
 - `@aios-master`, `/aios-master`, `/aios-master.md` -> `.aios-core/development/agents/aios-master.md`
+
+### Design Squad Shortcuts
+- `@design-chief`, `/design-chief`, `/design-chief.md` -> `.codex/agents/design-chief.md`
+- `@brad-frost`, `/brad-frost`, `/brad-frost.md` -> `.codex/agents/brad-frost.md`
+- `@dan-mall`, `/dan-mall`, `/dan-mall.md` -> `.codex/agents/dan-mall.md`
+- `@dave-malouf`, `/dave-malouf`, `/dave-malouf.md` -> `.codex/agents/dave-malouf.md`
+- `@ds-foundations-lead`, `/ds-foundations-lead`, `/ds-foundations-lead.md` -> `.codex/agents/ds-foundations-lead.md`
+- `@ds-token-architect`, `/ds-token-architect`, `/ds-token-architect.md` -> `.codex/agents/ds-token-architect.md`
+- `@storybook-expert`, `/storybook-expert`, `/storybook-expert.md` -> `.codex/agents/storybook-expert.md`
+- `@nano-banana-generator`, `/nano-banana-generator`, `/nano-banana-generator.md` -> `.codex/agents/nano-banana-generator.md`
 <!-- AIOS-MANAGED-END: shortcuts -->

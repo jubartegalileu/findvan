@@ -21,6 +21,7 @@ const STATUS_EMOJI = {
   'Ready for Dev': '🚀',
   'In Progress': '⚙️',
   'Ready for Review': '👀',
+  'Done': '✅',
   'Completed': '✅',
   'On Hold': '⏸️',
   'Cancelled': '❌',
@@ -34,6 +35,10 @@ const PRIORITY_EMOJI = {
   'High': '🟠',
   'Medium': '🟡',
   'Low': '🟢',
+  'P0': '🔴',
+  'P1': '🟠',
+  'P2': '🟡',
+  'P3': '🟢',
 };
 
 /**
@@ -50,6 +55,22 @@ async function extractStoryMetadata(filePath) {
     const metadata = {
       filePath,
       fileName: path.basename(filePath),
+    };
+
+    const assignMetadata = (rawKey, rawValue) => {
+      const normalizedKey = rawKey.trim().replace(/:$/, '');
+      const key = normalizedKey.toLowerCase().replace(/\s+/g, '_');
+      const value = rawValue.trim().replace(/^`|`$/g, '');
+
+      if (key === 'story_id' || key === 'id') metadata.storyId = value;
+      if (key === 'title') metadata.title = value;
+      if (key === 'epic') metadata.epic = value;
+      if (key === 'status') metadata.status = value;
+      if (key === 'priority') metadata.priority = value;
+      if (key === 'owner' || key === 'assigned_to') metadata.owner = value;
+      if (key === 'estimate' || key === 'effort') metadata.estimate = value;
+      if (key === 'created') metadata.created = value;
+      if (key === 'updated') metadata.updated = value;
     };
 
     // Extract from YAML frontmatter or metadata section
@@ -77,22 +98,23 @@ async function extractStoryMetadata(filePath) {
 
       if (inYamlBlock || inMetadataSection) {
         // Extract key-value pairs
-        const match = line.match(/^[-*]?\s*\*?\*?([A-Za-z\s]+)\*?\*?:\s*(.+)$/);
+        const match = line.match(/^[-*]?\s*\*?\*?([A-Za-z0-9_\-.\s]+)\*?\*?:\s*(.+)$/);
         if (match) {
-          const key = match[1].trim().toLowerCase().replace(/\s+/g, '_');
-          const value = match[2].trim().replace(/^`|`$/g, '');
-
-          // Map to standard fields
-          if (key === 'story_id' || key === 'id') metadata.storyId = value;
-          if (key === 'title') metadata.title = value;
-          if (key === 'epic') metadata.epic = value;
-          if (key === 'status') metadata.status = value;
-          if (key === 'priority') metadata.priority = value;
-          if (key === 'owner' || key === 'assigned_to') metadata.owner = value;
-          if (key === 'estimate' || key === 'effort') metadata.estimate = value;
-          if (key === 'created') metadata.created = value;
-          if (key === 'updated') metadata.updated = value;
+          assignMetadata(match[1], match[2]);
         }
+      }
+
+      // Also support bold metadata fields commonly used at top of stories,
+      // e.g. "**Status:** Done" and "**Epic:** 1 (Module...)"
+      const boldMatch = line.match(/^\*\*([^*]+)\*\*:?\s*(.+)$/);
+      if (boldMatch) {
+        assignMetadata(boldMatch[1], boldMatch[2]);
+      }
+
+      // Support plain markdown list style: "- Status: Done"
+      const bulletMatch = line.match(/^[-*]\s*([A-Za-z\s]+):\s*(.+)$/);
+      if (bulletMatch) {
+        assignMetadata(bulletMatch[1], bulletMatch[2]);
       }
 
       // Stop after metadata section
@@ -109,7 +131,10 @@ async function extractStoryMetadata(filePath) {
 
     // Extract story ID from filename if not in metadata
     if (!metadata.storyId) {
-      const idMatch = metadata.fileName.match(/story-?([\d.]+)/i);
+      const idMatch =
+        metadata.fileName.match(/^(\d+(?:\.\d+)*)\.story\.md$/i) ||
+        metadata.fileName.match(/^story-?(\d+(?:\.\d+)*)/i) ||
+        metadata.fileName.match(/(\d+(?:\.\d+)+)/);
       if (idMatch) {
         metadata.storyId = idMatch[1];
       }
@@ -137,9 +162,20 @@ async function scanStoriesDirectory(dirPath, stories = []) {
       const fullPath = path.join(dirPath, entry.name);
 
       if (entry.isDirectory()) {
+        if (entry.name === 'reports' || entry.name === 'epics' || entry.name.startsWith('.')) {
+          continue;
+        }
         // Recursively scan subdirectories
         await scanStoriesDirectory(fullPath, stories);
-      } else if (entry.isFile() && entry.name.match(/\.md$/i)) {
+      } else if (
+        entry.isFile() &&
+        entry.name.match(/\.md$/i) &&
+        entry.name !== 'index.md' &&
+        (
+          entry.name.match(/\.story\.md$/i) ||
+          entry.name.match(/whatsapp-integration\.md$/i)
+        )
+      ) {
         // Process markdown files
         const metadata = await extractStoryMetadata(fullPath);
         if (metadata && metadata.storyId) {
@@ -199,13 +235,14 @@ function groupStoriesByEpic(stories) {
  */
 function generateStoryRow(story, baseDir = 'docs/stories') {
   const statusEmoji = STATUS_EMOJI[story.status] || '❓';
-  const priorityEmoji = story.priority ? PRIORITY_EMOJI[story.priority] : '';
+  const priorityEmoji = story.priority ? (PRIORITY_EMOJI[story.priority] || '') : '';
 
   // Create relative path for link
   const relativePath = path.relative(baseDir, story.filePath).replace(/\\/g, '/');
   const link = `[${story.title || story.fileName}](${relativePath})`;
 
-  return `| ${story.storyId} | ${link} | ${statusEmoji} ${story.status || 'Unknown'} | ${priorityEmoji} ${story.priority || 'N/A'} | ${story.owner || 'Unassigned'} | ${story.estimate || 'TBD'} |`;
+  const priorityCell = `${priorityEmoji} ${story.priority || 'N/A'}`.trim();
+  return `| ${story.storyId} | ${link} | ${statusEmoji} ${story.status || 'Unknown'} | ${priorityCell} | ${story.owner || 'Unassigned'} | ${story.estimate || 'TBD'} |`;
 }
 
 /**

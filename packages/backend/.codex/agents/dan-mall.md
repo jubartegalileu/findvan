@@ -1,0 +1,1 @@
+../../../../.codex/agents/dan-mall.md

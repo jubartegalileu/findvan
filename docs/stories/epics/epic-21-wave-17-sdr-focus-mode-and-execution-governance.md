@@ -1,7 +1,7 @@
 # Epic 21 — Wave 17 SDR Focus Mode and Execution Governance
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade pós-Wave 16)
-**Status:** Ready
+**Status:** Done
 **Prioridade:** P1 (Operação SDR)
 **Wave:** 17
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Consolidar governança de execução diária no workspace SDR com foco em reduç
 
 ## Definition of Done
 
-- [ ] Stories 21.1, 21.2 e 21.3 implementadas e aprovadas
-- [ ] Modo foco operacional funcional
-- [ ] Fila prioritária com governança operacional clara
-- [ ] Briefing diário acionável disponível
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 21.1, 21.2 e 21.3 implementadas e aprovadas
+- [x] Modo foco operacional funcional
+- [x] Fila prioritária com governança operacional clara
+- [x] Briefing diário acionável disponível
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

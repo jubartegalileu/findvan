@@ -5,6 +5,7 @@
  * Captures school transportation business leads from Google Maps
  */
 
+import { File } from 'node:buffer';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import logger from '../logger.js';
@@ -12,7 +13,10 @@ import { defaultScraperConfig, browserConfig, navigationOptions } from '../confi
 
 // Add stealth plugin to avoid detection
 puppeteer.use(StealthPlugin());
-import { parseGoogleMapsHTML, filterValidLeads } from './parser-v2.js';
+// Polyfill File for undici on Node 18
+if (!globalThis.File) {
+  globalThis.File = File;
+}
 import { normalizePhone, validateLead, cleanLead } from '../validators/lead-validator.js';
 import { deduplicateByPhone, countDuplicates } from '../validators/deduplicator.js';
 import { writeLeadsToJSON } from '../storage/json-writer.js';
@@ -84,38 +88,35 @@ async function scrapeGoogleMaps(options = {}) {
     await page.goto(mapsUrl, navigationOptions);
 
     // Wait for results to load
-    await page.waitForSelector('[role="button"][data-business-status]', {
+    await page.waitForSelector('a[href*="/maps/place/"], [role="feed"], [role="main"]', {
       timeout: 10000
     }).catch(() => {
       logger.warn('⚠️ Could not find exact selector, trying alternatives');
     });
 
     // Scroll to load more results
-    let previousHeight = 0;
+    let previousSignature = '';
+    let stagnantRounds = 0;
     let scrollCount = 0;
-    const maxScrolls = 5;
+    const maxScrolls = Math.max(30, Math.ceil(maxResults / 3));
 
     logger.info('📜 Scrolling to load results');
 
     while (scrollCount < maxScrolls && leads.length < maxResults) {
-      // Scroll down in results panel
-      const scrollHeight = await page.evaluate(
-        () => document.querySelector('[role="region"][aria-label*="Result"]')?.scrollHeight || 0
-      );
+      const panelMetricsBefore = await page.evaluate(() => {
+        const panel =
+          document.querySelector('[role="feed"]') ||
+          document.querySelector('[role="region"][aria-label*="Result"]') ||
+          document.querySelector('div[role="main"]');
+        if (!panel) return null;
+        return {
+          top: panel.scrollTop || 0,
+          height: panel.scrollHeight || 0,
+          client: panel.clientHeight || 0,
+        };
+      });
+      if (!panelMetricsBefore) break;
 
-      if (scrollHeight === previousHeight && scrollCount > 0) {
-        logger.info('✓ Reached end of results list');
-        break;
-      }
-
-      await page.evaluate(
-        () => {
-          const resultsPanel = document.querySelector('[role="region"][aria-label*="Result"]');
-          if (resultsPanel) resultsPanel.scrollBy(0, 500);
-        }
-      );
-
-      previousHeight = scrollHeight;
       scrollCount++;
 
       // Wait between scrolls
@@ -124,16 +125,21 @@ async function scrapeGoogleMaps(options = {}) {
       // Extract currently visible leads using page.evaluate()
       const newLeads = await page.evaluate((city) => {
         const leads = [];
-        const businessElements = document.querySelectorAll('[role="button"][jsaction*="click"]');
+        const placeLinks = document.querySelectorAll('a[href*="/maps/place/"]');
 
-        businessElements.forEach((el) => {
+        placeLinks.forEach((link) => {
           try {
-            // Extract text content
-            const text = el.innerText || '';
+            const card =
+              link.closest('div[role="article"]') ||
+              link.closest('.Nv2PK') ||
+              link.closest('div[jsaction*="mouseover"]') ||
+              link.parentElement;
+
+            const text = (card?.innerText || link.innerText || '').trim();
             const lines = text.split('\n');
 
-            // First line is usually the name
-            const name = lines[0]?.trim() || '';
+            // Name from aria-label usually works better than generic first line.
+            const name = (link.getAttribute('aria-label') || lines[0] || '').trim();
             if (!name || name.length < 2) return;
 
             // Look for phone in text or attributes
@@ -141,8 +147,8 @@ async function scrapeGoogleMaps(options = {}) {
             let email = '';
             let address = '';
 
-            // Check all lines for phone pattern (11 digits)
-            const phoneMatch = text.match(/\(?(\d{2})\)?\s?(\d{4,5})-?(\d{4})/);
+            // BR phone patterns with optional +55
+            const phoneMatch = text.match(/(?:\+?55\s?)?\(?\d{2}\)?\s?\d{4,5}-?\d{4}/);
             if (phoneMatch) {
               phone = phoneMatch[0].replace(/\D/g, '');
             }
@@ -153,8 +159,13 @@ async function scrapeGoogleMaps(options = {}) {
               email = emailMatch[0];
             }
 
-            // Address is often on line 2-3
-            if (lines.length > 1) {
+            // Address heuristic from lines mentioning street markers.
+            const addressLine = lines.find((line) =>
+              /(rua|r\.|avenida|av\.|estrada|rodovia|travessa|alameda)/i.test(line)
+            );
+            if (addressLine) {
+              address = addressLine.trim();
+            } else if (lines.length > 1) {
               address = lines.slice(1, 3).join(' ').trim();
             }
 
@@ -166,7 +177,7 @@ async function scrapeGoogleMaps(options = {}) {
                 email: email || null,
                 address: address || '',
                 city: city,
-                url: el.getAttribute('href') || null
+                url: link.href || null
               });
             }
           } catch (e) {
@@ -177,9 +188,16 @@ async function scrapeGoogleMaps(options = {}) {
         return leads;
       }, city);
 
+      let addedThisRound = 0;
       // Add new leads (avoid duplicates from same fetch)
       for (const lead of newLeads) {
-        const exists = leads.some(l => l.phone === lead.phone && lead.phone);
+        const exists = leads.some((l) => {
+          if (lead.phone && l.phone) return l.phone === lead.phone;
+          return (
+            l.name?.toLowerCase() === lead.name?.toLowerCase() &&
+            (l.address || '').toLowerCase() === (lead.address || '').toLowerCase()
+          );
+        });
         if (!exists && leads.length < maxResults) {
           leads.push({
             id: `gm_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -191,10 +209,45 @@ async function scrapeGoogleMaps(options = {}) {
             is_valid: false,
             is_duplicate: false
           });
+          addedThisRound++;
           if (leads.length % 10 === 0) {
             logger.info(`✓ Extracted ${leads.length} leads so far`);
           }
         }
+      }
+
+      await page.evaluate(() => {
+        const resultsPanel =
+          document.querySelector('[role="feed"]') ||
+          document.querySelector('[role="region"][aria-label*="Result"]') ||
+          document.querySelector('div[role="main"]');
+        if (resultsPanel) {
+          const jump = Math.max(resultsPanel.clientHeight || 700, 700);
+          resultsPanel.scrollBy(0, jump);
+        }
+      });
+
+      const panelMetricsAfter = await page.evaluate(() => {
+        const panel =
+          document.querySelector('[role="feed"]') ||
+          document.querySelector('[role="region"][aria-label*="Result"]') ||
+          document.querySelector('div[role="main"]');
+        if (!panel) return null;
+        return {
+          top: panel.scrollTop || 0,
+          height: panel.scrollHeight || 0,
+        };
+      });
+      const signature = `${panelMetricsAfter?.top || 0}:${panelMetricsAfter?.height || 0}`;
+      if (signature === previousSignature && addedThisRound === 0) {
+        stagnantRounds++;
+      } else {
+        stagnantRounds = 0;
+      }
+      previousSignature = signature;
+      if (stagnantRounds >= 4) {
+        logger.info('✓ Reached end of results list (stagnant scroll)');
+        break;
       }
     }
 

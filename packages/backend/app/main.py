@@ -8,6 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import logging
 from pathlib import Path
+from .db import ensure_schema
+from .api import leads as leads_api
+from .api import scraper as scraper_api
+from .api import dashboard as dashboard_api
+from .api import activity as activity_api
+from .api import integrations as integrations_api
+from .services.retention_jobs_service import get_retention_job_status, start_retention_job
 
 # Configure logging
 logging.basicConfig(
@@ -45,10 +52,16 @@ app.add_middleware(
 @app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring"""
+    retention = get_retention_job_status()
     return {
         "status": "healthy",
         "service": "findvan-backend",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "retention_job": {
+            "enabled": retention.get("enabled", False),
+            "running": retention.get("running", False),
+            "last_success_at": retention.get("last_success_at"),
+        },
     }
 
 
@@ -65,15 +78,13 @@ async def root():
 
 
 # ============================================================
-# API Routes (Placeholder)
+# API Routes
 # ============================================================
-# TODO: Import and include routers when implemented
-
-# from .api import leads, scrapers, conversations, auth
-# app.include_router(leads.router, prefix="/api/leads", tags=["leads"])
-# app.include_router(scrapers.router, prefix="/api/scraper", tags=["scraper"])
-# app.include_router(conversations.router, prefix="/api/conversations", tags=["conversations"])
-# app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(leads_api.router, prefix="/api/leads", tags=["leads"])
+app.include_router(scraper_api.router, prefix="/api/scraper", tags=["scraper"])
+app.include_router(dashboard_api.router, prefix="/api/dashboard", tags=["dashboard"])
+app.include_router(activity_api.router, prefix="/api/activity", tags=["activity"])
+app.include_router(integrations_api.router, prefix="/api/integrations", tags=["integrations"])
 
 
 # ============================================================
@@ -83,9 +94,14 @@ async def root():
 async def startup_event():
     """Initialize on startup"""
     logger.info("🚀 FindVan Backend starting...")
-    # TODO: Initialize database connection
-    # TODO: Initialize Redis connection
-    # TODO: Initialize Celery worker
+    ensure_schema()
+    retention_status = start_retention_job()
+    logger.info(
+        "♻️ Retention job enabled=%s running=%s interval=%ss",
+        retention_status.get("enabled"),
+        retention_status.get("running"),
+        retention_status.get("interval_seconds"),
+    )
     logger.info("✅ Backend ready")
 
 

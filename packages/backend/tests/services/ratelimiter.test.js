@@ -26,17 +26,16 @@ test('RateLimiter - Token Bucket Algorithm', async (t) => {
     assert.equal(limiter3.isAllowed('user4', 4), false); // user4: only 3 tokens = FAIL
   });
 
-  await t.test('refills tokens after time passes', (t) => {
-    return new Promise((resolve) => {
-      const limiter4 = createCampaignRateLimiter(2); // 2 tokens per minute
-      assert.ok(limiter4.isAllowed('user5', 2)); // Use all
-      assert.equal(limiter4.isAllowed('user5', 1), false); // Deny
+  await t.test('refills tokens after time passes', () => {
+    const limiter4 = createCampaignRateLimiter(2); // 2 tokens per minute
+    assert.ok(limiter4.isAllowed('user5', 2)); // Use all
+    assert.equal(limiter4.isAllowed('user5', 1), false); // Deny
 
-      setTimeout(() => {
-        assert.ok(limiter4.isAllowed('user5', 1)); // After refill, allow
-        resolve();
-      }, 150);
-    });
+    // Simulate 30s elapsed (enough to refill 1 token at 2/minute)
+    const bucket = limiter4.buckets.get('user5');
+    bucket.lastRefill -= 30000;
+
+    assert.ok(limiter4.isAllowed('user5', 1)); // After refill, allow
   });
 
   await t.test('getTokens returns current token count', () => {

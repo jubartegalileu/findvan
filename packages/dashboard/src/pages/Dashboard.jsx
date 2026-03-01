@@ -747,7 +747,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         </div>
       </section>
 
-      <section className="fv-panel fv-scraper-section">
+      <section className="fv-panel fv-scraper-section fv-dashboard-slo-panel">
         <div className="fv-panel-header">
           <h2 className="fv-icon-label">
             <Icon name="activity" />
@@ -1114,7 +1114,7 @@ export default function Dashboard({ onNavigate, activePath }) {
         )}
       </section>
 
-      <section className="fv-columns">
+      <section className="fv-columns fv-dashboard-bottom-row">
         <div className="fv-panel">
           <div className="fv-panel-header">
             <h2 className="fv-icon-label">

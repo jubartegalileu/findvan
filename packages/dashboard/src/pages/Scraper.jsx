@@ -53,7 +53,6 @@ export default function Scraper({ onNavigate, activePath }) {
   const [scheduleFrequency, setScheduleFrequency] = useState('daily');
   const [scheduleDayOfWeek, setScheduleDayOfWeek] = useState(1);
   const [scheduleExecutionTime, setScheduleExecutionTime] = useState('09:00');
-  const [scheduleActive, setScheduleActive] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleMessage, setScheduleMessage] = useState('');
   const [coverageData, setCoverageData] = useState({
@@ -392,7 +391,6 @@ export default function Scraper({ onNavigate, activePath }) {
     setScheduleFrequency('daily');
     setScheduleDayOfWeek(1);
     setScheduleExecutionTime('09:00');
-    setScheduleActive(true);
   };
 
   const handleCreateSchedule = async () => {
@@ -416,7 +414,7 @@ export default function Scraper({ onNavigate, activePath }) {
           frequency: scheduleFrequency,
           day_of_week: scheduleFrequency === 'weekly' ? Number(scheduleDayOfWeek) : null,
           execution_time: scheduleExecutionTime,
-          is_active: scheduleActive,
+          is_active: true,
         }),
       });
       const payload = await response.json();
@@ -708,9 +706,9 @@ export default function Scraper({ onNavigate, activePath }) {
           <h2>Agendamentos</h2>
           <span className="fv-row-sub">{schedules.filter((item) => item.is_active).length}/5 ativos</span>
         </div>
-        <div className="fv-inline-form">
+        <div className="fv-inline-form fv-schedule-form">
           <select
-            className="fv-input fv-input-state fv-select"
+            className="fv-input fv-input-state fv-select fv-schedule-state"
             value={scheduleState}
             onChange={(event) => {
               setScheduleState(event.target.value);
@@ -725,7 +723,7 @@ export default function Scraper({ onNavigate, activePath }) {
             ))}
           </select>
           <input
-            className="fv-input"
+            className="fv-input fv-schedule-city"
             placeholder="Cidade (opcional)"
             value={scheduleCity}
             onChange={(event) => setScheduleCity(event.target.value)}
@@ -738,13 +736,13 @@ export default function Scraper({ onNavigate, activePath }) {
             ))}
           </datalist>
           <input
-            className="fv-input"
+            className="fv-input fv-schedule-keywords"
             placeholder="Keywords (vírgula)"
             value={scheduleKeywords}
             onChange={(event) => setScheduleKeywords(event.target.value)}
           />
           <input
-            className="fv-input fv-input-number"
+            className="fv-input fv-input-number fv-schedule-quantity"
             type="number"
             min={1}
             max={999}
@@ -752,7 +750,7 @@ export default function Scraper({ onNavigate, activePath }) {
             onChange={(event) => setScheduleQuantity(Number(event.target.value || 50))}
           />
           <select
-            className="fv-input fv-select"
+            className="fv-input fv-select fv-schedule-frequency"
             value={scheduleFrequency}
             onChange={(event) => setScheduleFrequency(event.target.value)}
           >
@@ -762,7 +760,7 @@ export default function Scraper({ onNavigate, activePath }) {
           </select>
           {scheduleFrequency === 'weekly' && (
             <select
-              className="fv-input fv-select"
+              className="fv-input fv-select fv-schedule-weekday"
               value={scheduleDayOfWeek}
               onChange={(event) => setScheduleDayOfWeek(Number(event.target.value))}
             >
@@ -776,20 +774,17 @@ export default function Scraper({ onNavigate, activePath }) {
             </select>
           )}
           <input
-            className="fv-input"
+            className="fv-input fv-schedule-time"
             type="time"
             value={scheduleExecutionTime}
             onChange={(event) => setScheduleExecutionTime(event.target.value)}
           />
-          <label className="fv-funnel-check">
-            <input
-              type="checkbox"
-              checked={scheduleActive}
-              onChange={(event) => setScheduleActive(event.target.checked)}
-            />
-            Ativo
-          </label>
-          <button className="fv-primary" type="button" onClick={handleCreateSchedule} disabled={scheduleLoading}>
+          <button
+            className="fv-primary fv-schedule-submit"
+            type="button"
+            onClick={handleCreateSchedule}
+            disabled={scheduleLoading}
+          >
             Criar agendamento
           </button>
         </div>

@@ -99,6 +99,9 @@ const normalizeExecutionVariant = (rawValue) => {
   };
 };
 
+const getExecutionVariantLabel = (value) =>
+  executionVariantOptions.find((option) => option.value === value)?.label || value || 'Controle';
+
 const getProspectClass = (value) =>
   prospectStatusOptions.find((option) => option.value === value)?.className || 'nao-contatado';
 
@@ -909,6 +912,74 @@ export default function Leads({ onNavigate, activePath }) {
         }
         return b.total - a.total;
       })
+      .slice(0, 3);
+
+    return {
+      byStage,
+      priority,
+    };
+  }, [scopedExecutionOutcomes]);
+
+  const variantEfficiencySignals = useMemo(() => {
+    const byStage = funnelStatusOptions.map((status) => {
+      const scoped = scopedExecutionOutcomes.filter((item) => item.stage === status.value);
+      const grouped = scoped.reduce((acc, item) => {
+        const key = item.variant || 'control';
+        if (!acc[key]) {
+          acc[key] = {
+            variant: key,
+            label: item.variant_label || getExecutionVariantLabel(key),
+            total: 0,
+            success: 0,
+            no_response: 0,
+            reschedule: 0,
+            lost: 0,
+          };
+        }
+        acc[key].total += 1;
+        if (acc[key][item.outcome] !== undefined) acc[key][item.outcome] += 1;
+        return acc;
+      }, {});
+
+      const variants = Object.values(grouped)
+        .map((item) => {
+          const successRate = item.total ? Math.round((item.success / item.total) * 100) : 0;
+          const lostRate = item.total ? Math.round((item.lost / item.total) * 100) : 0;
+          let severity = 'low';
+          if (successRate < 30 || lostRate >= 35) severity = 'critical';
+          else if (successRate < 45) severity = 'high';
+          else if (successRate < 60) severity = 'medium';
+          return {
+            ...item,
+            successRate,
+            lostRate,
+            sampleLabel: item.total >= 10 ? 'Amostra robusta' : item.total >= 5 ? 'Amostra moderada' : 'Amostra baixa',
+            severity,
+          };
+        })
+        .sort((a, b) => {
+          if (b.successRate !== a.successRate) return b.successRate - a.successRate;
+          return b.total - a.total;
+        });
+
+      const best = variants[0] || null;
+      const worst = variants.length > 1 ? variants[variants.length - 1] : null;
+      const spread = best && worst ? best.successRate - worst.successRate : 0;
+
+      return {
+        stage: status.value,
+        label: status.label,
+        total: scoped.length,
+        variants,
+        best,
+        worst,
+        spread,
+      };
+    });
+
+    const priority = byStage
+      .filter((item) => item.total > 0 && item.variants.length > 1)
+      .sort((a, b) => b.spread - a.spread)
       .slice(0, 3);
 
     return {
@@ -2425,6 +2496,44 @@ export default function Leads({ onNavigate, activePath }) {
                   >
                     Focar estágio
                   </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Comparativo por variante</div>
+              {variantEfficiencySignals.byStage
+                .filter((stage) => stage.total > 0)
+                .map((stage) => (
+                  <div key={`variant-stage-${stage.stage}`} className="fv-row-sub">
+                    <strong>{stage.label}</strong> • amostra {stage.total}
+                    {stage.best && (
+                      <span>
+                        {' '}
+                        • melhor: {stage.best.label} ({stage.best.successRate}%)
+                      </span>
+                    )}
+                    {stage.worst && (
+                      <span>
+                        {' '}
+                        • pior: {stage.worst.label} ({stage.worst.successRate}%)
+                      </span>
+                    )}
+                    {stage.variants.map((item) => (
+                      <div key={`variant-row-${stage.stage}-${item.variant}`} className="fv-row-sub">
+                        <span className={`fv-alert-pill fv-alert-${item.severity}`}>{item.label}</span> sucesso {item.successRate}% •
+                        perdido {item.lostRate}% • amostra {item.total} ({item.sampleLabel})
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              {variantEfficiencySignals.byStage.every((stage) => stage.total === 0) && (
+                <div className="fv-row-sub">Sem dados de variante no contexto atual.</div>
+              )}
+              {variantEfficiencySignals.priority.map((stage) => (
+                <div key={`variant-priority-${stage.stage}`} className="fv-row-sub">
+                  <span className="fv-alert-pill fv-alert-high">Gap relevante</span> {stage.label} com diferença de {stage.spread}% entre
+                  variantes.
                 </div>
               ))}
             </div>

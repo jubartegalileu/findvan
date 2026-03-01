@@ -1,0 +1,528 @@
+from __future__ import annotations
+
+from copy import deepcopy
+from datetime import datetime, timezone
+import json
+import threading
+
+from ..db import get_connection
+
+
+DEFAULT_THRESHOLDS = {
+    "delivery_rate_critical_lt": 70,
+    "delivery_rate_high_lt": 80,
+    "delivery_rate_medium_lt": 90,
+    "failure_rate_critical_gte": 20,
+    "failure_rate_high_gte": 10,
+    "failure_rate_medium_gte": 5,
+    "reply_rate_medium_lt": 5,
+    "latency_critical_gt_min": 120,
+    "latency_high_gt_min": 60,
+    "block_rate_critical_gt": 5,
+    "block_rate_high_gt": 3,
+}
+
+STATE_KEY = "global"
+GOVERNANCE_SUGGESTION_MODEL_VERSION = "1.0.0"
+VALID_DECISIONS = {"accepted", "rejected", "deferred"}
+
+_lock = threading.Lock()
+_active_thresholds = deepcopy(DEFAULT_THRESHOLDS)
+_history: list[dict] = []
+_suggestions: list[dict] = []
+_decision_log: list[dict] = []
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(tz=timezone.utc).isoformat()
+
+
+def _sync_from_db() -> None:
+    state_query = """
+        SELECT thresholds
+        FROM metrics_governance_state
+        WHERE state_key = %s
+        LIMIT 1;
+    """
+    history_query = """
+        SELECT audit_id, author, created_at, diffs, source
+        FROM metrics_governance_audit
+        WHERE state_key = %s
+        ORDER BY created_at DESC, id DESC
+        LIMIT 200;
+    """
+    suggestions_query = """
+        SELECT
+          suggestion_id,
+          component,
+          model_version,
+          generated_at,
+          rationale,
+          expected_impact,
+          recommendation,
+          proposed_thresholds,
+          diffs,
+          status,
+          decided_at,
+          decided_by,
+          decision_reason
+        FROM metrics_governance_suggestions
+        WHERE state_key = %s
+        ORDER BY generated_at DESC, id DESC
+        LIMIT 200;
+    """
+    decisions_query = """
+        SELECT
+          decision_id,
+          suggestion_id,
+          decision,
+          author,
+          reason,
+          proposed_diffs,
+          created_at
+        FROM metrics_governance_decisions
+        WHERE state_key = %s
+        ORDER BY created_at DESC, id DESC
+        LIMIT 500;
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(state_query, (STATE_KEY,))
+                state_row = cur.fetchone()
+                cur.execute(history_query, (STATE_KEY,))
+                history_rows = cur.fetchall()
+                cur.execute(suggestions_query, (STATE_KEY,))
+                suggestion_rows = cur.fetchall()
+                cur.execute(decisions_query, (STATE_KEY,))
+                decision_rows = cur.fetchall()
+    except Exception:
+        return
+
+    with _lock:
+        if state_row and isinstance(state_row[0], dict):
+            _active_thresholds.update({**DEFAULT_THRESHOLDS, **state_row[0]})
+        if history_rows:
+            normalized = []
+            for row in history_rows:
+                diffs = row[3] if isinstance(row[3], list) else []
+                normalized.append(
+                    {
+                        "id": row[0],
+                        "timestamp": row[2].isoformat() if hasattr(row[2], "isoformat") else _utcnow_iso(),
+                        "author": row[1],
+                        "source": row[4] or "dashboard",
+                        "diffs": diffs,
+                    }
+                )
+            _history[:] = normalized
+        if suggestion_rows:
+            normalized_suggestions = []
+            for row in suggestion_rows:
+                normalized_suggestions.append(
+                    {
+                        "id": row[0],
+                        "component": row[1] or "global",
+                        "model_version": row[2] or GOVERNANCE_SUGGESTION_MODEL_VERSION,
+                        "generated_at": row[3].isoformat() if hasattr(row[3], "isoformat") else _utcnow_iso(),
+                        "rationale": row[4] or "",
+                        "expected_impact": row[5] or "",
+                        "recommendation": row[6] or "",
+                        "proposed_thresholds": row[7] if isinstance(row[7], dict) else {},
+                        "diffs": row[8] if isinstance(row[8], list) else [],
+                        "status": row[9] or "pending",
+                        "decided_at": row[10].isoformat() if hasattr(row[10], "isoformat") and row[10] else None,
+                        "decided_by": row[11],
+                        "decision_reason": row[12],
+                    }
+                )
+            _suggestions[:] = normalized_suggestions
+        if decision_rows:
+            normalized_decisions = []
+            for row in decision_rows:
+                normalized_decisions.append(
+                    {
+                        "id": row[0],
+                        "suggestion_id": row[1],
+                        "decision": row[2],
+                        "author": row[3],
+                        "reason": row[4],
+                        "proposed_diffs": row[5] if isinstance(row[5], list) else [],
+                        "timestamp": row[6].isoformat() if hasattr(row[6], "isoformat") else _utcnow_iso(),
+                    }
+                )
+            _decision_log[:] = normalized_decisions
+
+
+def _persist_state(thresholds: dict, audit: dict | None = None) -> None:
+    upsert_state_query = """
+        INSERT INTO metrics_governance_state (state_key, thresholds, updated_at)
+        VALUES (%s, %s::jsonb, NOW())
+        ON CONFLICT (state_key) DO UPDATE
+        SET thresholds = EXCLUDED.thresholds,
+            updated_at = NOW();
+    """
+    insert_audit_query = """
+        INSERT INTO metrics_governance_audit (state_key, audit_id, author, source, created_at, diffs)
+        VALUES (%s, %s, %s, %s, %s, %s::jsonb);
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(upsert_state_query, (STATE_KEY, json.dumps(thresholds)))
+            if audit:
+                cur.execute(
+                    insert_audit_query,
+                    (
+                        STATE_KEY,
+                        audit.get("id"),
+                        audit.get("author") or "system",
+                        audit.get("source") or "dashboard",
+                        audit.get("timestamp"),
+                        json.dumps(audit.get("diffs") or []),
+                    ),
+                )
+        conn.commit()
+
+
+def _persist_suggestion(suggestion: dict) -> None:
+    query = """
+        INSERT INTO metrics_governance_suggestions (
+          state_key, suggestion_id, component, model_version, generated_at, rationale,
+          expected_impact, recommendation, proposed_thresholds, diffs, status
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
+        ON CONFLICT (suggestion_id) DO NOTHING;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    STATE_KEY,
+                    suggestion["id"],
+                    suggestion.get("component") or "global",
+                    suggestion.get("model_version") or GOVERNANCE_SUGGESTION_MODEL_VERSION,
+                    suggestion.get("generated_at") or _utcnow_iso(),
+                    suggestion.get("rationale") or "",
+                    suggestion.get("expected_impact") or "",
+                    suggestion.get("recommendation") or "",
+                    json.dumps(suggestion.get("proposed_thresholds") or {}),
+                    json.dumps(suggestion.get("diffs") or []),
+                    suggestion.get("status") or "pending",
+                ),
+            )
+        conn.commit()
+
+
+def _persist_suggestion_decision(suggestion_id: str, status: str, decided_by: str, decision_reason: str | None) -> None:
+    query = """
+        UPDATE metrics_governance_suggestions
+        SET status = %s,
+            decided_at = NOW(),
+            decided_by = %s,
+            decision_reason = %s
+        WHERE state_key = %s AND suggestion_id = %s;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (status, decided_by, decision_reason, STATE_KEY, suggestion_id))
+        conn.commit()
+
+
+def _persist_decision(decision_entry: dict) -> None:
+    query = """
+        INSERT INTO metrics_governance_decisions (
+          state_key, decision_id, suggestion_id, decision, author, reason, proposed_diffs, created_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+        ON CONFLICT (decision_id) DO NOTHING;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    STATE_KEY,
+                    decision_entry["id"],
+                    decision_entry["suggestion_id"],
+                    decision_entry["decision"],
+                    decision_entry["author"],
+                    decision_entry.get("reason"),
+                    json.dumps(decision_entry.get("proposed_diffs") or []),
+                    decision_entry.get("timestamp") or _utcnow_iso(),
+                ),
+            )
+        conn.commit()
+
+
+def get_active_thresholds() -> dict:
+    _sync_from_db()
+    with _lock:
+        return deepcopy(_active_thresholds)
+
+
+def get_threshold_history(limit: int = 20) -> list[dict]:
+    _sync_from_db()
+    capped = max(1, min(limit, 100))
+    with _lock:
+        return deepcopy(_history[:capped])
+
+
+def update_thresholds(changes: dict, author: str = "system", source: str = "dashboard") -> dict:
+    normalized_changes = {}
+    for key, value in (changes or {}).items():
+        if key not in DEFAULT_THRESHOLDS:
+            continue
+        try:
+            normalized_changes[key] = float(value)
+        except Exception:
+            continue
+
+    if not normalized_changes:
+        return {"updated": False, "thresholds": get_active_thresholds(), "audit": None}
+
+    with _lock:
+        before = deepcopy(_active_thresholds)
+        for key, value in normalized_changes.items():
+            _active_thresholds[key] = value
+        after = deepcopy(_active_thresholds)
+
+        diffs = []
+        for key, new_value in normalized_changes.items():
+            old_value = before.get(key)
+            if old_value != new_value:
+                diffs.append({"key": key, "from": old_value, "to": new_value})
+
+        audit = {
+            "id": f"threshold-audit-{int(datetime.now(tz=timezone.utc).timestamp() * 1000)}",
+            "timestamp": _utcnow_iso(),
+            "author": author,
+            "source": source,
+            "diffs": diffs,
+        }
+        _history.insert(0, audit)
+        _history[:] = _history[:200]
+
+    try:
+        _persist_state(after, audit=audit)
+    except Exception:
+        pass
+    return {"updated": True, "thresholds": after, "audit": audit}
+
+
+def build_threshold_suggestions(
+    alerting_metrics: dict | None = None,
+    retention_metrics: dict | None = None,
+    incidents: list[dict] | None = None,
+    limit: int = 5,
+) -> list[dict]:
+    _sync_from_db()
+    alerting = alerting_metrics or {}
+    retention = retention_metrics or {}
+    incident_rows = incidents or []
+    now_iso = _utcnow_iso()
+    current = get_active_thresholds()
+    generated: list[dict] = []
+    max_items = max(1, min(limit, 20))
+
+    fallback_count = int(alerting.get("fallback_count") or 0)
+    suppressed_count = int(alerting.get("suppressed_count") or 0)
+    if fallback_count + suppressed_count >= 4:
+        proposed = {"delivery_rate_critical_lt": max(55, float(current["delivery_rate_critical_lt"]) - 2)}
+        generated.append(
+            {
+                "id": f"sugg-delivery-{int(datetime.now(tz=timezone.utc).timestamp() * 1000)}",
+                "component": "alerting",
+                "model_version": GOVERNANCE_SUGGESTION_MODEL_VERSION,
+                "generated_at": now_iso,
+                "rationale": f"Fallbacks ({fallback_count}) + suppressions ({suppressed_count}) acima da janela operacional.",
+                "expected_impact": "Reduzir falso negativo para degradações de entrega.",
+                "recommendation": "Ajustar o limiar crítico de entrega para aumentar sensibilidade.",
+                "proposed_thresholds": proposed,
+                "diffs": [
+                    {
+                        "key": "delivery_rate_critical_lt",
+                        "from": current["delivery_rate_critical_lt"],
+                        "to": proposed["delivery_rate_critical_lt"],
+                    }
+                ],
+                "status": "pending",
+                "decided_at": None,
+                "decided_by": None,
+                "decision_reason": None,
+            }
+        )
+
+    fail_count = int(retention.get("fail_count") or 0)
+    retention_incidents = sum(1 for item in incident_rows if (item or {}).get("source") == "retention")
+    if fail_count + retention_incidents >= 3:
+        proposed = {"failure_rate_high_gte": max(6, float(current["failure_rate_high_gte"]) - 1)}
+        generated.append(
+            {
+                "id": f"sugg-failure-{int(datetime.now(tz=timezone.utc).timestamp() * 1000) + 1}",
+                "component": "retention",
+                "model_version": GOVERNANCE_SUGGESTION_MODEL_VERSION,
+                "generated_at": now_iso,
+                "rationale": f"Falhas de retenção ({fail_count}) e incidentes ({retention_incidents}) acima do baseline.",
+                "expected_impact": "Acelerar reação para degradação recorrente de retenção.",
+                "recommendation": "Antecipar escalonamento de severidade para taxa de falha.",
+                "proposed_thresholds": proposed,
+                "diffs": [
+                    {
+                        "key": "failure_rate_high_gte",
+                        "from": current["failure_rate_high_gte"],
+                        "to": proposed["failure_rate_high_gte"],
+                    }
+                ],
+                "status": "pending",
+                "decided_at": None,
+                "decided_by": None,
+                "decision_reason": None,
+            }
+        )
+
+    blocked_incidents = sum(1 for item in incident_rows if (item or {}).get("event_type") == "message_block_spike")
+    if blocked_incidents >= 2:
+        proposed = {"block_rate_high_gt": max(1, float(current["block_rate_high_gt"]) - 0.5)}
+        generated.append(
+            {
+                "id": f"sugg-block-{int(datetime.now(tz=timezone.utc).timestamp() * 1000) + 2}",
+                "component": "messaging",
+                "model_version": GOVERNANCE_SUGGESTION_MODEL_VERSION,
+                "generated_at": now_iso,
+                "rationale": f"Incidentes de bloqueio ({blocked_incidents}) recorrentes na janela recente.",
+                "expected_impact": "Disparar contenção mais cedo em risco de bloqueio.",
+                "recommendation": "Endurecer limiar alto de block rate até estabilização.",
+                "proposed_thresholds": proposed,
+                "diffs": [
+                    {
+                        "key": "block_rate_high_gt",
+                        "from": current["block_rate_high_gt"],
+                        "to": proposed["block_rate_high_gt"],
+                    }
+                ],
+                "status": "pending",
+                "decided_at": None,
+                "decided_by": None,
+                "decision_reason": None,
+            }
+        )
+
+    if not generated:
+        return list_threshold_suggestions(limit=max_items, offset=0)
+
+    with _lock:
+        known_ids = {item["id"] for item in _suggestions}
+        known_pending_signatures = {
+            f"{item.get('component')}::{json.dumps(item.get('proposed_thresholds') or {}, sort_keys=True)}"
+            for item in _suggestions
+            if item.get("status") == "pending"
+        }
+        for suggestion in generated:
+            signature = f"{suggestion.get('component')}::{json.dumps(suggestion.get('proposed_thresholds') or {}, sort_keys=True)}"
+            if suggestion["id"] in known_ids:
+                continue
+            if signature in known_pending_signatures:
+                continue
+            _suggestions.insert(0, suggestion)
+            _suggestions[:] = _suggestions[:200]
+            known_pending_signatures.add(signature)
+            try:
+                _persist_suggestion(suggestion)
+            except Exception:
+                pass
+    return list_threshold_suggestions(limit=max_items, offset=0)
+
+
+def list_threshold_suggestions(limit: int = 20, offset: int = 0) -> list[dict]:
+    _sync_from_db()
+    capped_limit = max(1, min(limit, 100))
+    safe_offset = max(0, offset)
+    with _lock:
+        return deepcopy(_suggestions[safe_offset : safe_offset + capped_limit])
+
+
+def register_threshold_decision(
+    suggestion_id: str,
+    decision: str,
+    author: str = "system",
+    reason: str | None = None,
+) -> dict:
+    normalized_decision = (decision or "").strip().lower()
+    if normalized_decision not in VALID_DECISIONS:
+        return {"updated": False, "error": "invalid_decision"}
+
+    _sync_from_db()
+    with _lock:
+        suggestion = next((item for item in _suggestions if item["id"] == suggestion_id), None)
+        if suggestion is None:
+            return {"updated": False, "error": "suggestion_not_found"}
+
+        timestamp = _utcnow_iso()
+        decision_entry = {
+            "id": f"gov-decision-{int(datetime.now(tz=timezone.utc).timestamp() * 1000)}",
+            "suggestion_id": suggestion_id,
+            "decision": normalized_decision,
+            "author": author or "system",
+            "reason": reason,
+            "proposed_diffs": deepcopy(suggestion.get("diffs") or []),
+            "timestamp": timestamp,
+        }
+
+        suggestion["status"] = normalized_decision
+        suggestion["decided_at"] = timestamp
+        suggestion["decided_by"] = author or "system"
+        suggestion["decision_reason"] = reason
+        _decision_log.insert(0, decision_entry)
+        _decision_log[:] = _decision_log[:500]
+
+    threshold_result = None
+    if normalized_decision == "accepted":
+        threshold_result = update_thresholds(
+            suggestion.get("proposed_thresholds") or {},
+            author=author or "system",
+            source="governance-suggestion",
+        )
+
+    try:
+        _persist_decision(decision_entry)
+    except Exception:
+        pass
+    try:
+        _persist_suggestion_decision(suggestion_id, normalized_decision, author or "system", reason)
+    except Exception:
+        pass
+
+    return {
+        "updated": True,
+        "decision": decision_entry,
+        "suggestion": deepcopy(suggestion),
+        "threshold_result": threshold_result,
+    }
+
+
+def get_threshold_decisions(limit: int = 20, offset: int = 0) -> list[dict]:
+    _sync_from_db()
+    capped_limit = max(1, min(limit, 100))
+    safe_offset = max(0, offset)
+    with _lock:
+        return deepcopy(_decision_log[safe_offset : safe_offset + capped_limit])
+
+
+def clear_metrics_governance_state() -> None:
+    with _lock:
+        _active_thresholds.clear()
+        _active_thresholds.update(deepcopy(DEFAULT_THRESHOLDS))
+        _history.clear()
+        _suggestions.clear()
+        _decision_log.clear()
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM metrics_governance_decisions WHERE state_key = %s;", (STATE_KEY,))
+                cur.execute("DELETE FROM metrics_governance_suggestions WHERE state_key = %s;", (STATE_KEY,))
+                cur.execute("DELETE FROM metrics_governance_audit WHERE state_key = %s;", (STATE_KEY,))
+                cur.execute("DELETE FROM metrics_governance_state WHERE state_key = %s;", (STATE_KEY,))
+            conn.commit()
+    except Exception:
+        pass

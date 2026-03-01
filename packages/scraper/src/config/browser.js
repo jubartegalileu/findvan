@@ -6,22 +6,17 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import os from 'os';
-
 dotenv.config();
 
 const userDataDir =
   process.env.SCRAPER_USER_DATA_DIR ||
   path.join(os.tmpdir(), 'findvan-puppeteer');
-
-const headlessMode =
-  process.env.PUPPETEER_HEADLESS === 'true' ? 'new' : 'new'; // força headless moderno
+const headlessMode = process.env.PUPPETEER_HEADLESS === 'true' ? 'new' : false;
 
 const browserConfig = {
   headless: headlessMode,
   userDataDir,
-  ...(process.env.PUPPETEER_EXECUTABLE_PATH
-    ? { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }
-    : {}),
+  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
   args: [
     '--no-sandbox',
     '--disable-setuid-sandbox',
@@ -31,7 +26,8 @@ const browserConfig = {
     '--no-first-run',
     '--no-default-browser-check',
     '--disable-crashpad',
-    '--disable-features=Crashpad'
+    '--disable-features=Crashpad',
+    `--user-data-dir=${userDataDir}`,
   ],
   timeout: parseInt(process.env.SCRAPER_TIMEOUT_MS || '60000', 10),
 };

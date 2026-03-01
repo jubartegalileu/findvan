@@ -97,13 +97,17 @@ redis-cli ping
 ### 3️⃣ Começar Desenvolvimento
 
 ```bash
-# Terminal 1: Backend (Python)
+# Runtime canônico (Wave 4): backend + dashboard
+npm run runtime:up
+npm run runtime:status
+npm run runtime:health
+
+# Encerrar ambiente canônico
+npm run runtime:down
+
+# Opcional: serviços individuais
 npm run dev:backend
-
-# Terminal 2: Scraper (Node.js)
 npm run dev:scraper
-
-# Terminal 3: Dashboard (Electron + React)
 npm run dev:dashboard
 ```
 
@@ -344,4 +348,3 @@ MIT License — You + Sócio
 **Version:** 1.0.0
 **Setup Date:** 2026-02-27
 **Status:** 🟢 Technical Setup Complete — Ready for Sprint 1
-

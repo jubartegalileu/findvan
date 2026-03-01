@@ -69,6 +69,14 @@ const modalTabs = [
 ];
 
 const SESSION_FILTER_KEY = 'findvan.leads.filters.v1';
+const EXECUTION_OUTCOME_KEY = 'findvan.leads.execution.outcomes.v1';
+
+const executionOutcomeOptions = [
+  { value: 'success', label: 'Sucesso' },
+  { value: 'no_response', label: 'Sem resposta' },
+  { value: 'reschedule', label: 'Reagendar' },
+  { value: 'lost', label: 'Perdido' },
+];
 
 const getProspectClass = (value) =>
   prospectStatusOptions.find((option) => option.value === value)?.className || 'nao-contatado';
@@ -301,6 +309,7 @@ export default function Leads({ onNavigate, activePath }) {
   const [noteDraft, setNoteDraft] = useState('');
   const [notesBusy, setNotesBusy] = useState(false);
   const [messagingBusy, setMessagingBusy] = useState(false);
+  const [executionOutcomes, setExecutionOutcomes] = useState([]);
   const [activeTab, setActiveTab] = useState('dados');
   const [tagDraft, setTagDraft] = useState('');
   const [requestedLeadId, setRequestedLeadId] = useState(null);
@@ -364,6 +373,18 @@ export default function Leads({ onNavigate, activePath }) {
       // no-op
     }
 
+    try {
+      const outcomesSaved = sessionStorage.getItem(EXECUTION_OUTCOME_KEY);
+      if (outcomesSaved) {
+        const parsed = JSON.parse(outcomesSaved);
+        if (Array.isArray(parsed)) {
+          setExecutionOutcomes(parsed.slice(0, 100));
+        }
+      }
+    } catch (error) {
+      // no-op
+    }
+
     const params = new URLSearchParams(window.location.search);
     const funnel = params.get('funnel');
     const leadId = params.get('leadId');
@@ -393,6 +414,14 @@ export default function Leads({ onNavigate, activePath }) {
       window.removeEventListener('storage', onStorage);
     };
   }, []);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(EXECUTION_OUTCOME_KEY, JSON.stringify(executionOutcomes.slice(0, 100)));
+    } catch (error) {
+      // no-op
+    }
+  }, [executionOutcomes]);
 
   useEffect(() => {
     if (!requestedLeadId || leads.length === 0) return;
@@ -776,6 +805,25 @@ export default function Leads({ onNavigate, activePath }) {
       playbookRecommendations: playbookRecommendations.slice(0, 3),
     };
   }, [filteredLeads]);
+
+  const scopedExecutionOutcomes = useMemo(() => {
+    const allowedIds = new Set(filteredLeads.map((lead) => String(lead.id)));
+    return executionOutcomes.filter((item) => allowedIds.has(String(item.lead_id)));
+  }, [executionOutcomes, filteredLeads]);
+
+  const executionOutcomeSummary = useMemo(() => {
+    const counts = executionOutcomeOptions.reduce((acc, option) => {
+      acc[option.value] = 0;
+      return acc;
+    }, {});
+    scopedExecutionOutcomes.forEach((item) => {
+      if (counts[item.outcome] !== undefined) counts[item.outcome] += 1;
+    });
+    return {
+      counts,
+      recent: scopedExecutionOutcomes.slice(0, 5),
+    };
+  }, [scopedExecutionOutcomes]);
 
   const workspaceStages = useMemo(() => {
     return funnelStatusOptions.map((status) => ({
@@ -1500,6 +1548,40 @@ export default function Leads({ onNavigate, activePath }) {
     await sendMessageForLead(lead);
   };
 
+  const captureExecutionOutcome = (lead) => {
+    if (!lead?.id) return;
+    const selected = window.prompt(
+      'Resultado da execução (success/no_response/reschedule/lost):',
+      'success'
+    );
+    if (!selected) return;
+    const normalized = selected.trim().toLowerCase();
+    if (!executionOutcomeOptions.some((option) => option.value === normalized)) {
+      setBatchResult({
+        type: 'error',
+        summary: 'Resultado inválido. Use success, no_response, reschedule ou lost.',
+      });
+      return;
+    }
+
+    const label =
+      executionOutcomeOptions.find((option) => option.value === normalized)?.label || normalized;
+    const entry = {
+      id: `${lead.id}-${Date.now()}`,
+      lead_id: String(lead.id),
+      lead_name: lead.name || lead.company_name || String(lead.id),
+      stage: lead.funnel_status || 'novo',
+      outcome: normalized,
+      outcome_label: label,
+      created_at: new Date().toISOString(),
+    };
+    setExecutionOutcomes((prev) => [entry, ...prev].slice(0, 100));
+    setBatchResult({
+      type: 'success',
+      summary: `Resultado "${label}" registrado para ${entry.lead_name}.`,
+    });
+  };
+
   const buildLeadUpdatePayload = (lead, overrides = {}) => {
     const merged = { ...lead, ...overrides };
     const normalizedLossReason =
@@ -1897,6 +1979,9 @@ export default function Leads({ onNavigate, activePath }) {
                           <button className="fv-ghost small" type="button" onClick={() => handleContactLead(lead)}>
                             Contactar
                           </button>
+                          <button className="fv-ghost small" type="button" onClick={() => captureExecutionOutcome(lead)}>
+                            Resultado
+                          </button>
                           <button className="fv-ghost small" type="button" onClick={() => openLeadModal(lead)}>
                             Ver
                           </button>
@@ -2001,6 +2086,9 @@ export default function Leads({ onNavigate, activePath }) {
                       <button className="fv-ghost small" type="button" onClick={() => handleContactLead(lead)}>
                         Contactar
                       </button>
+                      <button className="fv-ghost small" type="button" onClick={() => captureExecutionOutcome(lead)}>
+                        Resultado
+                      </button>
                       <button className="fv-ghost small" type="button" onClick={() => openLeadModal(lead)}>
                         Ver
                       </button>
@@ -2103,6 +2191,24 @@ export default function Leads({ onNavigate, activePath }) {
                   <button className="fv-ghost small" type="button" onClick={() => applyPlaybookAction(item.action)}>
                     Executar
                   </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="fv-activity-item">
+              <div className="fv-activity-title">Execução do turno</div>
+              <div className="fv-row-sub">
+                Sucesso: {executionOutcomeSummary.counts.success || 0} • Sem resposta:{' '}
+                {executionOutcomeSummary.counts.no_response || 0} • Reagendar:{' '}
+                {executionOutcomeSummary.counts.reschedule || 0} • Perdido:{' '}
+                {executionOutcomeSummary.counts.lost || 0}
+              </div>
+              {executionOutcomeSummary.recent.length === 0 && (
+                <div className="fv-row-sub">Sem resultados registrados no contexto atual.</div>
+              )}
+              {executionOutcomeSummary.recent.map((item) => (
+                <div key={item.id} className="fv-row-sub">
+                  {item.lead_name} • {item.outcome_label} • {formatRelativeDate(item.created_at)}
                 </div>
               ))}
             </div>

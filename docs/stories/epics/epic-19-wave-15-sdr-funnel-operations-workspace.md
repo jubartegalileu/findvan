@@ -1,7 +1,7 @@
 # Epic 19 — Wave 15 SDR Funnel Operations Workspace
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade pós-Leads v2)
-**Status:** Ready
+**Status:** Done
 **Prioridade:** P1 (Operação SDR)
 **Wave:** 15
 **Estimativa:** 1-2 semanas
@@ -66,11 +66,11 @@ Evoluir de operação de Leads consolidada para execução SDR orientada por fun
 
 ## Definition of Done
 
-- [ ] Stories 19.1, 19.2 e 19.3 implementadas e aprovadas
-- [ ] Workspace SDR por funil operacional e utilizável
-- [ ] Controle de follow-up/cadência funcional para operação diária
-- [ ] Sinais de throughput/governança SDR visíveis e acionáveis
-- [ ] Quality gates (`lint`, `typecheck`, `test`) verdes
+- [x] Stories 19.1, 19.2 e 19.3 implementadas e aprovadas
+- [x] Workspace SDR por funil operacional e utilizável
+- [x] Controle de follow-up/cadência funcional para operação diária
+- [x] Sinais de throughput/governança SDR visíveis e acionáveis
+- [x] Quality gates (`lint`, `typecheck`, `test`) verdes
 
 ## Exit Criteria
 

@@ -211,3 +211,75 @@ def test_patch_lead_ok(monkeypatch):
     response = client.patch("/api/leads/7", json={"name": "Depois"})
     assert response.status_code == 200
     assert response.json()["lead"]["name"] == "Depois"
+
+
+def test_import_leads_csv_normalizes_and_deduplicates(monkeypatch):
+    captured = {}
+
+    def _insert(leads):
+        captured["leads"] = leads
+        return {"inserted": 1, "duplicates": 0}
+
+    monkeypatch.setattr(leads_api, "insert_leads", _insert)
+    client = build_client()
+    csv_payload = (
+        "Nome,Cidade,Telefone,Fonte\n"
+        "Empresa Alpha,Santos,(13) 99999-1111,Google Maps\n"
+        "Empresa Alpha,Santos,13999991111,Google Maps\n"
+        "Sem Cidade,,13999992222,Google Maps\n"
+    )
+    response = client.post(
+        "/api/leads/import",
+        files={"file": ("leads.csv", csv_payload, "text/csv")},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["received"] == 3
+    assert payload["normalized"] == 1
+    assert payload["deduplicated_in_file"] == 1
+    assert payload["skipped_invalid"] == 1
+    assert captured["leads"][0]["name"] == "Empresa Alpha"
+    assert captured["leads"][0]["city"] == "Santos"
+    assert captured["leads"][0]["phone"] == "13999991111"
+    assert captured["leads"][0]["source"] == "google_maps"
+
+
+def test_import_leads_json_accepts_data_wrapper(monkeypatch):
+    captured = {}
+
+    def _insert(leads):
+        captured["leads"] = leads
+        return {"inserted": 1, "duplicates": 0}
+
+    monkeypatch.setattr(leads_api, "insert_leads", _insert)
+    client = build_client()
+    json_payload = {
+        "data": [
+            {
+                "empresa": "Colegio Beta",
+                "cidade": "Campinas",
+                "email": "contato@beta.com",
+                "fonte": "manual",
+            }
+        ]
+    }
+    response = client.post(
+        "/api/leads/import",
+        files={"file": ("leads.json", str(json_payload).replace("'", '"'), "application/json")},
+    )
+    assert response.status_code == 200
+    assert response.json()["normalized"] == 1
+    assert captured["leads"][0]["name"] == "Colegio Beta"
+    assert captured["leads"][0]["city"] == "Campinas"
+    assert captured["leads"][0]["email"] == "contato@beta.com"
+    assert captured["leads"][0]["source"] == "manual"
+
+
+def test_import_leads_rejects_unsupported_format():
+    client = build_client()
+    response = client.post(
+        "/api/leads/import",
+        files={"file": ("leads.txt", "nome;cidade\nalpha;santos", "application/octet-stream")},
+    )
+    assert response.status_code == 400
+    assert "formato nao suportado" in response.json()["detail"].lower()

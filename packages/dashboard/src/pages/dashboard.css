@@ -873,6 +873,14 @@ body,
   box-shadow: 0 24px 48px rgba(32, 80, 114, 0.28);
 }
 
+.fv-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .fv-tabs {
   display: flex;
   gap: 8px;
@@ -1014,6 +1022,83 @@ body,
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.fv-field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4c777d;
+}
+
+.fv-field input,
+.fv-field select,
+.fv-field textarea {
+  border: 1px solid rgba(32, 80, 114, 0.18);
+  background: #ffffff;
+  color: var(--fv-c1);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.fv-field textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.fv-field input:focus,
+.fv-field select:focus,
+.fv-field textarea:focus {
+  border-color: rgba(32, 80, 114, 0.45);
+  box-shadow: 0 0 0 3px rgba(50, 157, 156, 0.12);
+}
+
+.fv-leads-toolbar {
+  display: grid;
+  grid-template-columns: 180px 220px minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 20px;
+}
+
+.fv-leads-toolbar .fv-field {
+  min-width: 0;
+}
+
+.fv-leads-toolbar-meta {
+  justify-self: end;
+  align-self: center;
+}
+
+@media (max-width: 1180px) {
+  .fv-leads-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fv-leads-toolbar-meta {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 760px) {
+  .fv-leads-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .fv-columns-leads {
+    grid-template-columns: 1fr;
+  }
+
+  .fv-header {
+    align-items: flex-start;
+  }
+
+  .fv-header .fv-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
 }
 
 .fv-field-inline {

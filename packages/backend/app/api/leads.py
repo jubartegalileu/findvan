@@ -1,4 +1,8 @@
-from fastapi import APIRouter, HTTPException, Query
+import csv
+import json
+import re
+import unicodedata
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from ..services.leads_service import (
     add_lead_tag,
@@ -18,6 +22,7 @@ from ..services.leads_service import (
     normalize_funnel_status,
     normalize_leads_consistency,
     recalculate_all_scores,
+    insert_leads,
     update_lead,
 )
 from ..services.funnel_service import (
@@ -33,6 +38,183 @@ from ..services.funnel_service import (
 
 router = APIRouter()
 ALLOWED_FUNNEL_STATUSES = set(FUNNEL_STATUSES)
+FIELD_ALIASES = {
+    "source": ("source", "fonte", "origem"),
+    "name": ("name", "nome", "contato", "lead"),
+    "company_name": ("company_name", "empresa", "razao_social", "razaosocial", "business_name"),
+    "phone": ("phone", "telefone", "whatsapp", "celular", "mobile"),
+    "email": ("email", "e-mail", "mail"),
+    "address": ("address", "endereco", "logradouro", "rua"),
+    "city": ("city", "cidade", "municipio"),
+    "state": ("state", "uf", "estado"),
+    "cnpj": ("cnpj", "documento"),
+    "url": ("url", "site", "website", "link"),
+    "funnel_status": ("funnel_status", "status", "status_funil"),
+    "loss_reason": ("loss_reason", "motivo_perda", "reason"),
+    "prospect_status": ("prospect_status", "status_prospeccao"),
+    "prospect_notes": ("prospect_notes", "observacoes", "obs", "notas"),
+    "campaign_status": ("campaign_status", "status_campanha"),
+    "captured_at": ("captured_at", "capturado_em", "data_captura"),
+    "next_action_date": ("next_action_date", "proxima_acao_data"),
+    "next_action_description": ("next_action_description", "proxima_acao_descricao"),
+    "is_valid": ("is_valid", "valid", "valido"),
+    "is_duplicate": ("is_duplicate", "duplicate", "duplicado"),
+}
+_HEADER_TO_FIELD = {
+    re.sub(r"[^a-z0-9_]", "", alias): field
+    for field, aliases in FIELD_ALIASES.items()
+    for alias in aliases
+}
+
+
+def _normalize_header(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
+    normalized = normalized.strip().lower().replace(" ", "_").replace("-", "_")
+    return re.sub(r"[^a-z0-9_]", "", normalized)
+
+
+def _coerce_text(value: object) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _coerce_bool(value: object, *, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    if not text:
+        return default
+    return text in {"1", "true", "sim", "yes", "y", "s"}
+
+
+def _normalize_row(raw_row: dict) -> dict:
+    normalized: dict[str, object] = {}
+    for raw_key, raw_value in raw_row.items():
+        key = _HEADER_TO_FIELD.get(_normalize_header(raw_key))
+        if not key:
+            continue
+        if key in {"is_valid", "is_duplicate"}:
+            normalized[key] = raw_value
+            continue
+        normalized[key] = _coerce_text(raw_value)
+
+    source = str(normalized.get("source") or "import").strip().lower() or "import"
+    source = re.sub(r"\s+", "_", source)[:50]
+    phone = re.sub(r"\D+", "", str(normalized.get("phone") or ""))[:15] or None
+    email = str(normalized.get("email") or "").strip().lower() or None
+    state = str(normalized.get("state") or "").strip().upper()[:2] or None
+    url = str(normalized.get("url") or "").strip() or None
+    company_name = str(normalized.get("company_name") or "").strip() or None
+    name = str(normalized.get("name") or "").strip() or company_name or None
+    city = str(normalized.get("city") or "").strip() or None
+
+    return {
+        "source": source,
+        "name": name,
+        "company_name": company_name or name,
+        "phone": phone,
+        "email": email,
+        "address": normalized.get("address"),
+        "city": city,
+        "state": state,
+        "cnpj": normalized.get("cnpj"),
+        "url": url,
+        "funnel_status": normalized.get("funnel_status"),
+        "loss_reason": normalized.get("loss_reason"),
+        "prospect_status": normalized.get("prospect_status"),
+        "prospect_notes": normalized.get("prospect_notes"),
+        "campaign_status": normalized.get("campaign_status"),
+        "captured_at": normalized.get("captured_at"),
+        "next_action_date": normalized.get("next_action_date"),
+        "next_action_description": normalized.get("next_action_description"),
+        "is_valid": _coerce_bool(normalized.get("is_valid"), default=True),
+        "is_duplicate": _coerce_bool(normalized.get("is_duplicate"), default=False),
+    }
+
+
+def _lead_fingerprint(lead: dict) -> tuple:
+    source = str(lead.get("source") or "import")
+    if lead.get("phone"):
+        return ("phone", source, str(lead["phone"]))
+    if lead.get("email"):
+        return ("email", source, str(lead["email"]).lower())
+    if lead.get("url"):
+        return ("url", source, str(lead["url"]).strip().lower().rstrip("/"))
+    return (
+        "name_city",
+        source,
+        str(lead.get("name") or "").strip().lower(),
+        str(lead.get("city") or "").strip().lower(),
+    )
+
+
+def _rows_from_upload(file: UploadFile, raw: bytes) -> list[dict]:
+    filename = (file.filename or "").lower()
+    content_type = (file.content_type or "").lower()
+    is_json = filename.endswith(".json") or "json" in content_type
+    is_csv = filename.endswith(".csv") or "csv" in content_type or content_type in {"text/plain", ""}
+    if is_json:
+        payload = json.loads(raw.decode("utf-8"))
+        if isinstance(payload, dict):
+            for key in ("leads", "data", "items"):
+                if isinstance(payload.get(key), list):
+                    payload = payload[key]
+                    break
+        if not isinstance(payload, list):
+            raise HTTPException(status_code=400, detail="JSON de importacao deve ser uma lista de leads.")
+        return [item for item in payload if isinstance(item, dict)]
+    if is_csv:
+        text = raw.decode("utf-8-sig")
+        reader = csv.DictReader(text.splitlines())
+        return [dict(row) for row in reader if row]
+    raise HTTPException(status_code=400, detail="Formato nao suportado. Use CSV ou JSON.")
+
+
+@router.post("/import")
+async def post_import_leads(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Arquivo de importacao nao informado.")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Arquivo vazio.")
+
+    try:
+        raw_rows = _rows_from_upload(file, raw)
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Arquivo com codificacao invalida.") from exc
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="JSON invalido para importacao.") from exc
+
+    accepted: list[dict] = []
+    seen: set[tuple] = set()
+    skipped_invalid = 0
+    deduplicated_in_file = 0
+
+    for row in raw_rows:
+        normalized = _normalize_row(row)
+        if not normalized.get("name") or not normalized.get("city"):
+            skipped_invalid += 1
+            continue
+        fingerprint = _lead_fingerprint(normalized)
+        if fingerprint in seen:
+            deduplicated_in_file += 1
+            continue
+        seen.add(fingerprint)
+        accepted.append(normalized)
+
+    if not accepted:
+        raise HTTPException(status_code=400, detail="Nenhum lead valido encontrado no arquivo.")
+
+    db_result = insert_leads(accepted)
+    return {
+        "status": "ok",
+        "received": len(raw_rows),
+        "normalized": len(accepted),
+        "skipped_invalid": skipped_invalid,
+        "deduplicated_in_file": deduplicated_in_file,
+        "inserted": int(db_result.get("inserted", 0)),
+        "duplicates": int(db_result.get("duplicates", 0)),
+    }
 
 
 class LeadsResponse(BaseModel):

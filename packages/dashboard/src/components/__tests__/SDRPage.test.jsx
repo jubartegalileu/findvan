@@ -307,4 +307,41 @@ describe('SDR page', () => {
       expect(screen.getByText('1 selecionados')).toBeDefined();
     });
   });
+
+  it('sends batch schedule action request with next action fields', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+      expect(screen.getByText('Lead Beta')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.click(screen.getByLabelText('Selecionar lead 1'));
+      await user.type(screen.getByPlaceholderText('Ex.: ligar amanha'), 'Enviar proposta personalizada');
+      await user.type(screen.getByLabelText('Data/hora'), '2026-03-03T10:30');
+      await user.clear(screen.getByLabelText('Cadencia (dias)'));
+      await user.type(screen.getByLabelText('Cadencia (dias)'), '3');
+      await user.click(screen.getByRole('button', { name: 'Agendar proxima acao em lote' }));
+    });
+
+    await waitFor(() => {
+      const patchCalls = fetch.mock.calls.filter(
+        ([url, options]) =>
+          String(url).includes('/api/sdr/action/batch') &&
+          options?.method === 'PATCH' &&
+          String(options?.body || '').includes('"lead_ids":[1]') &&
+          String(options?.body || '').includes('"action_type":"scheduled"') &&
+          String(options?.body || '').includes('"next_action_description":"Enviar proposta personalizada"') &&
+          String(options?.body || '').includes('"next_action_date":"2026-03-03T10:30"') &&
+          String(options?.body || '').includes('"cadence_days":3')
+      );
+      expect(patchCalls.length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByText('1 lead(s) com proxima acao agendada.')).toBeDefined();
+  });
 });

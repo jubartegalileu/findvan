@@ -37,6 +37,9 @@ export default function SDR({ onNavigate, activePath }) {
   const [openNotes, setOpenNotes] = useState({});
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [batchAssignDraft, setBatchAssignDraft] = useState('');
+  const [batchNextActionDescription, setBatchNextActionDescription] = useState('');
+  const [batchNextActionDate, setBatchNextActionDate] = useState('');
+  const [batchCadenceDays, setBatchCadenceDays] = useState('1');
   const [batchFeedback, setBatchFeedback] = useState('');
 
   const loadQueue = useCallback(async () => {
@@ -270,6 +273,56 @@ export default function SDR({ onNavigate, activePath }) {
     }
   };
 
+  const patchActionBatchSchedule = async () => {
+    if (selectedLeadIds.length === 0) return;
+    const requestedLeadIds = [...selectedLeadIds];
+    const nextActionDescription = batchNextActionDescription.trim();
+    if (!nextActionDescription) return;
+
+    setBusyLeadId('batch');
+    setError('');
+    setBatchFeedback('');
+    try {
+      const response = await fetch(`${API_BASE}/api/sdr/action/batch`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: selectedLeadIds,
+          action_type: 'scheduled',
+          author: 'sdr-ui',
+          next_action_description: nextActionDescription,
+          next_action_date: batchNextActionDate || null,
+          cadence_days: Number(batchCadenceDays || 1),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(batchErrorMessage(payload?.detail, 'Operacao em lote falhou ao agendar proxima acao.'));
+      }
+      const updatedIds = Array.isArray(payload?.lead_ids)
+        ? payload.lead_ids.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+        : [];
+      const updatedSet = new Set(updatedIds);
+      const updatedCount = Number(payload?.updated_count ?? updatedIds.length ?? 0);
+      const remainingSelected = requestedLeadIds.filter((leadId) => !updatedSet.has(leadId));
+      setSelectedLeadIds(remainingSelected);
+      if (updatedCount === requestedLeadIds.length) {
+        setBatchFeedback(`${updatedCount} lead(s) com proxima acao agendada.`);
+      } else {
+        setBatchFeedback(
+          `${updatedCount} de ${requestedLeadIds.length} lead(s) com proxima acao agendada. ${remainingSelected.length} permanece(m) selecionado(s).`
+        );
+      }
+      setBatchNextActionDescription('');
+      setBatchNextActionDate('');
+      await Promise.all([loadQueue(), loadStats()]);
+    } catch (err) {
+      setError(err.message || 'Operacao em lote falhou ao agendar proxima acao.');
+    } finally {
+      setBusyLeadId(null);
+    }
+  };
+
   const toggleLeadSelection = (leadId, checked) => {
     setSelectedLeadIds((prev) => {
       if (checked) {
@@ -421,6 +474,45 @@ export default function SDR({ onNavigate, activePath }) {
               {busyLeadId === 'batch' ? 'Salvando...' : 'Marcar lote como feito'}
             </button>
           </div>
+        </div>
+        <div className="fv-row" style={{ marginBottom: 10, gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label className="fv-field fv-field-inline">
+            <span>Proxima acao (lote)</span>
+            <input
+              className="fv-input"
+              placeholder="Ex.: ligar amanha"
+              value={batchNextActionDescription}
+              onChange={(e) => setBatchNextActionDescription(e.target.value)}
+            />
+          </label>
+          <label className="fv-field fv-field-inline">
+            <span>Data/hora</span>
+            <input
+              className="fv-input"
+              type="datetime-local"
+              value={batchNextActionDate}
+              onChange={(e) => setBatchNextActionDate(e.target.value)}
+            />
+          </label>
+          <label className="fv-field fv-field-inline">
+            <span>Cadencia (dias)</span>
+            <input
+              className="fv-input fv-input-number"
+              type="number"
+              min="1"
+              max="30"
+              value={batchCadenceDays}
+              onChange={(e) => setBatchCadenceDays(e.target.value)}
+            />
+          </label>
+          <button
+            className="fv-ghost"
+            type="button"
+            disabled={busyLeadId === 'batch' || selectedLeadIds.length === 0 || !batchNextActionDescription.trim()}
+            onClick={patchActionBatchSchedule}
+          >
+            {busyLeadId === 'batch' ? 'Salvando...' : 'Agendar proxima acao em lote'}
+          </button>
         </div>
         {selectedLeadIds.length === 0 && <div className="fv-row-sub" style={{ marginBottom: 10 }}>Selecione ao menos 1 lead para habilitar ações em lote.</div>}
         {batchFeedback && <div className="fv-feedback-banner" style={{ marginBottom: 10 }}>{batchFeedback}</div>}

@@ -153,7 +153,10 @@ def test_patch_assign_batch_ok(monkeypatch):
 
 
 def test_patch_action_batch_ok(monkeypatch):
+    captured = {}
+
     def _fake_register_action_batch(**kwargs):
+        captured.update(kwargs)
         return {
             "updated_count": len(kwargs["lead_ids"]),
             "lead_ids": kwargs["lead_ids"],
@@ -164,13 +167,22 @@ def test_patch_action_batch_ok(monkeypatch):
     client = build_client()
     response = client.patch(
         "/api/sdr/action/batch",
-        json={"lead_ids": [10, 11], "action_type": "done"},
+        json={
+            "lead_ids": [10, 11],
+            "action_type": "scheduled",
+            "next_action_date": "2026-03-03T10:30:00",
+            "next_action_description": "Enviar proposta",
+            "cadence_days": 3,
+        },
     )
     assert response.status_code == 200
     payload = response.json()
     assert payload["updated_count"] == 2
     assert payload["lead_ids"] == [10, 11]
-    assert payload["action_type"] == "done"
+    assert payload["action_type"] == "scheduled"
+    assert captured["next_action_date"] == "2026-03-03T10:30:00"
+    assert captured["next_action_description"] == "Enviar proposta"
+    assert captured["cadence_days"] == 3
 
 
 def test_get_queue_internal_error_is_sanitized(monkeypatch):

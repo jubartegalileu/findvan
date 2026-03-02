@@ -1,7 +1,7 @@
 # Epic 43 — Wave 38 SDR Template Denial Remediation
 
 **Brief:** `docs/brief-epic-43-sdr-template-denial-remediation.md`  
-**Status:** In Progress  
+**Status:** Done  
 **Prioridade:** P0  
 **Estimativa:** 1 sprint curta (3 stories)  
 **Owner:** @pm (Morgan)
@@ -21,7 +21,7 @@ Status: `Done`
 Status: `Done`
 
 3. **43.3 — QA Gate + PO Go/No-Go (denial remediation)** (`@qa + @po`)  
-Status: `Ready`
+Status: `Done`
 
 ## Execution Order
 
@@ -29,8 +29,8 @@ Status: `Ready`
 
 ## Definition of Done
 
-- [ ] Backend expoe recomendacoes de remediacao por motivo de negacao
-- [ ] Dashboard exibe "Como resolver" com acoes claras quando permissao for negada
-- [ ] Evento de remediacao iniciada registrado para auditoria leve
-- [ ] Testes backend e regressao dashboard verdes
-- [ ] Gate final QA/PO com decisao GO documentada
+- [x] Backend expoe recomendacoes de remediacao por motivo de negacao
+- [x] Dashboard exibe "Como resolver" com acoes claras quando permissao for negada
+- [x] Evento de remediacao iniciada registrado para auditoria leve
+- [x] Testes backend e regressao dashboard verdes
+- [x] Gate final QA/PO com decisao GO documentada

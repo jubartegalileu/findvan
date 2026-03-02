@@ -26,6 +26,7 @@ def get_queue(
     cadence: str | None = None,
     score_min: int | None = None,
     score_max: int | None = None,
+    limit: int = 500,
 ) -> list[dict]:
     normalized_status = (prospect_status or "").strip().lower() or None
     if normalized_status and normalized_status not in VALID_PROSPECT_STATUSES:
@@ -34,6 +35,7 @@ def get_queue(
     normalized_cadence = (cadence or "").strip().lower() or None
     if normalized_cadence and normalized_cadence not in VALID_CADENCE_FILTERS:
         raise ValueError("cadence inválido")
+    capped_limit = max(1, min(int(limit or 500), 5000))
 
     query = """
         SELECT
@@ -96,8 +98,10 @@ def get_queue(
             ELSE 2
           END ASC,
           COALESCE(l.score, 0) DESC,
-          l.id ASC;
+          l.id ASC
+        LIMIT %s;
     """
+    params.append(capped_limit)
 
     with get_connection() as conn:
         with conn.cursor() as cur:

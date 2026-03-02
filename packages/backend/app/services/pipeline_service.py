@@ -26,8 +26,9 @@ def _period_clause(period_days: int | None) -> tuple[str, tuple[object, ...]]:
     return " AND p.entered_stage_at >= NOW() - (%s || ' days')::interval", (period_days,)
 
 
-def get_grouped(*, period_days: int | None = None) -> dict:
+def get_grouped(*, period_days: int | None = None, limit: int = 1000) -> dict:
     where_period, period_params = _period_clause(period_days)
+    capped_limit = max(1, min(int(limit or 1000), 10000))
     query = f"""
         SELECT
           p.funnel_status,
@@ -45,11 +46,12 @@ def get_grouped(*, period_days: int | None = None) -> dict:
         JOIN leads l ON l.id = p.lead_id
         WHERE l.deleted_at IS NULL
         {where_period}
-        ORDER BY COALESCE(l.score, 0) DESC, p.entered_stage_at ASC;
+        ORDER BY COALESCE(l.score, 0) DESC, p.entered_stage_at ASC
+        LIMIT %s;
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query, period_params)
+            cur.execute(query, (*period_params, capped_limit))
             rows = cur.fetchall()
 
     stages: dict[str, list[dict]] = {status: [] for status in FUNNEL_STATUSES}

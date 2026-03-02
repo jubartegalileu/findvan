@@ -1,10 +1,14 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from .error_utils import raise_bad_request, raise_internal_error, raise_not_found
 from ..services.sdr_service import add_note, get_queue, get_stats, register_action
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class SDRActionPayload(BaseModel):
@@ -28,6 +32,7 @@ def sdr_queue(
     cadence: str | None = Query(default=None, description="overdue|today|planned"),
     score_min: int | None = Query(default=None, ge=0, le=100),
     score_max: int | None = Query(default=None, ge=0, le=100),
+    limit: int = Query(default=500, ge=1, le=5000),
 ):
     try:
         queue = get_queue(
@@ -36,12 +41,14 @@ def sdr_queue(
             cadence=cadence,
             score_min=score_min,
             score_max=score_max,
+            limit=limit,
         )
         return {"queue": queue, "count": len(queue)}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.warning("sdr_queue validation failed: %s", exc)
+        raise_bad_request(str(exc), code="sdr_queue_validation")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise_internal_error(context="sdr_queue", exc=exc, code="sdr_queue_error")
 
 
 @router.patch("/{lead_id}/action")
@@ -57,14 +64,15 @@ def sdr_action(lead_id: int, payload: SDRActionPayload):
             cadence_days=payload.cadence_days,
         )
         if not updated:
-            raise HTTPException(status_code=404, detail="Lead not found in SDR queue")
+            raise_not_found("Lead not found in SDR queue", code="sdr_lead_not_found")
         return {"status": "ok", "sdr": updated}
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.warning("sdr_action validation failed lead_id=%s: %s", lead_id, exc)
+        raise_bad_request(str(exc), code="sdr_action_validation")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise_internal_error(context=f"sdr_action lead_id={lead_id}", exc=exc, code="sdr_action_error")
 
 
 @router.patch("/{lead_id}/notes")
@@ -72,12 +80,12 @@ def sdr_notes(lead_id: int, payload: SDRNotePayload):
     try:
         updated = add_note(lead_id=lead_id, note=payload.note.strip(), author=payload.author)
         if not updated:
-            raise HTTPException(status_code=404, detail="Lead not found in SDR queue")
+            raise_not_found("Lead not found in SDR queue", code="sdr_lead_not_found")
         return {"status": "ok", **updated}
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise_internal_error(context=f"sdr_notes lead_id={lead_id}", exc=exc, code="sdr_notes_error")
 
 
 @router.get("/stats")
@@ -85,4 +93,4 @@ def sdr_stats():
     try:
         return get_stats()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise_internal_error(context="sdr_stats", exc=exc, code="sdr_stats_error")

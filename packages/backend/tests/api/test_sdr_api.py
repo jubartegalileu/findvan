@@ -75,3 +75,28 @@ def test_get_stats_ok(monkeypatch):
     response = client.get("/api/sdr/stats")
     assert response.status_code == 200
     assert response.json()["pending"] == 3
+
+
+def test_get_queue_forwards_limit(monkeypatch):
+    captured = {}
+
+    def _fake_get_queue(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(sdr_api, "get_queue", _fake_get_queue)
+    client = build_client()
+    response = client.get("/api/sdr/queue?limit=321")
+    assert response.status_code == 200
+    assert captured["limit"] == 321
+
+
+def test_get_queue_internal_error_is_sanitized(monkeypatch):
+    def _raise(**kwargs):
+        raise RuntimeError("db failed")
+
+    monkeypatch.setattr(sdr_api, "get_queue", _raise)
+    client = build_client()
+    response = client.get("/api/sdr/queue")
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Erro interno ao processar a solicitação."

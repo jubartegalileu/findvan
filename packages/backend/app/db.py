@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS sdr_activities (
 );
 CREATE INDEX IF NOT EXISTS idx_sdr_next_action ON sdr_activities(next_action_date) WHERE next_action_date IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_sdr_prospect_status ON sdr_activities(prospect_status);
+CREATE INDEX IF NOT EXISTS idx_sdr_active_queue ON sdr_activities(next_action_date, prospect_status, lead_id);
 """
 
 PIPELINE_TABLE_SQL = """
@@ -179,6 +180,8 @@ CREATE TABLE IF NOT EXISTS pipeline (
   CONSTRAINT uq_pipeline_lead UNIQUE (lead_id)
 );
 CREATE INDEX IF NOT EXISTS idx_pipeline_status_entered ON pipeline(funnel_status, entered_stage_at);
+CREATE INDEX IF NOT EXISTS idx_pipeline_active_status ON pipeline(funnel_status, lead_id)
+  WHERE funnel_status IN ('novo', 'contactado', 'respondeu', 'interessado');
 """
 
 TIMESTAMP_AND_TRIGGER_SQL = """

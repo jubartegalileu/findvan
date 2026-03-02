@@ -235,6 +235,9 @@ def sdr_templates(owner: str | None = Query(default="all", max_length=100)):
     try:
         templates = list_bulk_templates(owner=owner)
         return {"templates": templates, "count": len(templates)}
+    except ValueError as exc:
+        logger.warning("sdr_templates validation failed: %s", exc)
+        raise_bad_request(str(exc), code="sdr_templates_validation")
     except Exception as exc:
         raise_internal_error(context="sdr_templates", exc=exc, code="sdr_templates_error")
 
@@ -266,6 +269,9 @@ def sdr_templates_delete(template_id: int, owner: str | None = Query(default="al
         return {"status": "ok", "template_id": template_id}
     except HTTPException:
         raise
+    except ValueError as exc:
+        logger.warning("sdr_templates_delete validation failed: %s", exc)
+        raise_bad_request(str(exc), code="sdr_templates_delete_validation")
     except Exception as exc:
         raise_internal_error(context=f"sdr_templates_delete template_id={template_id}", exc=exc, code="sdr_templates_delete_error")
 

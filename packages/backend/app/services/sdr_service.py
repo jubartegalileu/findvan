@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timezone
 
 from ..db import get_connection
@@ -17,6 +18,26 @@ def _serialize_note(note: str, author: str | None, action_type: str | None = Non
     if action_type:
         payload["action_type"] = action_type
     return payload
+
+
+def normalize_template_owner(owner: str | None) -> str:
+    normalized_owner = (owner or "all").strip()
+    if not normalized_owner:
+        return "all"
+
+    if normalized_owner.lower() == "all":
+        return "all"
+
+    if normalized_owner.lower().startswith("team:"):
+        team_name = normalized_owner.split(":", 1)[1].strip().lower()
+        team_slug = re.sub(r"[^a-z0-9_-]+", "-", team_name).strip("-_")
+        if not team_slug:
+            raise ValueError("owner de equipe inválido")
+        return f"team:{team_slug}"
+
+    if len(normalized_owner) > 100:
+        raise ValueError("owner deve ter no máximo 100 caracteres")
+    return normalized_owner
 
 
 def get_queue(
@@ -526,7 +547,7 @@ def assign_owner_batch(*, lead_ids: list[int], assigned_to: str, author: str | N
 
 
 def list_bulk_templates(*, owner: str | None = None) -> list[dict]:
-    normalized_owner = (owner or "all").strip() or "all"
+    normalized_owner = normalize_template_owner(owner)
     query = """
         SELECT id, owner, name, next_action_description, cadence_days, note, is_favorite, sort_order
         FROM sdr_bulk_templates
@@ -551,7 +572,7 @@ def save_bulk_template(
     is_favorite: bool | None = None,
     sort_order: int | None = None,
 ) -> dict:
-    normalized_owner = (owner or "all").strip() or "all"
+    normalized_owner = normalize_template_owner(owner)
     normalized_name = (name or "").strip()
     if not normalized_name:
         raise ValueError("name é obrigatório")
@@ -599,7 +620,7 @@ def save_bulk_template(
 
 
 def delete_bulk_template(*, template_id: int, owner: str | None = None) -> bool:
-    normalized_owner = (owner or "all").strip() or "all"
+    normalized_owner = normalize_template_owner(owner)
     query = """
         DELETE FROM sdr_bulk_templates
         WHERE id = %s AND owner = %s
@@ -620,7 +641,7 @@ def update_bulk_template_preferences(
     is_favorite: bool | None = None,
     sort_order: int | None = None,
 ) -> dict | None:
-    normalized_owner = (owner or "all").strip() or "all"
+    normalized_owner = normalize_template_owner(owner)
     if is_favorite is None and sort_order is None:
         raise ValueError("is_favorite ou sort_order deve ser informado")
 

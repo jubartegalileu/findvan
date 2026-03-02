@@ -98,6 +98,16 @@ def test_templates_list_ok(monkeypatch):
     assert payload["templates"][0]["owner"] == "alice"
 
 
+def test_templates_list_validation_error(monkeypatch):
+    def _raise(**kwargs):
+        raise ValueError("owner de equipe inválido")
+
+    monkeypatch.setattr(sdr_api, "list_bulk_templates", _raise)
+    client = build_client()
+    response = client.get("/api/sdr/templates?owner=team:%20%20%20")
+    assert response.status_code == 400
+
+
 def test_templates_save_ok(monkeypatch):
     monkeypatch.setattr(
         sdr_api,
@@ -116,6 +126,16 @@ def test_templates_delete_ok(monkeypatch):
     response = client.delete("/api/sdr/templates/5?owner=alice")
     assert response.status_code == 200
     assert response.json()["template_id"] == 5
+
+
+def test_templates_delete_validation_error(monkeypatch):
+    def _raise(**kwargs):
+        raise ValueError("owner de equipe inválido")
+
+    monkeypatch.setattr(sdr_api, "delete_bulk_template", _raise)
+    client = build_client()
+    response = client.delete("/api/sdr/templates/5?owner=team:%20%20%20")
+    assert response.status_code == 400
 
 
 def test_templates_patch_ok(monkeypatch):

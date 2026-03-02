@@ -231,6 +231,30 @@ def test_list_bulk_templates_by_owner(monkeypatch):
     assert cursor.last_params == ("alice",)
 
 
+def test_list_bulk_templates_normalizes_team_owner(monkeypatch):
+    class _TemplateListCursor(_FakeCursor):
+        def execute(self, query, params=None):
+            super().execute(query, params)
+            self._rows = []
+
+    cursor = _TemplateListCursor()
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: _FakeConn(cursor))
+
+    _ = sdr_service.list_bulk_templates(owner=" Team:Ops Squad ")
+
+    assert cursor.last_params == ("team:ops-squad",)
+
+
+def test_list_bulk_templates_rejects_empty_team_owner(monkeypatch):
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: _FakeConn(_FakeCursor()))
+
+    try:
+        sdr_service.list_bulk_templates(owner="team:   ")
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "owner de equipe inválido" in str(exc)
+
+
 def test_save_bulk_template_upserts_and_commits(monkeypatch):
     row = (3, "alice", "Template B", "Ligar amanhã", 1, "Nota B", False, 4)
     cursor = _FakeCursor(one_row=row)
@@ -252,6 +276,24 @@ def test_save_bulk_template_upserts_and_commits(monkeypatch):
     assert any("ON CONFLICT (owner, name)" in query for query, _ in cursor.executed)
 
 
+def test_save_bulk_template_normalizes_team_owner(monkeypatch):
+    row = (3, "team:ops", "Template B", "Ligar amanhã", 1, "Nota B", False, 4)
+    cursor = _FakeCursor(one_row=row)
+    conn = _FakeConn(cursor)
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
+
+    saved = sdr_service.save_bulk_template(
+        owner=" Team:OPS ",
+        name="Template B",
+        next_action_description="Ligar amanhã",
+        cadence_days=1,
+        note="Nota B",
+    )
+
+    assert saved["owner"] == "team:ops"
+    assert cursor.last_params[0] == "team:ops"
+
+
 def test_delete_bulk_template_returns_true_when_deleted(monkeypatch):
     cursor = _FakeCursor(one_row=(9,))
     conn = _FakeConn(cursor)
@@ -263,6 +305,17 @@ def test_delete_bulk_template_returns_true_when_deleted(monkeypatch):
     assert conn.did_commit is True
     assert "DELETE FROM sdr_bulk_templates" in cursor.last_query
     assert cursor.last_params == (9, "alice")
+
+
+def test_delete_bulk_template_normalizes_all_owner(monkeypatch):
+    cursor = _FakeCursor(one_row=(9,))
+    conn = _FakeConn(cursor)
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
+
+    deleted = sdr_service.delete_bulk_template(template_id=9, owner=" ALL ")
+
+    assert deleted is True
+    assert cursor.last_params == (9, "all")
 
 
 def test_update_bulk_template_preferences_updates_and_returns_row(monkeypatch):
@@ -283,3 +336,19 @@ def test_update_bulk_template_preferences_updates_and_returns_row(monkeypatch):
     assert updated["sort_order"] == 1
     assert conn.did_commit is True
     assert "UPDATE sdr_bulk_templates" in cursor.last_query
+
+
+def test_normalize_template_owner_defaults_to_all():
+    assert sdr_service.normalize_template_owner(None) == "all"
+    assert sdr_service.normalize_template_owner(" ") == "all"
+    assert sdr_service.normalize_template_owner("ALL") == "all"
+
+
+def test_normalize_template_owner_team_slug_and_invalid():
+    assert sdr_service.normalize_template_owner("Team:Ops Squad") == "team:ops-squad"
+
+    try:
+        sdr_service.normalize_template_owner("team:   ")
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "owner de equipe inválido" in str(exc)

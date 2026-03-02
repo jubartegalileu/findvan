@@ -108,6 +108,30 @@ def test_templates_list_validation_error(monkeypatch):
     assert response.status_code == 400
 
 
+def test_templates_audit_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "list_bulk_template_audit",
+        lambda **kwargs: [{"id": 11, "template_id": kwargs["template_id"], "owner": kwargs["owner"], "action": "save"}],
+    )
+    client = build_client()
+    response = client.get("/api/sdr/templates/audit?owner=alice&template_id=3&limit=20")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["events"][0]["template_id"] == 3
+
+
+def test_templates_audit_validation_error(monkeypatch):
+    def _raise(**kwargs):
+        raise ValueError("owner de equipe inválido")
+
+    monkeypatch.setattr(sdr_api, "list_bulk_template_audit", _raise)
+    client = build_client()
+    response = client.get("/api/sdr/templates/audit?owner=team:%20%20%20")
+    assert response.status_code == 400
+
+
 def test_templates_save_ok(monkeypatch):
     monkeypatch.setattr(
         sdr_api,

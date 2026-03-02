@@ -12,6 +12,7 @@ from ..services.sdr_service import (
     delete_bulk_template,
     get_queue,
     get_stats_by_assignee,
+    list_bulk_template_audit,
     list_bulk_templates,
     register_action,
     register_action_batch,
@@ -240,6 +241,22 @@ def sdr_templates(owner: str | None = Query(default="all", max_length=100)):
         raise_bad_request(str(exc), code="sdr_templates_validation")
     except Exception as exc:
         raise_internal_error(context="sdr_templates", exc=exc, code="sdr_templates_error")
+
+
+@router.get("/templates/audit")
+def sdr_templates_audit(
+    owner: str | None = Query(default="all", max_length=100),
+    template_id: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    try:
+        events = list_bulk_template_audit(owner=owner, template_id=template_id, limit=limit)
+        return {"events": events, "count": len(events)}
+    except ValueError as exc:
+        logger.warning("sdr_templates_audit validation failed: %s", exc)
+        raise_bad_request(str(exc), code="sdr_templates_audit_validation")
+    except Exception as exc:
+        raise_internal_error(context="sdr_templates_audit", exc=exc, code="sdr_templates_audit_error")
 
 
 @router.post("/templates")

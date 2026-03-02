@@ -255,6 +255,23 @@ def test_list_bulk_templates_rejects_empty_team_owner(monkeypatch):
         assert "owner de equipe inválido" in str(exc)
 
 
+def test_list_bulk_template_audit_filters_owner_template_and_limit(monkeypatch):
+    class _AuditListCursor(_FakeCursor):
+        def execute(self, query, params=None):
+            super().execute(query, params)
+            self._rows = [(11, 3, "alice", "save", "system", {"name": "Template A"}, "2026-03-02T10:00:00")]
+
+    cursor = _AuditListCursor()
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: _FakeConn(cursor))
+
+    events = sdr_service.list_bulk_template_audit(owner="alice", template_id=3, limit=20)
+
+    assert len(events) == 1
+    assert events[0]["template_id"] == 3
+    assert "FROM sdr_bulk_template_audit" in cursor.last_query
+    assert cursor.last_params == ("alice", 3, 20)
+
+
 def test_save_bulk_template_upserts_and_commits(monkeypatch):
     row = (3, "alice", "Template B", "Ligar amanhã", 1, "Nota B", False, 4)
     cursor = _FakeCursor(one_row=row)
@@ -274,6 +291,7 @@ def test_save_bulk_template_upserts_and_commits(monkeypatch):
     assert saved["sort_order"] == 4
     assert conn.did_commit is True
     assert any("ON CONFLICT (owner, name)" in query for query, _ in cursor.executed)
+    assert any("INSERT INTO sdr_bulk_template_audit" in query for query, _ in cursor.executed)
 
 
 def test_save_bulk_template_normalizes_team_owner(monkeypatch):
@@ -291,7 +309,9 @@ def test_save_bulk_template_normalizes_team_owner(monkeypatch):
     )
 
     assert saved["owner"] == "team:ops"
-    assert cursor.last_params[0] == "team:ops"
+    save_calls = [(query, params) for query, params in cursor.executed if "INSERT INTO sdr_bulk_templates" in query]
+    assert len(save_calls) == 1
+    assert save_calls[0][1][0] == "team:ops"
 
 
 def test_delete_bulk_template_returns_true_when_deleted(monkeypatch):
@@ -303,8 +323,10 @@ def test_delete_bulk_template_returns_true_when_deleted(monkeypatch):
 
     assert deleted is True
     assert conn.did_commit is True
-    assert "DELETE FROM sdr_bulk_templates" in cursor.last_query
-    assert cursor.last_params == (9, "alice")
+    delete_calls = [(query, params) for query, params in cursor.executed if "DELETE FROM sdr_bulk_templates" in query]
+    assert len(delete_calls) == 1
+    assert delete_calls[0][1] == (9, "alice")
+    assert any("INSERT INTO sdr_bulk_template_audit" in query for query, _ in cursor.executed)
 
 
 def test_delete_bulk_template_normalizes_all_owner(monkeypatch):
@@ -315,7 +337,9 @@ def test_delete_bulk_template_normalizes_all_owner(monkeypatch):
     deleted = sdr_service.delete_bulk_template(template_id=9, owner=" ALL ")
 
     assert deleted is True
-    assert cursor.last_params == (9, "all")
+    delete_calls = [(query, params) for query, params in cursor.executed if "DELETE FROM sdr_bulk_templates" in query]
+    assert len(delete_calls) == 1
+    assert delete_calls[0][1] == (9, "all")
 
 
 def test_update_bulk_template_preferences_updates_and_returns_row(monkeypatch):
@@ -335,7 +359,8 @@ def test_update_bulk_template_preferences_updates_and_returns_row(monkeypatch):
     assert updated["is_favorite"] is True
     assert updated["sort_order"] == 1
     assert conn.did_commit is True
-    assert "UPDATE sdr_bulk_templates" in cursor.last_query
+    assert any("UPDATE sdr_bulk_templates" in query for query, _ in cursor.executed)
+    assert any("INSERT INTO sdr_bulk_template_audit" in query for query, _ in cursor.executed)
 
 
 def test_normalize_template_owner_defaults_to_all():

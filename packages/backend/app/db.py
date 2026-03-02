@@ -205,6 +205,22 @@ CREATE INDEX IF NOT EXISTS idx_sdr_bulk_templates_owner ON sdr_bulk_templates(ow
 CREATE INDEX IF NOT EXISTS idx_sdr_bulk_templates_owner_order ON sdr_bulk_templates(owner, is_favorite DESC, sort_order ASC, id DESC);
 """
 
+SDR_BULK_TEMPLATE_AUDIT_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS sdr_bulk_template_audit (
+  id BIGSERIAL PRIMARY KEY,
+  template_id BIGINT NOT NULL,
+  owner VARCHAR(100) NOT NULL,
+  action VARCHAR(30) NOT NULL,
+  actor VARCHAR(100) NOT NULL DEFAULT 'system',
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sdr_bulk_template_audit_owner_created
+  ON sdr_bulk_template_audit(owner, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_sdr_bulk_template_audit_template_created
+  ON sdr_bulk_template_audit(template_id, created_at DESC, id DESC);
+"""
+
 TIMESTAMP_AND_TRIGGER_SQL = """
 CREATE OR REPLACE FUNCTION update_timestamp()
 RETURNS TRIGGER AS $$
@@ -543,6 +559,7 @@ def ensure_schema():
             cur.execute(SDR_ACTIVITIES_TABLE_SQL)
             cur.execute(PIPELINE_TABLE_SQL)
             cur.execute(SDR_BULK_TEMPLATES_TABLE_SQL)
+            cur.execute(SDR_BULK_TEMPLATE_AUDIT_TABLE_SQL)
             cur.execute(TIMESTAMP_AND_TRIGGER_SQL)
             cur.execute(MESSAGING_RECEIPTS_TABLE_SQL)
             cur.execute(JOB_LOCKS_TABLE_SQL)

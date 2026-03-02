@@ -40,6 +40,30 @@ def normalize_template_owner(owner: str | None) -> str:
     return normalized_owner
 
 
+def _log_bulk_template_audit(
+    cur,
+    *,
+    template_id: int,
+    owner: str,
+    action: str,
+    actor: str | None = None,
+    payload: dict | None = None,
+) -> None:
+    cur.execute(
+        """
+        INSERT INTO sdr_bulk_template_audit (template_id, owner, action, actor, payload)
+        VALUES (%s, %s, %s, %s, %s::jsonb);
+        """,
+        (
+            int(template_id),
+            owner,
+            action,
+            (actor or "system").strip() or "system",
+            json.dumps(payload or {}),
+        ),
+    )
+
+
 def get_queue(
     *,
     city: str | None = None,
@@ -562,6 +586,34 @@ def list_bulk_templates(*, owner: str | None = None) -> list[dict]:
     return [dict(zip(keys, row)) for row in rows]
 
 
+def list_bulk_template_audit(
+    *,
+    owner: str | None = None,
+    template_id: int | None = None,
+    limit: int = 100,
+) -> list[dict]:
+    normalized_owner = normalize_template_owner(owner)
+    capped_limit = max(1, min(int(limit or 100), 500))
+    query = """
+        SELECT id, template_id, owner, action, actor, payload, created_at
+        FROM sdr_bulk_template_audit
+        WHERE owner = %s
+    """
+    params: list[object] = [normalized_owner]
+    if template_id is not None:
+        query += " AND template_id = %s"
+        params.append(int(template_id))
+    query += " ORDER BY created_at DESC, id DESC LIMIT %s"
+    params.append(capped_limit)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall() or []
+    keys = ["id", "template_id", "owner", "action", "actor", "payload", "created_at"]
+    return [dict(zip(keys, row)) for row in rows]
+
+
 def save_bulk_template(
     *,
     owner: str,
@@ -613,6 +665,18 @@ def save_bulk_template(
                 ),
             )
             row = cur.fetchone()
+            _log_bulk_template_audit(
+                cur,
+                template_id=int(row[0]),
+                owner=normalized_owner,
+                action="save",
+                payload={
+                    "name": normalized_name,
+                    "cadence_days": normalized_cadence_days,
+                    "is_favorite": bool(row[6]),
+                    "sort_order": int(row[7]),
+                },
+            )
         conn.commit()
 
     keys = ["id", "owner", "name", "next_action_description", "cadence_days", "note", "is_favorite", "sort_order"]
@@ -630,6 +694,14 @@ def delete_bulk_template(*, template_id: int, owner: str | None = None) -> bool:
         with conn.cursor() as cur:
             cur.execute(query, (int(template_id), normalized_owner))
             row = cur.fetchone()
+            if row:
+                _log_bulk_template_audit(
+                    cur,
+                    template_id=int(template_id),
+                    owner=normalized_owner,
+                    action="delete",
+                    payload={},
+                )
         conn.commit()
     return bool(row)
 
@@ -666,6 +738,17 @@ def update_bulk_template_preferences(
                 ),
             )
             row = cur.fetchone()
+            if row:
+                _log_bulk_template_audit(
+                    cur,
+                    template_id=int(template_id),
+                    owner=normalized_owner,
+                    action="patch",
+                    payload={
+                        "is_favorite": bool(row[6]),
+                        "sort_order": int(row[7]),
+                    },
+                )
         conn.commit()
     if not row:
         return None

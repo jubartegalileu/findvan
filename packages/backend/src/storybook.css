@@ -1,0 +1,48 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #111827;
+  --surface: #f3f4f6;
+  --border: #d1d5db;
+  --primary: #0ea5e9;
+  --primary-fg: #ffffff;
+}
+
+.dark {
+  --bg: #0b1220;
+  --fg: #e5e7eb;
+  --surface: #111827;
+  --border: #374151;
+  --primary: #38bdf8;
+  --primary-fg: #0b1220;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.card {
+  width: 320px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.button.button-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-fg);
+}

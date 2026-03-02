@@ -1013,34 +1013,47 @@ export default function SDR({ onNavigate, activePath }) {
             {busyLeadId === 'batch' ? 'Salvando...' : 'Agendar proxima acao em lote'}
           </button>
         </div>
-        <div className="fv-row-sub" style={{ marginBottom: 10 }}>
-          Owner efetivo de templates: {templateOwner}
-        </div>
-        <div className="fv-row-sub" style={{ marginBottom: 10 }}>
-          Ator efetivo de templates: {templateActor || '(ausente)'}
-        </div>
-        <div className="fv-row-sub" style={{ marginBottom: 10 }}>
-          Permissao de mutacao: {templatePermissionLoading ? 'carregando...' : templatePermission.allowed ? 'Permitido' : 'Bloqueado'}
-        </div>
-        <div className="fv-row-sub" style={{ marginBottom: 10 }}>
-          Bloqueios recentes (owner): {permissionDeniedEvents.length}
-        </div>
-        {permissionDeniedEvents.length > 0 && (
-          <div className="fv-row-sub" style={{ marginBottom: 10 }}>
-            Ultimo bloqueio: {String(permissionDeniedEvents[0]?.payload?.reason || 'sem motivo')}
+        <div className="fv-template-config-panel" role="status" aria-live="polite">
+          <div className="fv-template-config-header">
+            <span className="fv-row-title">Status de configuração</span>
+            <span
+              className={`fv-template-permission-badge ${
+                templatePermissionLoading
+                  ? 'loading'
+                  : templatePermission.allowed
+                    ? 'allowed'
+                    : 'blocked'
+              }`}
+            >
+              {templatePermissionLoading ? 'carregando...' : templatePermission.allowed ? 'Permitido' : 'Bloqueado'}
+            </span>
           </div>
-        )}
-        {!templatePermissionLoading && !templatePermission.allowed && (
-          <div className="fv-row-sub" style={{ marginBottom: 10 }}>
-            Motivo: {templatePermission.reason || 'Acesso negado.'}
+          <div className="fv-template-config-grid">
+            <div className="fv-row-sub">Owner efetivo de templates: {templateOwner}</div>
+            <div className="fv-row-sub">Ator efetivo de templates: {templateActor || '(ausente)'}</div>
+            <div className="fv-row-sub">Bloqueios recentes (owner): {permissionDeniedEvents.length}</div>
+            {permissionDeniedEvents.length > 0 ? (
+              <div className="fv-row-sub">
+                Ultimo bloqueio: {String(permissionDeniedEvents[0]?.payload?.reason || 'sem motivo')}
+              </div>
+            ) : null}
           </div>
-        )}
-        {templateOwner === 'all' && templateActor.toLowerCase() !== 'admin' && (
-          <div className="fv-row-sub" style={{ marginBottom: 10 }}>
-            Escopo global requer ator `admin` para mutacoes de template.
-          </div>
-        )}
-        {selectedLeadIds.length === 0 && <div className="fv-row-sub" style={{ marginBottom: 10 }}>Selecione ao menos 1 lead para habilitar ações em lote.</div>}
+          {!templatePermissionLoading && !templatePermission.allowed ? (
+            <div className="fv-template-config-alert">
+              Motivo: {templatePermission.reason || 'Acesso negado.'}
+            </div>
+          ) : null}
+          {templateOwner === 'all' && templateActor.toLowerCase() !== 'admin' ? (
+            <div className="fv-template-config-note">
+              Escopo global requer ator `admin` para mutacoes de template.
+            </div>
+          ) : null}
+          {selectedLeadIds.length === 0 ? (
+            <div className="fv-template-config-note">
+              Selecione ao menos 1 lead para habilitar ações em lote.
+            </div>
+          ) : null}
+        </div>
         {batchFeedback && <div className="fv-feedback-banner" style={{ marginBottom: 10 }}>{batchFeedback}</div>}
         {selectedCustomTemplate && (
           <div className="fv-panel fv-panel-compact" style={{ marginBottom: 10 }}>

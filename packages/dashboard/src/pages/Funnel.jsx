@@ -49,11 +49,13 @@ function FunnelCard({ lead, status, movingLeadId }) {
       {...attributes}
       {...listeners}
     >
-      <div className="fv-row-title">{lead.name || 'Lead sem nome'}</div>
-      <div className="fv-row-sub">{lead.company_name || '--'}</div>
-      <div className="fv-row-sub">{lead.days_in_stage || 0} dias no estagio</div>
-      {status === 'perdido' && lead.loss_reason ? <div className="fv-row-sub">Motivo: {lead.loss_reason}</div> : null}
-      <div className="fv-row-actions">
+      <div className="fv-funnel-card-title">{lead.name || 'Lead sem nome'}</div>
+      <div className="fv-funnel-card-company">{lead.company_name || '--'}</div>
+      <div className="fv-funnel-card-meta">{lead.days_in_stage || 0} dias no estagio</div>
+      {status === 'perdido' && lead.loss_reason ? (
+        <div className="fv-funnel-card-meta">Motivo: {lead.loss_reason}</div>
+      ) : null}
+      <div className="fv-row-actions fv-funnel-card-actions">
         <ScoreBadge score={lead.score} />
       </div>
     </div>
@@ -214,7 +216,7 @@ export default function Funnel({ onNavigate, activePath }) {
         </div>
       </header>
 
-      <section className="fv-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(160px, 1fr))' }}>
+      <section className="fv-grid fv-funnel-kpi-grid">
         <div className="fv-card fv-card-soft">
           <div className="fv-card-label">Total no pipeline</div>
           <div className="fv-card-value">{summary.total}</div>
@@ -232,8 +234,8 @@ export default function Funnel({ onNavigate, activePath }) {
         </div>
       </section>
 
-      <section className="fv-panel fv-panel-compact" style={{ marginBottom: 16 }}>
-        <div className="fv-panel-header" style={{ marginBottom: 10 }}>
+      <section className="fv-panel fv-panel-compact fv-funnel-period-panel">
+        <div className="fv-panel-header fv-funnel-period-header">
           <h2>Periodo</h2>
         </div>
         <div className="fv-row-actions">
@@ -245,7 +247,7 @@ export default function Funnel({ onNavigate, activePath }) {
         </div>
       </section>
 
-      {error && <div className="fv-feedback-banner" style={{ marginBottom: 16 }}>{error}</div>}
+      {error && <div className="fv-feedback-banner fv-funnel-feedback">{error}</div>}
 
       <DndContext collisionDetection={closestCorners} onDragEnd={onDragEnd}>
         <section className="fv-funnel-board" role="region" aria-label="Kanban Funil">
@@ -259,7 +261,7 @@ export default function Funnel({ onNavigate, activePath }) {
 
       {lossModal.open ? (
         <section className="fv-modal-overlay" role="dialog" aria-modal="true" aria-label="Motivo de perda">
-          <div className="fv-modal-card" style={{ maxWidth: 520 }}>
+          <div className="fv-modal-card fv-funnel-modal-card">
             <h3>Motivo de perda</h3>
             <p className="fv-row-sub">Informe o motivo para mover o lead para Perdido.</p>
             <div className="fv-notes-tab">
@@ -278,7 +280,7 @@ export default function Funnel({ onNavigate, activePath }) {
                 </label>
               ) : null}
             </div>
-            <div className="fv-row-actions" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
+            <div className="fv-row-actions fv-funnel-modal-actions">
               <button type="button" className="fv-ghost" onClick={() => setLossModal({ open: false, leadId: null, fromStatus: null, toStatus: null })}>Cancelar</button>
               <button type="button" className="fv-primary" onClick={confirmLossMove}>Confirmar</button>
             </div>

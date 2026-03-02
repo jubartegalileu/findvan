@@ -577,6 +577,72 @@ body,
   border: 1px solid rgba(143, 97, 0, 0.25);
 }
 
+.fv-template-config-panel {
+  margin-bottom: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(32, 80, 114, 0.14);
+  background: rgba(255, 255, 255, 0.5);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.fv-template-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fv-template-config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px 12px;
+}
+
+.fv-template-permission-badge {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid rgba(32, 80, 114, 0.2);
+  background: #ffffff;
+  color: var(--fv-c1);
+  white-space: nowrap;
+}
+
+.fv-template-permission-badge.loading {
+  background: rgba(30, 136, 229, 0.16);
+  border-color: rgba(30, 136, 229, 0.35);
+  color: #1565c0;
+}
+
+.fv-template-permission-badge.allowed {
+  background: rgba(67, 160, 71, 0.16);
+  border-color: rgba(67, 160, 71, 0.35);
+  color: #2e7d32;
+}
+
+.fv-template-permission-badge.blocked {
+  background: rgba(229, 57, 53, 0.14);
+  border-color: rgba(229, 57, 53, 0.3);
+  color: #b71c1c;
+}
+
+.fv-template-config-alert {
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: rgba(229, 57, 53, 0.12);
+  border: 1px solid rgba(229, 57, 53, 0.26);
+  color: #9e1f1f;
+}
+
+.fv-template-config-note {
+  font-size: 13px;
+  color: #4c777d;
+}
+
 .fv-feedback-title {
   color: #8f6100;
   font-weight: 700;
@@ -1507,12 +1573,12 @@ body,
 }
 
 .fv-funnel-board {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(220px, 1fr));
+  display: flex;
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
   overflow-x: auto;
   padding-bottom: 8px;
+  scroll-snap-type: x proximity;
 }
 
 .fv-funnel-column {
@@ -1520,7 +1586,15 @@ body,
   border: 1px solid rgba(32, 80, 114, 0.12);
   border-radius: 16px;
   padding: 12px;
-  min-height: 260px;
+  min-height: 320px;
+  max-height: 70vh;
+  min-width: 300px;
+  flex: 0 0 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+  scroll-snap-align: start;
 }
 
 .fv-funnel-column-header {
@@ -1537,36 +1611,115 @@ body,
 
 .fv-funnel-column-list {
   display: grid;
-  gap: 10px;
-  margin-top: 12px;
+  gap: 12px;
+  margin-top: 4px;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+  min-height: 0;
 }
 
 .fv-funnel-card {
   background: white;
   border: 1px solid rgba(32, 80, 114, 0.15);
   border-radius: 12px;
-  padding: 10px;
+  padding: 12px;
   cursor: grab;
   box-shadow: 0 8px 18px rgba(32, 80, 114, 0.08);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: grid;
+  gap: 7px;
+  min-height: 136px;
 }
 
 .fv-funnel-card.is-moving {
   opacity: 0.65;
 }
 
+.fv-funnel-card-title {
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 700;
+  color: var(--fv-c1);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.fv-funnel-card-company {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #4c777d;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.fv-funnel-card-meta {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #5f8a90;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fv-funnel-card-actions {
+  margin-top: auto;
+}
+
+.fv-funnel-card .fv-row-chip {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
 @media (max-width: 1280px) {
   .fv-funnel-board {
-    grid-template-columns: repeat(3, minmax(220px, 1fr));
+    gap: 12px;
   }
 }
 
 @media (max-width: 880px) {
-  .fv-funnel-board {
-    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  .fv-funnel-column {
+    min-width: 260px;
+    flex-basis: 260px;
+    max-height: 64vh;
   }
 }
 
 .fv-funnel-column.is-over {
   border-color: rgba(50, 157, 156, 0.45);
   box-shadow: inset 0 0 0 1px rgba(50, 157, 156, 0.2);
+}
+
+.fv-funnel-kpi-grid {
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+}
+
+.fv-funnel-period-panel {
+  margin-bottom: 16px;
+}
+
+.fv-funnel-period-header {
+  margin-bottom: 10px;
+}
+
+.fv-funnel-feedback {
+  margin-bottom: 16px;
+}
+
+.fv-funnel-modal-card {
+  max-width: 520px;
+}
+
+.fv-funnel-modal-actions {
+  justify-content: flex-end;
+  margin-top: 12px;
 }

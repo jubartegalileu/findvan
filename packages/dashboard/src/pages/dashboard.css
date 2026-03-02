@@ -359,6 +359,10 @@ body,
   background: #e1f6e5;
 }
 
+.fv-columns-leads .fv-row-button {
+  background: #ffffff;
+}
+
 .fv-lead-card {
   align-items: flex-start;
   gap: 12px;
@@ -1053,6 +1057,11 @@ body,
 .fv-field textarea:focus {
   border-color: rgba(32, 80, 114, 0.45);
   box-shadow: 0 0 0 3px rgba(50, 157, 156, 0.12);
+}
+
+.fv-clickable-input {
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 .fv-leads-toolbar {

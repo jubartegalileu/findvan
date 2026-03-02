@@ -6,6 +6,35 @@ const ESTADOS_URL =
   'https://raw.githubusercontent.com/leogermani/estados-e-municipios-ibge/master/estados.json';
 const MUNICIPIOS_URL =
   'https://raw.githubusercontent.com/leogermani/estados-e-municipios-ibge/master/municipios.json';
+const FALLBACK_STATES = [
+  { sigla: 'AC', nome: 'Acre' },
+  { sigla: 'AL', nome: 'Alagoas' },
+  { sigla: 'AP', nome: 'Amapa' },
+  { sigla: 'AM', nome: 'Amazonas' },
+  { sigla: 'BA', nome: 'Bahia' },
+  { sigla: 'CE', nome: 'Ceara' },
+  { sigla: 'DF', nome: 'Distrito Federal' },
+  { sigla: 'ES', nome: 'Espirito Santo' },
+  { sigla: 'GO', nome: 'Goias' },
+  { sigla: 'MA', nome: 'Maranhao' },
+  { sigla: 'MT', nome: 'Mato Grosso' },
+  { sigla: 'MS', nome: 'Mato Grosso do Sul' },
+  { sigla: 'MG', nome: 'Minas Gerais' },
+  { sigla: 'PA', nome: 'Para' },
+  { sigla: 'PB', nome: 'Paraiba' },
+  { sigla: 'PR', nome: 'Parana' },
+  { sigla: 'PE', nome: 'Pernambuco' },
+  { sigla: 'PI', nome: 'Piaui' },
+  { sigla: 'RJ', nome: 'Rio de Janeiro' },
+  { sigla: 'RN', nome: 'Rio Grande do Norte' },
+  { sigla: 'RS', nome: 'Rio Grande do Sul' },
+  { sigla: 'RO', nome: 'Rondonia' },
+  { sigla: 'RR', nome: 'Roraima' },
+  { sigla: 'SC', nome: 'Santa Catarina' },
+  { sigla: 'SP', nome: 'Sao Paulo' },
+  { sigla: 'SE', nome: 'Sergipe' },
+  { sigla: 'TO', nome: 'Tocantins' },
+];
 
 const statusClass = {
   Concluído: 'concluido',
@@ -122,7 +151,9 @@ export default function Scraper({ onNavigate, activePath }) {
         setLoading(false);
       } catch (error) {
         if (!isActive) return;
-        setMessage('Falha ao carregar lista de cidades.');
+        setStates(FALLBACK_STATES);
+        setCitiesByUf({});
+        setMessage('Falha ao carregar lista completa de cidades. Use estado e/ou cidade manual.');
         setLoading(false);
       }
     };
@@ -298,12 +329,7 @@ export default function Scraper({ onNavigate, activePath }) {
     }
 
     const selectedState = states.find((item) => item.sigla === stateCode);
-    const resolvedCity = trimmed ? match : null;
-
-    if (trimmed && !resolvedCity) {
-      setMessage('Selecione uma cidade válida na lista para iniciar a coleta.');
-      return;
-    }
+    const resolvedCity = trimmed ? (match || trimmed) : null;
 
     setLoadingRun(true);
     setProgress(0);
@@ -316,7 +342,7 @@ export default function Scraper({ onNavigate, activePath }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          city: resolvedCity || selectedState?.nome,
+          city: resolvedCity || selectedState?.nome || null,
           state: stateCode,
           max_results: count || 50,
           keywords: selectedKeywords,
@@ -398,8 +424,7 @@ export default function Scraper({ onNavigate, activePath }) {
       setScheduleMessage('Selecione o estado para criar o agendamento.');
       return;
     }
-    const scheduleStateMeta = states.find((item) => item.sigla === scheduleState);
-    const resolvedScheduleCity = scheduleCity.trim() || scheduleStateMeta?.nome || scheduleState;
+    const resolvedScheduleCity = scheduleCity.trim() || null;
     setScheduleLoading(true);
     setScheduleMessage('');
     try {
@@ -489,8 +514,7 @@ export default function Scraper({ onNavigate, activePath }) {
       return;
     }
 
-    const scheduleStateMeta = states.find((item) => item.sigla === editScheduleState);
-    const resolvedCity = editScheduleCity.trim() || scheduleStateMeta?.nome || editScheduleState;
+    const resolvedCity = editScheduleCity.trim() || null;
 
     try {
       setEditScheduleLoading(true);
@@ -578,11 +602,11 @@ export default function Scraper({ onNavigate, activePath }) {
           <input
             className="fv-input"
             placeholder={loading ? 'Carregando cidades...' : 'Cidade (opcional)'}
-            value={city}
-            onChange={(event) => setCity(event.target.value)}
-            list="fv-city-list"
-            disabled={!stateCode || loading}
-          />
+              value={city}
+              onChange={(event) => setCity(event.target.value)}
+              list="fv-city-list"
+              disabled={loading}
+            />
           <datalist id="fv-city-list">
             {cityOptions.map((option, index) => (
               <option key={`${stateCode}-${option}-${index}`} value={option} />
@@ -728,7 +752,6 @@ export default function Scraper({ onNavigate, activePath }) {
             value={scheduleCity}
             onChange={(event) => setScheduleCity(event.target.value)}
             list="fv-schedule-city-list"
-            disabled={!scheduleState}
           />
           <datalist id="fv-schedule-city-list">
             {scheduleCityOptions.map((option, index) => (

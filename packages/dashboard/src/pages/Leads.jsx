@@ -369,6 +369,13 @@ export default function Leads({ onNavigate, activePath }) {
     }
   };
 
+  const openLeadUrl = () => {
+    const rawUrl = String(formLead.url || '').trim();
+    if (!rawUrl) return;
+    const href = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    window.open(href, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <Layout onNavigate={onNavigate} activePath={activePath}>
       <header className="fv-header">
@@ -610,7 +617,9 @@ export default function Leads({ onNavigate, activePath }) {
                 <input
                   id="lead-url"
                   value={formLead.url || ''}
-                  onChange={(event) => setFormLead((prev) => ({ ...prev, url: event.target.value }))}
+                  readOnly
+                  onClick={openLeadUrl}
+                  className={formLead.url ? 'fv-clickable-input' : ''}
                 />
               </div>
               <div className="fv-field">

@@ -75,6 +75,9 @@ export default function SDR({ onNavigate, activePath }) {
   const [batchNextActionDate, setBatchNextActionDate] = useState('');
   const [batchCadenceDays, setBatchCadenceDays] = useState('1');
   const [batchFeedback, setBatchFeedback] = useState('');
+  const [templateAuditEvents, setTemplateAuditEvents] = useState([]);
+  const [templateAuditLoading, setTemplateAuditLoading] = useState(false);
+  const [templateAuditError, setTemplateAuditError] = useState('');
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -472,6 +475,42 @@ export default function SDR({ onNavigate, activePath }) {
     () => [...batchTemplates, ...customBatchTemplates],
     [customBatchTemplates]
   );
+  const selectedCustomTemplate = useMemo(
+    () => customBatchTemplates.find((item) => item.id === selectedTemplateId) || null,
+    [customBatchTemplates, selectedTemplateId]
+  );
+
+  const loadTemplateAudit = useCallback(async () => {
+    if (!selectedCustomTemplate?.templateId) {
+      setTemplateAuditEvents([]);
+      setTemplateAuditError('');
+      return;
+    }
+    setTemplateAuditLoading(true);
+    setTemplateAuditError('');
+    try {
+      const params = new URLSearchParams();
+      params.set('owner', templateOwner);
+      params.set('template_id', String(selectedCustomTemplate.templateId));
+      params.set('limit', '20');
+      const response = await fetch(`${API_BASE}/api/sdr/templates/audit?${params.toString()}`);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao carregar auditoria do template.');
+      }
+      const events = Array.isArray(payload?.events) ? payload.events : [];
+      setTemplateAuditEvents(events);
+    } catch (err) {
+      setTemplateAuditEvents([]);
+      setTemplateAuditError(err.message || 'Falha ao carregar auditoria do template.');
+    } finally {
+      setTemplateAuditLoading(false);
+    }
+  }, [selectedCustomTemplate, templateOwner]);
+
+  useEffect(() => {
+    loadTemplateAudit();
+  }, [loadTemplateAudit]);
 
   const applyBatchTemplate = (templateId) => {
     const template = availableTemplates.find((item) => item.id === templateId);
@@ -878,6 +917,33 @@ export default function SDR({ onNavigate, activePath }) {
         </div>
         {selectedLeadIds.length === 0 && <div className="fv-row-sub" style={{ marginBottom: 10 }}>Selecione ao menos 1 lead para habilitar ações em lote.</div>}
         {batchFeedback && <div className="fv-feedback-banner" style={{ marginBottom: 10 }}>{batchFeedback}</div>}
+        {selectedCustomTemplate && (
+          <div className="fv-panel fv-panel-compact" style={{ marginBottom: 10 }}>
+            <div className="fv-panel-header" style={{ marginBottom: 8 }}>
+              <h2 style={{ fontSize: 14 }}>Auditoria do template: {selectedCustomTemplate.label}</h2>
+            </div>
+            {templateAuditLoading ? (
+              <div className="fv-row-sub">Carregando auditoria...</div>
+            ) : templateAuditError ? (
+              <div className="fv-row-sub">{templateAuditError}</div>
+            ) : templateAuditEvents.length === 0 ? (
+              <div className="fv-row-sub">Sem eventos de auditoria para este template.</div>
+            ) : (
+              <div className="fv-table">
+                {templateAuditEvents.map((event) => (
+                  <div key={`audit-${event.id}`} className="fv-row">
+                    <div className="fv-row-main">
+                      <div className="fv-row-title">{String(event.action || 'unknown')}</div>
+                      <div className="fv-row-sub">
+                        actor: {String(event.actor || 'system')} • {formatDateTime(event.created_at)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {loading ? (
           <div className="fv-message">Carregando fila SDR...</div>

@@ -46,6 +46,19 @@ describe('SDR page', () => {
       'fetch',
       vi.fn(async (url, options) => {
         const value = String(url);
+        if (value.includes('/api/sdr/templates/audit')) {
+          const parsedUrl = new URL(value, 'http://localhost');
+          const templateId = Number(parsedUrl.searchParams.get('template_id') || 0);
+          return {
+            ok: true,
+            json: async () => ({
+              events: templateId
+                ? [{ id: 1, template_id: templateId, owner: parsedUrl.searchParams.get('owner') || 'all', action: 'patch', actor: 'system', created_at: '2026-03-02T12:00:00Z' }]
+                : [],
+              count: templateId ? 1 : 0,
+            }),
+          };
+        }
         if (value.includes('/api/sdr/templates')) {
           const parsedUrl = new URL(value, 'http://localhost');
           if (!options || !options.method || options.method === 'GET') {
@@ -568,6 +581,38 @@ describe('SDR page', () => {
           String(options?.body || '').includes('"owner":"team:ops-squad"')
       );
       expect(saveCalls.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows template audit history for selected custom template', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.type(screen.getByPlaceholderText('Ex.: confirmar interesse e horario'), 'Nota auditoria');
+      await user.type(screen.getByLabelText('Nome template'), 'Template Audit');
+      await user.click(screen.getByRole('button', { name: 'Salvar template' }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Template salvo no escopo: all.')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.selectOptions(screen.getByLabelText('Template rapido'), 'custom-100');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Auditoria do template: Template Audit')).toBeDefined();
+      const auditCalls = fetch.mock.calls.filter(([url]) => String(url).includes('/api/sdr/templates/audit'));
+      expect(auditCalls.length).toBeGreaterThan(0);
+      expect(screen.getByText('patch')).toBeDefined();
     });
   });
 });

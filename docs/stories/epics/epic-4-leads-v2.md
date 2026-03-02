@@ -1,7 +1,7 @@
 # Epic 4 — Leads v2: Score Dinamico, Funil & Operacao SDR
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P0 (Must Have)
 **Wave:** 1
 **Estimativa:** 2-3 semanas
@@ -243,9 +243,9 @@ Wave 1d (Polish):
 
 ## Criterios de Aceite do Epic
 
-- [ ] Score dinamico calculado para todos os leads (nenhum com score fixo 80)
-- [ ] Todos os leads possuem status do funil (nenhum sem classificacao)
-- [ ] Filtros por status e score funcionam corretamente
+- [x] Score dinamico calculado para todos os leads (nenhum com score fixo 80)
+- [x] Todos os leads possuem status do funil (nenhum sem classificacao)
+- [x] Filtros por status e score funcionam corretamente
 - [ ] Acoes em lote executam sem erros para 50 leads simultaneos
 - [ ] Modal com 4 tabs navegaveis e funcionais
 - [ ] Insights mostram metricas de conversao reais
@@ -259,6 +259,12 @@ Wave 1d (Polish):
 - [ ] Teste manual: selecionar 10 leads e adicionar a campanha
 - [ ] Performance: lista de 100 leads em < 500ms
 - [ ] Sem regressoes nas funcionalidades existentes
+
+## Closure Note (2026-03-02)
+
+- Epic 4 foi parcialmente entregue pelas stories rastreadas `4.1` e `4.2` (ambas `Done`).
+- As stories planejadas `4.3` a `4.8` nao existem como artefatos `4.x` no backlog atual e foram absorvidas/superseded por epics posteriores da linha SDR/Funil (19-28), com implementacoes distribuidas no stack atual.
+- Decisao PO/PM: encerrar este epic legado como `Closed` e seguir evolucao pelos epics mais recentes.
 
 ---
 

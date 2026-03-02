@@ -545,12 +545,13 @@ describe('SDR page', () => {
     await act(async () => {
       await user.selectOptions(screen.getByLabelText('Escopo templates'), 'team');
       await user.clear(screen.getByLabelText('Nome equipe'));
-      await user.type(screen.getByLabelText('Nome equipe'), 'ops');
+      await user.type(screen.getByLabelText('Nome equipe'), 'Ops Squad!!');
     });
 
     await waitFor(() => {
-      const teamQueryCalls = fetch.mock.calls.filter(([url]) => String(url).includes('/api/sdr/templates?owner=team%3Aops'));
+      const teamQueryCalls = fetch.mock.calls.filter(([url]) => String(url).includes('/api/sdr/templates?owner=team%3Aops-squad'));
       expect(teamQueryCalls.length).toBeGreaterThan(0);
+      expect(screen.getByText('Owner efetivo de templates: team:ops-squad')).toBeDefined();
     });
 
     await act(async () => {
@@ -564,7 +565,7 @@ describe('SDR page', () => {
         ([url, options]) =>
           String(url).includes('/api/sdr/templates') &&
           options?.method === 'POST' &&
-          String(options?.body || '').includes('"owner":"team:ops"')
+          String(options?.body || '').includes('"owner":"team:ops-squad"')
       );
       expect(saveCalls.length).toBeGreaterThan(0);
     });

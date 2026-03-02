@@ -1,7 +1,7 @@
 # Epic 37 — Wave 32 SDR Template Owner Scope Governance
 
 **Brief:** `docs/brief-epic-37-sdr-template-owner-scope-governance.md`  
-**Status:** Draft  
+**Status:** Done  
 **Prioridade:** P0  
 **Estimativa:** 1 sprint curta (3 stories)  
 **Owner:** @pm (Morgan)
@@ -15,13 +15,13 @@ Endurecer governanca de owner scope dos templates SDR para manter consistencia e
 ## Stories
 
 1. **37.1 — Backend owner normalization + validation for templates** (`@data-engineer`)  
-Status: `Draft`
+Status: `Done`
 
 2. **37.2 — SDR UI owner scope UX hardening** (`@dev`)  
-Status: `Draft`
+Status: `Done`
 
 3. **37.3 — QA Gate + PO Go/No-Go (owner scope governance)** (`@qa + @po`)  
-Status: `Draft`
+Status: `Done`
 
 ## Execution Order
 
@@ -29,7 +29,7 @@ Status: `Draft`
 
 ## Definition of Done
 
-- [ ] Backend aplica normalizacao de owner para templates
-- [ ] UI SDR explicita escopo e reduz erro de input de equipe
-- [ ] Testes backend e regressao dashboard verdes
-- [ ] Gate final QA/PO com decisao GO documentada
+- [x] Backend aplica normalizacao de owner para templates
+- [x] UI SDR explicita escopo e reduz erro de input de equipe
+- [x] Testes backend e regressao dashboard verdes
+- [x] Gate final QA/PO com decisao GO documentada

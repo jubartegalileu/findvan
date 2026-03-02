@@ -43,6 +43,11 @@ const formatDateTime = (value) => {
 };
 
 const batchErrorMessage = (detail, fallback) => (detail ? `Operacao em lote falhou: ${detail}` : fallback);
+const normalizeTeamOwnerSlug = (value) => {
+  const raw = (value || '').trim().toLowerCase();
+  const slug = raw.replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '');
+  return slug || 'default';
+};
 
 export default function SDR({ onNavigate, activePath }) {
   const [queue, setQueue] = useState([]);
@@ -124,8 +129,7 @@ export default function SDR({ onNavigate, activePath }) {
   const templateOwner = useMemo(() => {
     if (templateOwnerScope === 'global') return 'all';
     if (templateOwnerScope === 'team') {
-      const normalizedTeam = (templateTeamName || '').trim().toLowerCase() || 'default';
-      return `team:${normalizedTeam}`;
+      return `team:${normalizeTeamOwnerSlug(templateTeamName)}`;
     }
     return sellerFilter || 'all';
   }, [templateOwnerScope, templateTeamName, sellerFilter]);
@@ -868,6 +872,9 @@ export default function SDR({ onNavigate, activePath }) {
           >
             {busyLeadId === 'batch' ? 'Salvando...' : 'Agendar proxima acao em lote'}
           </button>
+        </div>
+        <div className="fv-row-sub" style={{ marginBottom: 10 }}>
+          Owner efetivo de templates: {templateOwner}
         </div>
         {selectedLeadIds.length === 0 && <div className="fv-row-sub" style={{ marginBottom: 10 }}>Selecione ao menos 1 lead para habilitar ações em lote.</div>}
         {batchFeedback && <div className="fv-feedback-banner" style={{ marginBottom: 10 }}>{batchFeedback}</div>}

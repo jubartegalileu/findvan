@@ -14,6 +14,7 @@ from ..services.sdr_service import (
     get_stats_by_assignee,
     list_bulk_template_audit,
     list_bulk_templates,
+    normalize_template_owner,
     register_action,
     register_action_batch,
     save_bulk_template,
@@ -79,6 +80,15 @@ class SDRBulkTemplatePatchPayload(BaseModel):
     actor: str | None = Field(default=None, max_length=100)
     is_favorite: bool | None = None
     sort_order: int | None = None
+
+
+def _resolve_template_actor(owner: str | None, actor: str | None) -> str | None:
+    if actor is not None and actor.strip():
+        return actor.strip()
+    normalized_owner = normalize_template_owner(owner)
+    if normalized_owner == "all":
+        return None
+    return normalized_owner
 
 
 @router.get("/queue")
@@ -264,9 +274,10 @@ def sdr_templates_audit(
 @router.post("/templates")
 def sdr_templates_save(payload: SDRBulkTemplatePayload):
     try:
+        resolved_actor = _resolve_template_actor(payload.owner, payload.actor)
         saved = save_bulk_template(
             owner=payload.owner,
-            actor=payload.actor,
+            actor=resolved_actor,
             name=payload.name,
             next_action_description=payload.next_action_description,
             cadence_days=payload.cadence_days,
@@ -290,7 +301,8 @@ def sdr_templates_delete(
     actor: str | None = Query(default=None, max_length=100),
 ):
     try:
-        deleted = delete_bulk_template(template_id=template_id, owner=owner, actor=actor)
+        resolved_actor = _resolve_template_actor(owner, actor)
+        deleted = delete_bulk_template(template_id=template_id, owner=owner, actor=resolved_actor)
         if not deleted:
             raise_not_found("Template não encontrado", code="sdr_template_not_found")
         return {"status": "ok", "template_id": template_id}
@@ -309,10 +321,11 @@ def sdr_templates_delete(
 @router.patch("/templates/{template_id}")
 def sdr_templates_patch(template_id: int, payload: SDRBulkTemplatePatchPayload):
     try:
+        resolved_actor = _resolve_template_actor(payload.owner, payload.actor)
         updated = update_bulk_template_preferences(
             template_id=template_id,
             owner=payload.owner,
-            actor=payload.actor,
+            actor=resolved_actor,
             is_favorite=payload.is_favorite,
             sort_order=payload.sort_order,
         )

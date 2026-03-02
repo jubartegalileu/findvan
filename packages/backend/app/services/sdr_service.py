@@ -41,9 +41,9 @@ def normalize_template_owner(owner: str | None) -> str:
 
 
 def normalize_template_actor(actor: str | None) -> str:
-    normalized_actor = (actor or "system").strip()
+    normalized_actor = (actor or "").strip()
     if not normalized_actor:
-        normalized_actor = "system"
+        raise ValueError("actor é obrigatório")
     if len(normalized_actor) > 100:
         raise ValueError("actor deve ter no máximo 100 caracteres")
     return normalized_actor
@@ -53,7 +53,7 @@ def ensure_template_mutation_permission(*, owner: str, actor: str | None = None)
     normalized_owner = normalize_template_owner(owner)
     normalized_actor = normalize_template_actor(actor)
     lower_actor = normalized_actor.lower()
-    privileged_actors = {"system", "admin"}
+    privileged_actors = {"admin"}
     if lower_actor in privileged_actors:
         return normalized_actor
 

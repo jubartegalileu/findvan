@@ -133,15 +133,22 @@ def test_templates_audit_validation_error(monkeypatch):
 
 
 def test_templates_save_ok(monkeypatch):
+    captured = {}
+
+    def _fake_save_bulk_template(**kwargs):
+        captured.update(kwargs)
+        return {"id": 2, "owner": kwargs["owner"], "name": kwargs["name"]}
+
     monkeypatch.setattr(
         sdr_api,
         "save_bulk_template",
-        lambda **kwargs: {"id": 2, "owner": kwargs["owner"], "name": kwargs["name"]},
+        _fake_save_bulk_template,
     )
     client = build_client()
     response = client.post("/api/sdr/templates", json={"owner": "alice", "name": "Template B"})
     assert response.status_code == 200
     assert response.json()["template"]["name"] == "Template B"
+    assert captured["actor"] == "alice"
 
 
 def test_templates_save_forbidden(monkeypatch):
@@ -154,12 +161,31 @@ def test_templates_save_forbidden(monkeypatch):
     assert response.status_code == 403
 
 
+def test_templates_save_global_without_actor_forbidden(monkeypatch):
+    def _raise(**kwargs):
+        if kwargs.get("actor") is None:
+            raise PermissionError("Acesso negado para mutação de templates globais")
+        return {"id": 2, "owner": kwargs["owner"], "name": kwargs["name"]}
+
+    monkeypatch.setattr(sdr_api, "save_bulk_template", _raise)
+    client = build_client()
+    response = client.post("/api/sdr/templates", json={"owner": "all", "name": "Template Global"})
+    assert response.status_code == 403
+
+
 def test_templates_delete_ok(monkeypatch):
-    monkeypatch.setattr(sdr_api, "delete_bulk_template", lambda **kwargs: True)
+    captured = {}
+
+    def _fake_delete_bulk_template(**kwargs):
+        captured.update(kwargs)
+        return True
+
+    monkeypatch.setattr(sdr_api, "delete_bulk_template", _fake_delete_bulk_template)
     client = build_client()
     response = client.delete("/api/sdr/templates/5?owner=alice")
     assert response.status_code == 200
     assert response.json()["template_id"] == 5
+    assert captured["actor"] == "alice"
 
 
 def test_templates_delete_forbidden(monkeypatch):

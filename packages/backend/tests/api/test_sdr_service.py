@@ -280,6 +280,7 @@ def test_save_bulk_template_upserts_and_commits(monkeypatch):
 
     saved = sdr_service.save_bulk_template(
         owner="alice",
+        actor="alice",
         name="Template B",
         next_action_description="Ligar amanhã",
         cadence_days=1,
@@ -302,6 +303,7 @@ def test_save_bulk_template_normalizes_team_owner(monkeypatch):
 
     saved = sdr_service.save_bulk_template(
         owner=" Team:OPS ",
+        actor="team:ops",
         name="Template B",
         next_action_description="Ligar amanhã",
         cadence_days=1,
@@ -319,7 +321,7 @@ def test_delete_bulk_template_returns_true_when_deleted(monkeypatch):
     conn = _FakeConn(cursor)
     monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
 
-    deleted = sdr_service.delete_bulk_template(template_id=9, owner="alice")
+    deleted = sdr_service.delete_bulk_template(template_id=9, owner="alice", actor="alice")
 
     assert deleted is True
     assert conn.did_commit is True
@@ -334,7 +336,7 @@ def test_delete_bulk_template_normalizes_all_owner(monkeypatch):
     conn = _FakeConn(cursor)
     monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
 
-    deleted = sdr_service.delete_bulk_template(template_id=9, owner=" ALL ")
+    deleted = sdr_service.delete_bulk_template(template_id=9, owner=" ALL ", actor="admin")
 
     assert deleted is True
     delete_calls = [(query, params) for query, params in cursor.executed if "DELETE FROM sdr_bulk_templates" in query]
@@ -351,6 +353,7 @@ def test_update_bulk_template_preferences_updates_and_returns_row(monkeypatch):
     updated = sdr_service.update_bulk_template_preferences(
         template_id=9,
         owner="alice",
+        actor="alice",
         is_favorite=True,
         sort_order=1,
     )
@@ -392,6 +395,17 @@ def test_ensure_template_mutation_permission_allows_matching_team():
 def test_ensure_template_mutation_permission_denies_mismatch():
     try:
         sdr_service.ensure_template_mutation_permission(owner="alice", actor="bob")
+        assert False, "expected PermissionError"
+    except PermissionError as exc:
+        assert "Acesso negado" in str(exc)
+
+
+def test_ensure_template_mutation_permission_allows_global_only_for_admin():
+    actor = sdr_service.ensure_template_mutation_permission(owner="all", actor="admin")
+    assert actor == "admin"
+
+    try:
+        sdr_service.ensure_template_mutation_permission(owner="all", actor="alice")
         assert False, "expected PermissionError"
     except PermissionError as exc:
         assert "Acesso negado" in str(exc)

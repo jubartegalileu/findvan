@@ -11,6 +11,7 @@ const cadenceLabels = {
 };
 
 const cadenceOrder = { overdue: 0, today: 1, planned: 2 };
+const batchTemplateStoragePrefix = 'findvan:sdr:bulk-templates';
 const batchTemplates = [
   {
     id: 'followup-24h',
@@ -59,6 +60,10 @@ export default function SDR({ onNavigate, activePath }) {
   const [assignDrafts, setAssignDrafts] = useState({});
   const [openNotes, setOpenNotes] = useState({});
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [customBatchTemplates, setCustomBatchTemplates] = useState([]);
+  const [batchTemplateNameDraft, setBatchTemplateNameDraft] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [batchAssignDraft, setBatchAssignDraft] = useState('');
   const [batchNoteDraft, setBatchNoteDraft] = useState('');
   const [batchNextActionDescription, setBatchNextActionDescription] = useState('');
@@ -115,6 +120,54 @@ export default function SDR({ onNavigate, activePath }) {
     loadQueue();
     loadStats();
   }, [loadQueue, loadStats]);
+
+  useEffect(() => {
+    const storageKey = `${batchTemplateStoragePrefix}:${sellerFilter || 'all'}`;
+    try {
+      const rawValue = window.localStorage.getItem(storageKey);
+      if (!rawValue) {
+        setCustomBatchTemplates([]);
+        setTemplatesLoaded(true);
+        return;
+      }
+      const parsed = JSON.parse(rawValue);
+      if (!Array.isArray(parsed)) {
+        setCustomBatchTemplates([]);
+        setTemplatesLoaded(true);
+        return;
+      }
+      const normalized = parsed
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => ({
+          id: String(item.id || ''),
+          label: String(item.label || '').trim(),
+          nextActionDescription: String(item.nextActionDescription || '').trim(),
+          cadenceDays: String(item.cadenceDays || '1').trim() || '1',
+          note: String(item.note || '').trim(),
+          isCustom: true,
+        }))
+        .filter((item) => item.id && item.label);
+      setCustomBatchTemplates(normalized);
+      setTemplatesLoaded(true);
+    } catch {
+      setCustomBatchTemplates([]);
+      setTemplatesLoaded(true);
+    }
+  }, [sellerFilter]);
+
+  useEffect(() => {
+    if (!templatesLoaded) return;
+    const storageKey = `${batchTemplateStoragePrefix}:${sellerFilter || 'all'}`;
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(customBatchTemplates));
+    } catch {
+      // ignore localStorage write failures to avoid blocking SDR operations
+    }
+  }, [customBatchTemplates, sellerFilter, templatesLoaded]);
+
+  useEffect(() => {
+    setSelectedTemplateId('');
+  }, [sellerFilter]);
 
   const cities = useMemo(() => {
     const values = Array.from(new Set(queue.map((item) => item.city).filter(Boolean)));
@@ -412,13 +465,54 @@ export default function SDR({ onNavigate, activePath }) {
   };
 
   const isAllFilteredSelected = filteredQueue.length > 0 && filteredQueue.every((lead) => selectedLeadIds.includes(lead.lead_id));
+  const availableTemplates = useMemo(
+    () => [...batchTemplates, ...customBatchTemplates],
+    [customBatchTemplates]
+  );
+
   const applyBatchTemplate = (templateId) => {
-    const template = batchTemplates.find((item) => item.id === templateId);
+    const template = availableTemplates.find((item) => item.id === templateId);
     if (!template) return;
     setBatchNextActionDescription(template.nextActionDescription);
     setBatchCadenceDays(template.cadenceDays);
     setBatchNoteDraft(template.note);
     setBatchFeedback(`Template aplicado: ${template.label}.`);
+  };
+
+  const saveCurrentAsTemplate = () => {
+    const label = batchTemplateNameDraft.trim();
+    if (!label) return;
+    const nextActionDescription = batchNextActionDescription.trim();
+    const note = batchNoteDraft.trim();
+    if (!nextActionDescription && !note) return;
+
+    const customTemplate = {
+      id: `custom-${Date.now()}`,
+      label,
+      nextActionDescription,
+      cadenceDays: String(batchCadenceDays || '1'),
+      note,
+      isCustom: true,
+    };
+    setCustomBatchTemplates((prev) => {
+      const filtered = prev.filter((item) => item.label.toLowerCase() !== label.toLowerCase());
+      return [...filtered, customTemplate];
+    });
+    setBatchTemplateNameDraft('');
+    setSelectedTemplateId(customTemplate.id);
+    setBatchFeedback(`Template salvo para vendedor: ${sellerFilter || 'all'}.`);
+  };
+
+  const deleteSelectedCustomTemplate = () => {
+    if (!selectedTemplateId) return;
+    const current = availableTemplates.find((item) => item.id === selectedTemplateId);
+    if (!current || !current.isCustom) {
+      setBatchFeedback('Apenas templates custom podem ser excluidos.');
+      return;
+    }
+    setCustomBatchTemplates((prev) => prev.filter((item) => item.id !== selectedTemplateId));
+    setSelectedTemplateId('');
+    setBatchFeedback(`Template removido: ${current.label}.`);
   };
 
   const goToWhatsApp = (leadId) => {
@@ -559,19 +653,46 @@ export default function SDR({ onNavigate, activePath }) {
             <select
               className="fv-input fv-select"
               aria-label="Template rapido"
-              defaultValue=""
+              value={selectedTemplateId}
               onChange={(e) => {
-                if (!e.target.value) return;
-                applyBatchTemplate(e.target.value);
-                e.target.value = '';
+                const value = e.target.value;
+                setSelectedTemplateId(value);
+                if (!value) return;
+                applyBatchTemplate(value);
               }}
             >
               <option value="">Selecionar template</option>
-              {batchTemplates.map((template) => (
+              {availableTemplates.map((template) => (
                 <option key={template.id} value={template.id}>{template.label}</option>
               ))}
             </select>
           </label>
+          <label className="fv-field fv-field-inline">
+            <span>Salvar como template</span>
+            <input
+              className="fv-input"
+              aria-label="Nome template"
+              placeholder="Nome do template"
+              value={batchTemplateNameDraft}
+              onChange={(e) => setBatchTemplateNameDraft(e.target.value)}
+            />
+          </label>
+          <button
+            className="fv-ghost"
+            type="button"
+            disabled={!batchTemplateNameDraft.trim() || (!batchNextActionDescription.trim() && !batchNoteDraft.trim())}
+            onClick={saveCurrentAsTemplate}
+          >
+            Salvar template
+          </button>
+          <button
+            className="fv-ghost"
+            type="button"
+            disabled={!selectedTemplateId}
+            onClick={deleteSelectedCustomTemplate}
+          >
+            Excluir template
+          </button>
           <label className="fv-field fv-field-inline">
             <span>Nota (lote)</span>
             <input

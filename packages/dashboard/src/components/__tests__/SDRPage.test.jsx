@@ -39,6 +39,7 @@ const statsPayload = { total: 2, done_today: 1, pending: 1, overdue: 1 };
 
 describe('SDR page', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url, options) => {
@@ -401,6 +402,49 @@ describe('SDR page', () => {
       expect(screen.getByDisplayValue('Enviar proposta personalizada')).toBeDefined();
       expect(screen.getByDisplayValue('2')).toBeDefined();
       expect(screen.getByText('Template aplicado: Enviar proposta.')).toBeDefined();
+    });
+  });
+
+  it('persists custom template by seller filter', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.type(screen.getByPlaceholderText('Ex.: confirmar interesse e horario'), 'Template custom nota');
+      await user.type(screen.getByPlaceholderText('Ex.: ligar amanha'), 'Template custom acao');
+      await user.clear(screen.getByLabelText('Cadencia (dias)'));
+      await user.type(screen.getByLabelText('Cadencia (dias)'), '4');
+      await user.type(screen.getByLabelText('Nome template'), 'Template Alice');
+      await user.click(screen.getByRole('button', { name: 'Salvar template' }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Template salvo para vendedor: all.')).toBeDefined();
+    });
+
+    const sellerSelect = screen.getByLabelText('Vendedor');
+    await act(async () => {
+      await user.selectOptions(sellerSelect, 'alice');
+    });
+
+    await waitFor(() => {
+      const options = Array.from(screen.getByLabelText('Template rapido').querySelectorAll('option')).map((option) => option.textContent);
+      expect(options.includes('Template Alice')).toBe(false);
+    });
+
+    await act(async () => {
+      await user.selectOptions(sellerSelect, 'all');
+    });
+
+    await waitFor(() => {
+      const options = Array.from(screen.getByLabelText('Template rapido').querySelectorAll('option')).map((option) => option.textContent);
+      expect(options.includes('Template Alice')).toBe(true);
     });
   });
 });

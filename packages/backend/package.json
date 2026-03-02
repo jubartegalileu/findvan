@@ -11,6 +11,7 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "test": "node --test tests/**/*.test.js",
+    "test:api:sdr-funil": "./venv/bin/python -m pytest -q tests/api/test_leads_api.py tests/api/test_dashboard_api.py tests/api/test_sdr_api.py tests/api/test_pipeline_api.py tests/api/test_sdr_service.py tests/api/test_pipeline_service.py tests/api/test_sdr_pipeline_volume_baseline.py",
     "test:db": "node --test tests/db/**/*.test.js",
     "test:whatsapp": "node --test tests/services/whatsapp.test.js tests/services/queue.test.js tests/services/template.test.js tests/services/ratelimiter.test.js tests/services/campaign.test.js tests/routes/whatsapp.test.js",
     "migrate": "node src/db/migrate.js",

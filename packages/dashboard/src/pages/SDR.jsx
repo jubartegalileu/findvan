@@ -68,6 +68,7 @@ export default function SDR({ onNavigate, activePath }) {
   const [customBatchTemplates, setCustomBatchTemplates] = useState([]);
   const [templateOwnerScope, setTemplateOwnerScope] = useState('seller');
   const [templateTeamName, setTemplateTeamName] = useState('default');
+  const [templateActorInput, setTemplateActorInput] = useState('');
   const [batchTemplateNameDraft, setBatchTemplateNameDraft] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [batchAssignDraft, setBatchAssignDraft] = useState('');
@@ -137,6 +138,12 @@ export default function SDR({ onNavigate, activePath }) {
     }
     return sellerFilter || 'all';
   }, [templateOwnerScope, templateTeamName, sellerFilter]);
+  const templateActor = useMemo(() => {
+    const typed = (templateActorInput || '').trim();
+    if (typed) return typed;
+    if (templateOwner === 'all') return '';
+    return templateOwner;
+  }, [templateActorInput, templateOwner]);
 
   const loadCustomTemplates = useCallback(async () => {
     try {
@@ -535,6 +542,7 @@ export default function SDR({ onNavigate, activePath }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           owner: templateOwner,
+          actor: templateActor || undefined,
           name: label,
           next_action_description: nextActionDescription || null,
           cadence_days: Number(batchCadenceDays || 1),
@@ -568,7 +576,9 @@ export default function SDR({ onNavigate, activePath }) {
     }
     try {
       const response = await fetch(
-        `${API_BASE}/api/sdr/templates/${current.templateId}?owner=${encodeURIComponent(templateOwner)}`,
+        `${API_BASE}/api/sdr/templates/${current.templateId}?owner=${encodeURIComponent(templateOwner)}${
+          templateActor ? `&actor=${encodeURIComponent(templateActor)}` : ''
+        }`,
         { method: 'DELETE' }
       );
       const payload = await response.json();
@@ -590,7 +600,7 @@ export default function SDR({ onNavigate, activePath }) {
     const response = await fetch(`${API_BASE}/api/sdr/templates/${templateId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ owner: templateOwner, ...payload }),
+      body: JSON.stringify({ owner: templateOwner, actor: templateActor || undefined, ...payload }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -799,6 +809,16 @@ export default function SDR({ onNavigate, activePath }) {
             </label>
           )}
           <label className="fv-field fv-field-inline">
+            <span>Ator template</span>
+            <input
+              className="fv-input"
+              aria-label="Ator template"
+              placeholder={templateOwner === 'all' ? 'admin' : templateOwner}
+              value={templateActorInput}
+              onChange={(e) => setTemplateActorInput(e.target.value)}
+            />
+          </label>
+          <label className="fv-field fv-field-inline">
             <span>Template rapido</span>
             <select
               className="fv-input fv-select"
@@ -925,6 +945,14 @@ export default function SDR({ onNavigate, activePath }) {
         <div className="fv-row-sub" style={{ marginBottom: 10 }}>
           Owner efetivo de templates: {templateOwner}
         </div>
+        <div className="fv-row-sub" style={{ marginBottom: 10 }}>
+          Ator efetivo de templates: {templateActor || '(ausente)'}
+        </div>
+        {templateOwner === 'all' && templateActor.toLowerCase() !== 'admin' && (
+          <div className="fv-row-sub" style={{ marginBottom: 10 }}>
+            Escopo global requer ator `admin` para mutacoes de template.
+          </div>
+        )}
         {selectedLeadIds.length === 0 && <div className="fv-row-sub" style={{ marginBottom: 10 }}>Selecione ao menos 1 lead para habilitar ações em lote.</div>}
         {batchFeedback && <div className="fv-feedback-banner" style={{ marginBottom: 10 }}>{batchFeedback}</div>}
         {selectedCustomTemplate && (

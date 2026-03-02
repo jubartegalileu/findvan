@@ -645,4 +645,35 @@ describe('SDR page', () => {
       expect(screen.getByText('patch')).toBeDefined();
     });
   });
+
+  it('propagates explicit admin actor for global template mutations', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+      expect(screen.getByText('Escopo global requer ator `admin` para mutacoes de template.')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.type(screen.getByLabelText('Ator template'), 'admin');
+      await user.type(screen.getByPlaceholderText('Ex.: confirmar interesse e horario'), 'Nota admin');
+      await user.type(screen.getByLabelText('Nome template'), 'Template Global Admin');
+      await user.click(screen.getByRole('button', { name: 'Salvar template' }));
+    });
+
+    await waitFor(() => {
+      const saveCalls = fetch.mock.calls.filter(
+        ([url, options]) =>
+          String(url).includes('/api/sdr/templates') &&
+          options?.method === 'POST' &&
+          String(options?.body || '').includes('"owner":"all"') &&
+          String(options?.body || '').includes('"actor":"admin"')
+      );
+      expect(saveCalls.length).toBeGreaterThan(0);
+      expect(screen.getByText('Ator efetivo de templates: admin')).toBeDefined();
+    });
+  });
 });

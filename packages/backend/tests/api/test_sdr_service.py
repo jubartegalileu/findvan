@@ -157,3 +157,31 @@ def test_assign_owner_batch_updates_multiple_and_commits(monkeypatch):
     assert conn.did_commit is True
     assert any("UPDATE sdr_activities" in query for query, _ in cursor.executed)
     assert sum(1 for query, _ in cursor.executed if "INSERT INTO lead_interactions" in query) == 2
+
+
+def test_register_action_batch_updates_multiple_and_commits(monkeypatch):
+    class _BatchActionCursor(_FakeCursor):
+        def __init__(self):
+            super().__init__()
+            self._update_called = False
+
+        def execute(self, query, params=None):
+            super().execute(query, params)
+            if "UPDATE sdr_activities" in str(query):
+                self._rows = [(21,), (22,)]
+                self._update_called = True
+            elif self._update_called:
+                self._rows = []
+
+    cursor = _BatchActionCursor()
+    conn = _FakeConn(cursor)
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
+
+    result = sdr_service.register_action_batch(lead_ids=[21, 22], action_type="done", cadence_days=2)
+
+    assert result["updated_count"] == 2
+    assert result["lead_ids"] == [21, 22]
+    assert result["action_type"] == "done"
+    assert conn.did_commit is True
+    assert any("UPDATE sdr_activities" in query for query, _ in cursor.executed)
+    assert sum(1 for query, _ in cursor.executed if "INSERT INTO lead_interactions" in query) == 2

@@ -215,6 +215,86 @@ def register_action(
     return dict(zip(keys, row))
 
 
+def register_action_batch(
+    *,
+    lead_ids: list[int],
+    action_type: str = "done",
+    author: str | None = None,
+    next_action_date: str | None = None,
+    next_action_description: str | None = None,
+    cadence_days: int = 1,
+) -> dict:
+    if not lead_ids:
+        raise ValueError("lead_ids é obrigatório")
+
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for lead_id in lead_ids:
+        value = int(lead_id)
+        if value <= 0:
+            raise ValueError("lead_ids deve conter apenas IDs positivos")
+        if value in seen:
+            continue
+        normalized_ids.append(value)
+        seen.add(value)
+
+    update_query = """
+        UPDATE sdr_activities
+        SET
+          contact_count = COALESCE(contact_count, 0) + 1,
+          last_contact_at = NOW(),
+          cadence_step = COALESCE(cadence_step, 0) + 1,
+          next_action_date = COALESCE(%s::timestamp, NOW() + (%s || ' days')::interval),
+          next_action_description = COALESCE(%s, next_action_description),
+          prospect_status = CASE
+            WHEN prospect_status = 'nao_contatado' THEN 'contatado'
+            ELSE prospect_status
+          END,
+          updated_at = NOW()
+        WHERE lead_id = ANY(%s::int[])
+        RETURNING lead_id;
+    """
+    interaction_query = """
+        INSERT INTO lead_interactions (lead_id, type, content, metadata, author)
+        VALUES (%s, 'sdr_action', %s, %s::jsonb, %s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                update_query,
+                (
+                    next_action_date,
+                    max(1, cadence_days),
+                    next_action_description,
+                    normalized_ids,
+                ),
+            )
+            rows = cur.fetchall() or []
+            updated_ids = [int(row[0]) for row in rows]
+            if not updated_ids:
+                conn.rollback()
+                return {"updated_count": 0, "lead_ids": [], "action_type": action_type}
+
+            for updated_id in updated_ids:
+                cur.execute(
+                    interaction_query,
+                    (
+                        updated_id,
+                        f"SDR action: {action_type}",
+                        json.dumps({"action_type": action_type}),
+                        author or "sdr",
+                    ),
+                )
+        conn.commit()
+
+    return {
+        "updated_count": len(updated_ids),
+        "lead_ids": updated_ids,
+        "action_type": action_type,
+    }
+
+
 def add_note(*, lead_id: int, note: str, author: str | None = None) -> dict | None:
     payload_note = _serialize_note(note, author)
     serialized_note = json.dumps(payload_note)

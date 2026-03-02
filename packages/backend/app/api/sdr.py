@@ -4,7 +4,15 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .error_utils import raise_bad_request, raise_internal_error, raise_not_found
-from ..services.sdr_service import add_note, assign_owner, assign_owner_batch, get_queue, get_stats_by_assignee, register_action
+from ..services.sdr_service import (
+    add_note,
+    assign_owner,
+    assign_owner_batch,
+    get_queue,
+    get_stats_by_assignee,
+    register_action,
+    register_action_batch,
+)
 
 
 router = APIRouter()
@@ -34,6 +42,15 @@ class SDRAssignBatchPayload(BaseModel):
     lead_ids: list[int] = Field(..., min_length=1, max_length=500)
     assigned_to: str = Field(..., min_length=1, max_length=100)
     author: str | None = Field(default=None, max_length=100)
+
+
+class SDRActionBatchPayload(BaseModel):
+    lead_ids: list[int] = Field(..., min_length=1, max_length=500)
+    action_type: str = Field(default="done", min_length=2, max_length=40)
+    author: str | None = Field(default=None, max_length=100)
+    next_action_date: str | None = None
+    next_action_description: str | None = Field(default=None, max_length=500)
+    cadence_days: int = Field(default=1, ge=1, le=30)
 
 
 @router.get("/queue")
@@ -143,3 +160,26 @@ def sdr_assign_batch(payload: SDRAssignBatchPayload):
         raise_bad_request(str(exc), code="sdr_assign_batch_validation")
     except Exception as exc:
         raise_internal_error(context="sdr_assign_batch", exc=exc, code="sdr_assign_batch_error")
+
+
+@router.patch("/action/batch")
+def sdr_action_batch(payload: SDRActionBatchPayload):
+    try:
+        updated = register_action_batch(
+            lead_ids=payload.lead_ids,
+            action_type=payload.action_type,
+            author=payload.author,
+            next_action_date=payload.next_action_date,
+            next_action_description=payload.next_action_description,
+            cadence_days=payload.cadence_days,
+        )
+        if updated["updated_count"] == 0:
+            raise_not_found("Nenhum lead encontrado para ação em lote", code="sdr_lead_not_found")
+        return {"status": "ok", **updated}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        logger.warning("sdr_action_batch validation failed: %s", exc)
+        raise_bad_request(str(exc), code="sdr_action_batch_validation")
+    except Exception as exc:
+        raise_internal_error(context="sdr_action_batch", exc=exc, code="sdr_action_batch_error")

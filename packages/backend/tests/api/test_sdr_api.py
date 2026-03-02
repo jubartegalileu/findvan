@@ -152,6 +152,27 @@ def test_patch_assign_batch_ok(monkeypatch):
     assert payload["assigned_to"] == "alice"
 
 
+def test_patch_action_batch_ok(monkeypatch):
+    def _fake_register_action_batch(**kwargs):
+        return {
+            "updated_count": len(kwargs["lead_ids"]),
+            "lead_ids": kwargs["lead_ids"],
+            "action_type": kwargs["action_type"],
+        }
+
+    monkeypatch.setattr(sdr_api, "register_action_batch", _fake_register_action_batch)
+    client = build_client()
+    response = client.patch(
+        "/api/sdr/action/batch",
+        json={"lead_ids": [10, 11], "action_type": "done"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["updated_count"] == 2
+    assert payload["lead_ids"] == [10, 11]
+    assert payload["action_type"] == "done"
+
+
 def test_get_queue_internal_error_is_sanitized(monkeypatch):
     def _raise(**kwargs):
         raise RuntimeError("db failed")

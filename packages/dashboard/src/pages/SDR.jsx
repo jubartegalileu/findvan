@@ -217,6 +217,33 @@ export default function SDR({ onNavigate, activePath }) {
     }
   };
 
+  const patchActionBatchDone = async () => {
+    if (selectedLeadIds.length === 0) return;
+
+    setBusyLeadId('batch');
+    setError('');
+    setBatchFeedback('');
+    try {
+      const response = await fetch(`${API_BASE}/api/sdr/action/batch`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_ids: selectedLeadIds, action_type: 'done', author: 'sdr-ui' }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao marcar lote como feito.');
+      }
+      const updatedCount = Number(payload?.updated_count || 0);
+      setSelectedLeadIds([]);
+      setBatchFeedback(`${updatedCount} lead(s) marcado(s) como feito.`);
+      await Promise.all([loadQueue(), loadStats()]);
+    } catch (err) {
+      setError(err.message || 'Falha ao marcar lote como feito.');
+    } finally {
+      setBusyLeadId(null);
+    }
+  };
+
   const toggleLeadSelection = (leadId, checked) => {
     setSelectedLeadIds((prev) => {
       if (checked) {
@@ -358,6 +385,14 @@ export default function SDR({ onNavigate, activePath }) {
               onClick={patchAssignBatch}
             >
               {busyLeadId === 'batch' ? 'Atribuindo...' : 'Atribuir em lote'}
+            </button>
+            <button
+              className="fv-ghost"
+              type="button"
+              disabled={busyLeadId === 'batch' || selectedLeadIds.length === 0}
+              onClick={patchActionBatchDone}
+            >
+              {busyLeadId === 'batch' ? 'Salvando...' : 'Marcar lote como feito'}
             </button>
           </div>
         </div>

@@ -43,6 +43,9 @@ describe('SDR page', () => {
       'fetch',
       vi.fn(async (url) => {
         const value = String(url);
+        if (value.includes('/api/sdr/action/batch')) {
+          return { ok: true, json: async () => ({ status: 'ok', updated_count: 2, lead_ids: [1, 2], action_type: 'done' }) };
+        }
         if (value.includes('/api/sdr/assign/batch')) {
           return { ok: true, json: async () => ({ status: 'ok', updated_count: 2, lead_ids: [1, 2], assigned_to: 'danilo' }) };
         }
@@ -230,5 +233,34 @@ describe('SDR page', () => {
     await waitFor(() => {
       expect(screen.getByText('Nenhum lead encontrado para atribuição')).toBeDefined();
     });
+  });
+
+  it('sends batch done action request for selected leads', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.click(screen.getByLabelText('Selecionar lead 1'));
+      await user.click(screen.getByRole('button', { name: 'Marcar lote como feito' }));
+    });
+
+    await waitFor(() => {
+      const patchCalls = fetch.mock.calls.filter(
+        ([url, options]) =>
+          String(url).includes('/api/sdr/action/batch') &&
+          options?.method === 'PATCH' &&
+          String(options?.body || '').includes('"lead_ids":[1]') &&
+          String(options?.body || '').includes('"action_type":"done"')
+      );
+      expect(patchCalls.length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByText('2 lead(s) marcado(s) como feito.')).toBeDefined();
   });
 });

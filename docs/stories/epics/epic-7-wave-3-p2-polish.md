@@ -1,7 +1,7 @@
 # Epic 7 — Wave 3 P2 Polish: Dashboard Quick Actions, Scraper Coverage, Leads Tags
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P2 (Could Have)
 **Wave:** 3
 **Estimativa:** 1 semana

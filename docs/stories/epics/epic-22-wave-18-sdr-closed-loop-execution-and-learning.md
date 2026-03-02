@@ -1,7 +1,7 @@
 # Epic 22 — Wave 18 SDR Closed-Loop Execution and Learning
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade pós-Wave 17)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Operação SDR)
 **Wave:** 18
 **Estimativa:** 1-2 semanas

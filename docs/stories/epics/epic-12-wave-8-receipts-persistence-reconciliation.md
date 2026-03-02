@@ -1,7 +1,7 @@
 # Epic 12 — Wave 8 Receipts Persistence & Reconciliation
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Confiabilidade Operacional)
 **Wave:** 8
 **Estimativa:** 1-2 semanas

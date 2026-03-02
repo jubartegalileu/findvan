@@ -1,7 +1,7 @@
 # Epic 15 — Wave 11 Multi-Instance Readiness & Distributed Resilience
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Escalabilidade Distribuída)
 **Wave:** 11
 **Estimativa:** 1-2 semanas

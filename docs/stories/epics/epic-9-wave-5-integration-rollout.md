@@ -1,7 +1,7 @@
 # Epic 9 — Wave 5 Integration Rollout Incremental (WhatsApp/API + QA Visual)
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Enablement Funcional)
 **Wave:** 5
 **Estimativa:** 1-2 semanas

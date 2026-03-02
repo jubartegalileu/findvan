@@ -1,7 +1,7 @@
 # Epic 10 — Wave 6 WhatsApp Functional Adoption (UI + Campaign Flow)
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Adoção Funcional)
 **Wave:** 6
 **Estimativa:** 1-2 semanas

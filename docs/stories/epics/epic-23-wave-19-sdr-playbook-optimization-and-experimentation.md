@@ -1,7 +1,7 @@
 # Epic 23 — Wave 19 SDR Playbook Optimization and Experimentation
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade pós-Wave 18)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Operação SDR)
 **Wave:** 19
 **Estimativa:** 1-2 semanas

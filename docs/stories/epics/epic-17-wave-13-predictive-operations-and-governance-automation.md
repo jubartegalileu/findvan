@@ -1,7 +1,7 @@
 # Epic 17 — Wave 13 Predictive Operations & Governance Automation
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Operação Preditiva)
 **Wave:** 13
 **Estimativa:** 1-2 semanas

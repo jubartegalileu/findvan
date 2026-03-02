@@ -35,6 +35,7 @@ const DATA_DIR = path.join(ROOT_DIR, 'development', 'data');
 const UTILS_DIR = path.join(ROOT_DIR, 'development', 'utils');
 const WORKFLOWS_DIR = path.join(ROOT_DIR, 'development', 'workflows');
 const SCRIPTS_DIR = path.join(ROOT_DIR, 'development', 'scripts');
+const SCHEMAS_DIR = path.join(ROOT_DIR, 'development', 'schemas');
 
 // Commands that are allowed to be shared by multiple agents
 // These are utility/infrastructure commands, not domain-specific
@@ -195,6 +196,7 @@ async function validateDependencies(agents) {
     utils: UTILS_DIR,
     workflows: WORKFLOWS_DIR,
     scripts: SCRIPTS_DIR,
+    schemas: SCHEMAS_DIR,
   };
 
   // Dependency types that are not file-based (external tools, integrations)

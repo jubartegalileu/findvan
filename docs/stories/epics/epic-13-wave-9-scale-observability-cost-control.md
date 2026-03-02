@@ -1,7 +1,7 @@
 # Epic 13 — Wave 9 Scale, Observability & Cost Control
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Escala Operacional)
 **Wave:** 9
 **Estimativa:** 1-2 semanas

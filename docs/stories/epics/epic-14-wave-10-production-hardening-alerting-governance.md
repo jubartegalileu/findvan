@@ -1,7 +1,7 @@
 # Epic 14 — Wave 10 Production Hardening, Alerting & Metrics Governance
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Hardening de Produção)
 **Wave:** 10
 **Estimativa:** 1-2 semanas

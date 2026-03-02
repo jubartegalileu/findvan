@@ -1,7 +1,7 @@
 # Epic 16 — Wave 12 Operational Excellence & Self-Healing
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Excelência Operacional)
 **Wave:** 12
 **Estimativa:** 1-2 semanas

@@ -1,0 +1,2 @@
+// Placeholder compatibility file
+export {}

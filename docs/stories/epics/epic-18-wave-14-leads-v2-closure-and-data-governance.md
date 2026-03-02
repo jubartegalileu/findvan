@@ -1,7 +1,7 @@
 # Epic 18 — Wave 14 Leads v2 Closure & Data Governance
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (RF-L1..RF-L7 + consolidação Epic 4)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Fechamento funcional de Leads)
 **Wave:** 14
 **Estimativa:** 1-2 semanas

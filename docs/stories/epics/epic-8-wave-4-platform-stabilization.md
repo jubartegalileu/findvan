@@ -1,7 +1,7 @@
 # Epic 8 — Wave 4 Platform Stabilization & Integration Readiness
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Stability / Enablement)
 **Wave:** 4
 **Estimativa:** 1-2 semanas

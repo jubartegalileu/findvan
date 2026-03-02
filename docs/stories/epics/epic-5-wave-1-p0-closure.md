@@ -1,7 +1,7 @@
 # Epic 5 — Wave 1 P0 Closure: Dashboard, Scraper e Leads
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P0 (Must Have)
 **Wave:** 1
 **Estimativa:** 2-3 semanas

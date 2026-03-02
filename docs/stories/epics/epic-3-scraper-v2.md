@@ -1,7 +1,7 @@
 # Epic 3 — Scraper v2: Inteligencia e Automacao
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P0 (Must Have)
 **Wave:** 1
 **Estimativa:** 1.5-2 semanas

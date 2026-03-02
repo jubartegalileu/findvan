@@ -1,7 +1,7 @@
 # Epic 11 — Wave 7 Campaign Cadence Operations (Execution + Monitoring)
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md (continuidade operacional)
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P1 (Operação de Campanhas)
 **Wave:** 7
 **Estimativa:** 1-2 semanas

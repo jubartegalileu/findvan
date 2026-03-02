@@ -1,7 +1,7 @@
 # Epic 4 — Leads v2: Score Dinamico, Funil & Operacao SDR
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md
-**Status:** Closed
+**Status:** Done
 **Prioridade:** P0 (Must Have)
 **Wave:** 1
 **Estimativa:** 2-3 semanas

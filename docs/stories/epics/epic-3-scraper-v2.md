@@ -1,7 +1,7 @@
 # Epic 3 — Scraper v2: Inteligencia e Automacao
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P0 (Must Have)
 **Wave:** 1
 **Estimativa:** 1.5-2 semanas
@@ -105,3 +105,10 @@ Story 3.6 (Cobertura) [independente]
 - [ ] Teste: pipeline mostra numeros corretos (conferir manualmente)
 - [ ] Performance: formulario responde em < 200ms
 - [ ] Sem regressoes no scraper existente
+
+## Closure Note (2026-03-02)
+
+- Epic legado fechado por supersessao de roadmap.
+- Nao ha artefatos `3.x.story.md` no backlog atual para rastrear execucao desta versao do epic.
+- Funcionalidades de scraper e observabilidade evoluiram por ondas posteriores com artefatos em outros epics/reports.
+- Decisao PO/PM: `Closed` para evitar duplicidade de planejamento.

@@ -12,6 +12,7 @@
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder",
     "test": "vitest run",
+    "test:regression:sdr-funil": "NODE_OPTIONS='--localstorage-file=/tmp/findvan-vitest-localstorage.json' vitest run --run NavigationSmoke.test.jsx LeadsPage.test.jsx DashboardPage.test.jsx SDRPage.test.jsx FunnelPage.test.jsx",
     "test:ui": "vitest --ui",
     "lint": "eslint src/ --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit",

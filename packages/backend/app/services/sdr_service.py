@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timezone
 
 from ..db import get_connection
@@ -19,13 +20,226 @@ def _serialize_note(note: str, author: str | None, action_type: str | None = Non
     return payload
 
 
+def normalize_template_owner(owner: str | None) -> str:
+    normalized_owner = (owner or "all").strip()
+    if not normalized_owner:
+        return "all"
+
+    if normalized_owner.lower() == "all":
+        return "all"
+
+    if normalized_owner.lower().startswith("team:"):
+        team_name = normalized_owner.split(":", 1)[1].strip().lower()
+        team_slug = re.sub(r"[^a-z0-9_-]+", "-", team_name).strip("-_")
+        if not team_slug:
+            raise ValueError("owner de equipe inválido")
+        return f"team:{team_slug}"
+
+    if len(normalized_owner) > 100:
+        raise ValueError("owner deve ter no máximo 100 caracteres")
+    return normalized_owner
+
+
+def normalize_template_actor(actor: str | None) -> str:
+    normalized_actor = (actor or "").strip()
+    if not normalized_actor:
+        raise ValueError("actor é obrigatório")
+    if len(normalized_actor) > 100:
+        raise ValueError("actor deve ter no máximo 100 caracteres")
+    return normalized_actor
+
+
+def ensure_template_mutation_permission(*, owner: str, actor: str | None = None) -> str:
+    normalized_owner = normalize_template_owner(owner)
+    normalized_actor = normalize_template_actor(actor)
+    lower_actor = normalized_actor.lower()
+    privileged_actors = {"admin"}
+    if lower_actor in privileged_actors:
+        return normalized_actor
+
+    if normalized_owner == "all":
+        raise PermissionError("Acesso negado para mutação de templates globais")
+
+    if normalized_owner.startswith("team:"):
+        if normalize_template_owner(normalized_actor) != normalized_owner:
+            raise PermissionError("Acesso negado para mutação de templates de equipe")
+        return normalized_actor
+
+    if normalized_actor != normalized_owner:
+        raise PermissionError("Acesso negado para mutação de templates de vendedor")
+    return normalized_actor
+
+
+def evaluate_template_mutation_permission(*, owner: str | None = None, actor: str | None = None) -> dict:
+    normalized_owner = normalize_template_owner(owner)
+    try:
+        normalized_actor = ensure_template_mutation_permission(owner=normalized_owner, actor=actor)
+        return {
+            "allowed": True,
+            "owner": normalized_owner,
+            "actor": normalized_actor,
+            "reason": "ok",
+            "remediation": None,
+        }
+    except (PermissionError, ValueError) as exc:
+        reason = str(exc)
+        return {
+            "allowed": False,
+            "owner": normalized_owner,
+            "actor": (actor or "").strip() or None,
+            "reason": reason,
+            "remediation": _resolve_template_permission_denial_remediation(reason),
+        }
+
+
+def _resolve_template_permission_denial_remediation(reason: str | None) -> dict:
+    normalized_reason = (reason or "").strip().lower()
+    if "templates globais" in normalized_reason:
+        return {
+            "title": "Permissão global requer admin",
+            "description": "Mutações em templates globais exigem ator admin.",
+            "next_action": "Defina o ator como admin ou altere o owner para escopo específico.",
+        }
+    if "templates de equipe" in normalized_reason:
+        return {
+            "title": "Permissão de equipe divergente",
+            "description": "O ator precisa pertencer ao mesmo owner de equipe do template.",
+            "next_action": "Ajuste owner/ator para o mesmo team:{slug}.",
+        }
+    if "templates de vendedor" in normalized_reason:
+        return {
+            "title": "Permissão de vendedor divergente",
+            "description": "O ator precisa ser o mesmo vendedor dono do template.",
+            "next_action": "Use actor igual ao owner do template ou altere o owner selecionado.",
+        }
+    if "actor é obrigatório" in normalized_reason:
+        return {
+            "title": "Ator não informado",
+            "description": "O backend não recebeu um ator válido para validar a mutação.",
+            "next_action": "Preencha o campo de ator antes de salvar, excluir ou editar template.",
+        }
+    return {
+        "title": "Permissão negada",
+        "description": "Não foi possível validar a mutação com o contexto atual.",
+        "next_action": "Revise owner/ator e tente novamente com um contexto autorizado.",
+    }
+
+
+def _log_bulk_template_audit(
+    cur,
+    *,
+    template_id: int,
+    owner: str,
+    action: str,
+    actor: str | None = None,
+    payload: dict | None = None,
+) -> None:
+    cur.execute(
+        """
+        INSERT INTO sdr_bulk_template_audit (template_id, owner, action, actor, payload)
+        VALUES (%s, %s, %s, %s, %s::jsonb);
+        """,
+        (
+            int(template_id),
+            owner,
+            action,
+            (actor or "system").strip() or "system",
+            json.dumps(payload or {}),
+        ),
+    )
+
+
+def log_bulk_template_permission_denied(
+    *,
+    owner: str | None,
+    actor: str | None,
+    operation: str,
+    reason: str,
+    template_id: int | None = None,
+) -> None:
+    normalized_owner = normalize_template_owner(owner)
+    normalized_actor = (actor or "").strip() or "unknown"
+    denied_template_id = int(template_id) if template_id is not None else 0
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            _log_bulk_template_audit(
+                cur,
+                template_id=denied_template_id,
+                owner=normalized_owner,
+                action="permission_denied",
+                actor=normalized_actor,
+                payload={"operation": operation, "reason": reason},
+            )
+        conn.commit()
+
+
+def initiate_template_access_request(
+    *,
+    owner: str | None,
+    actor: str | None,
+    reason: str | None,
+    template_id: int | None = None,
+) -> dict:
+    normalized_owner = normalize_template_owner(owner)
+    normalized_actor = (actor or "").strip() or "unknown"
+    normalized_reason = (reason or "").strip()
+    if not normalized_reason:
+        raise ValueError("reason é obrigatório")
+    if len(normalized_reason) > 500:
+        raise ValueError("reason deve ter no máximo 500 caracteres")
+
+    requested_template_id = int(template_id) if template_id is not None else 0
+    if requested_template_id < 0:
+        raise ValueError("template_id inválido")
+
+    payload = {
+        "reason": normalized_reason,
+        "operation": "access_request",
+    }
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO sdr_bulk_template_audit (template_id, owner, action, actor, payload)
+                VALUES (%s, %s, %s, %s, %s::jsonb)
+                RETURNING id, created_at;
+                """,
+                (
+                    requested_template_id,
+                    normalized_owner,
+                    "access_request_initiated",
+                    normalized_actor,
+                    json.dumps(payload),
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+
+    audit_id = int(row[0])
+    created_at = row[1]
+    return {
+        "request_id": f"sdr-access-{audit_id}",
+        "audit_id": audit_id,
+        "owner": normalized_owner,
+        "actor": normalized_actor,
+        "reason": normalized_reason,
+        "template_id": requested_template_id if requested_template_id > 0 else None,
+        "action": "access_request_initiated",
+        "created_at": created_at,
+        "status": "queued",
+    }
+
+
 def get_queue(
     *,
     city: str | None = None,
+    assigned_to: str | None = None,
     prospect_status: str | None = None,
     cadence: str | None = None,
     score_min: int | None = None,
     score_max: int | None = None,
+    limit: int = 500,
 ) -> list[dict]:
     normalized_status = (prospect_status or "").strip().lower() or None
     if normalized_status and normalized_status not in VALID_PROSPECT_STATUSES:
@@ -34,6 +248,7 @@ def get_queue(
     normalized_cadence = (cadence or "").strip().lower() or None
     if normalized_cadence and normalized_cadence not in VALID_CADENCE_FILTERS:
         raise ValueError("cadence inválido")
+    capped_limit = max(1, min(int(limit or 500), 5000))
 
     query = """
         SELECT
@@ -70,6 +285,11 @@ def get_queue(
         query += " AND LOWER(l.city) = LOWER(%s)"
         params.append(city)
 
+    normalized_assigned_to = (assigned_to or "").strip() or None
+    if normalized_assigned_to and normalized_assigned_to != "all":
+        query += " AND s.assigned_to = %s"
+        params.append(normalized_assigned_to)
+
     if normalized_status:
         query += " AND s.prospect_status = %s"
         params.append(normalized_status)
@@ -96,8 +316,10 @@ def get_queue(
             ELSE 2
           END ASC,
           COALESCE(l.score, 0) DESC,
-          l.id ASC;
+          l.id ASC
+        LIMIT %s;
     """
+    params.append(capped_limit)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -205,6 +427,86 @@ def register_action(
     return dict(zip(keys, row))
 
 
+def register_action_batch(
+    *,
+    lead_ids: list[int],
+    action_type: str = "done",
+    author: str | None = None,
+    next_action_date: str | None = None,
+    next_action_description: str | None = None,
+    cadence_days: int = 1,
+) -> dict:
+    if not lead_ids:
+        raise ValueError("lead_ids é obrigatório")
+
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for lead_id in lead_ids:
+        value = int(lead_id)
+        if value <= 0:
+            raise ValueError("lead_ids deve conter apenas IDs positivos")
+        if value in seen:
+            continue
+        normalized_ids.append(value)
+        seen.add(value)
+
+    update_query = """
+        UPDATE sdr_activities
+        SET
+          contact_count = COALESCE(contact_count, 0) + 1,
+          last_contact_at = NOW(),
+          cadence_step = COALESCE(cadence_step, 0) + 1,
+          next_action_date = COALESCE(%s::timestamp, NOW() + (%s || ' days')::interval),
+          next_action_description = COALESCE(%s, next_action_description),
+          prospect_status = CASE
+            WHEN prospect_status = 'nao_contatado' THEN 'contatado'
+            ELSE prospect_status
+          END,
+          updated_at = NOW()
+        WHERE lead_id = ANY(%s::int[])
+        RETURNING lead_id;
+    """
+    interaction_query = """
+        INSERT INTO lead_interactions (lead_id, type, content, metadata, author)
+        VALUES (%s, 'sdr_action', %s, %s::jsonb, %s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                update_query,
+                (
+                    next_action_date,
+                    max(1, cadence_days),
+                    next_action_description,
+                    normalized_ids,
+                ),
+            )
+            rows = cur.fetchall() or []
+            updated_ids = [int(row[0]) for row in rows]
+            if not updated_ids:
+                conn.rollback()
+                return {"updated_count": 0, "lead_ids": [], "action_type": action_type}
+
+            for updated_id in updated_ids:
+                cur.execute(
+                    interaction_query,
+                    (
+                        updated_id,
+                        f"SDR action: {action_type}",
+                        json.dumps({"action_type": action_type}),
+                        author or "sdr",
+                    ),
+                )
+        conn.commit()
+
+    return {
+        "updated_count": len(updated_ids),
+        "lead_ids": updated_ids,
+        "action_type": action_type,
+    }
+
+
 def add_note(*, lead_id: int, note: str, author: str | None = None) -> dict | None:
     payload_note = _serialize_note(note, author)
     serialized_note = json.dumps(payload_note)
@@ -234,7 +536,65 @@ def add_note(*, lead_id: int, note: str, author: str | None = None) -> dict | No
     return {"lead_id": row[0], "notes": row[1]}
 
 
+def add_note_batch(*, lead_ids: list[int], note: str, author: str | None = None) -> dict:
+    normalized_note = (note or "").strip()
+    if not normalized_note:
+        raise ValueError("note é obrigatório")
+
+    payload_note = _serialize_note(normalized_note, author)
+    serialized_note = json.dumps(payload_note)
+
+    if not lead_ids:
+        raise ValueError("lead_ids é obrigatório")
+
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for lead_id in lead_ids:
+        value = int(lead_id)
+        if value <= 0:
+            raise ValueError("lead_ids deve conter apenas IDs positivos")
+        if value in seen:
+            continue
+        normalized_ids.append(value)
+        seen.add(value)
+
+    update_query = """
+        UPDATE sdr_activities
+        SET
+          notes = COALESCE(notes, '[]'::jsonb) || jsonb_build_array(%s::jsonb),
+          updated_at = NOW()
+        WHERE lead_id = ANY(%s::int[])
+        RETURNING lead_id;
+    """
+    interaction_query = """
+        INSERT INTO lead_interactions (lead_id, type, content, metadata, author)
+        VALUES (%s, 'note', %s, '{}'::jsonb, %s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(update_query, (serialized_note, normalized_ids))
+            rows = cur.fetchall() or []
+            updated_ids = [int(row[0]) for row in rows]
+            if not updated_ids:
+                conn.rollback()
+                return {"updated_count": 0, "lead_ids": []}
+
+            for updated_id in updated_ids:
+                cur.execute(
+                    interaction_query,
+                    (updated_id, normalized_note, author or "sdr"),
+                )
+        conn.commit()
+
+    return {"updated_count": len(updated_ids), "lead_ids": updated_ids}
+
+
 def get_stats() -> dict:
+    return get_stats_by_assignee()
+
+
+def get_stats_by_assignee(*, assigned_to: str | None = None) -> dict:
     query = """
         SELECT
           COUNT(*)::int AS total,
@@ -252,9 +612,18 @@ def get_stats() -> dict:
         WHERE l.deleted_at IS NULL
           AND COALESCE(p.funnel_status, l.funnel_status, 'novo') NOT IN ('convertido', 'perdido');
     """
+    normalized_assigned_to = (assigned_to or "").strip() or None
+    params: list[object] = []
+    if normalized_assigned_to and normalized_assigned_to != "all":
+        query = query.replace(
+            "AND COALESCE(p.funnel_status, l.funnel_status, 'novo') NOT IN ('convertido', 'perdido');",
+            "AND COALESCE(p.funnel_status, l.funnel_status, 'novo') NOT IN ('convertido', 'perdido') AND s.assigned_to = %s;",
+        )
+        params.append(normalized_assigned_to)
+
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query)
+            cur.execute(query, tuple(params))
             row = cur.fetchone()
 
     total = int(row[0] or 0)
@@ -267,3 +636,301 @@ def get_stats() -> dict:
         "pending": pending,
         "overdue": overdue,
     }
+
+
+def assign_owner(*, lead_id: int, assigned_to: str, author: str | None = None) -> dict | None:
+    normalized_owner = (assigned_to or "").strip()
+    if not normalized_owner:
+        raise ValueError("assigned_to é obrigatório")
+    if len(normalized_owner) > 100:
+        raise ValueError("assigned_to deve ter no máximo 100 caracteres")
+
+    query = """
+        UPDATE sdr_activities
+        SET assigned_to = %s, updated_at = NOW()
+        WHERE lead_id = %s
+        RETURNING lead_id, assigned_to;
+    """
+    interaction_query = """
+        INSERT INTO lead_interactions (lead_id, type, content, metadata, author)
+        VALUES (%s, 'sdr_assignment', %s, %s::jsonb, %s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (normalized_owner, lead_id))
+            row = cur.fetchone()
+            if not row:
+                conn.rollback()
+                return None
+
+            cur.execute(
+                interaction_query,
+                (
+                    lead_id,
+                    f"SDR assignment: {normalized_owner}",
+                    json.dumps({"assigned_to": normalized_owner}),
+                    author or "sdr",
+                ),
+            )
+        conn.commit()
+
+    return {"lead_id": row[0], "assigned_to": row[1]}
+
+
+def assign_owner_batch(*, lead_ids: list[int], assigned_to: str, author: str | None = None) -> dict:
+    normalized_owner = (assigned_to or "").strip()
+    if not normalized_owner:
+        raise ValueError("assigned_to é obrigatório")
+    if len(normalized_owner) > 100:
+        raise ValueError("assigned_to deve ter no máximo 100 caracteres")
+    if not lead_ids:
+        raise ValueError("lead_ids é obrigatório")
+
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for lead_id in lead_ids:
+        value = int(lead_id)
+        if value <= 0:
+            raise ValueError("lead_ids deve conter apenas IDs positivos")
+        if value in seen:
+            continue
+        normalized_ids.append(value)
+        seen.add(value)
+
+    update_query = """
+        UPDATE sdr_activities
+        SET assigned_to = %s, updated_at = NOW()
+        WHERE lead_id = ANY(%s::int[])
+        RETURNING lead_id;
+    """
+    interaction_query = """
+        INSERT INTO lead_interactions (lead_id, type, content, metadata, author)
+        VALUES (%s, 'sdr_assignment', %s, %s::jsonb, %s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(update_query, (normalized_owner, normalized_ids))
+            rows = cur.fetchall() or []
+            updated_ids = [int(row[0]) for row in rows]
+            if not updated_ids:
+                conn.rollback()
+                return {"updated_count": 0, "lead_ids": [], "assigned_to": normalized_owner}
+
+            for updated_id in updated_ids:
+                cur.execute(
+                    interaction_query,
+                    (
+                        updated_id,
+                        f"SDR assignment: {normalized_owner}",
+                        json.dumps({"assigned_to": normalized_owner}),
+                        author or "sdr",
+                    ),
+                )
+        conn.commit()
+
+    return {
+        "updated_count": len(updated_ids),
+        "lead_ids": updated_ids,
+        "assigned_to": normalized_owner,
+    }
+
+
+def list_bulk_templates(*, owner: str | None = None) -> list[dict]:
+    normalized_owner = normalize_template_owner(owner)
+    query = """
+        SELECT id, owner, name, next_action_description, cadence_days, note, is_favorite, sort_order
+        FROM sdr_bulk_templates
+        WHERE owner = %s
+        ORDER BY is_favorite DESC, sort_order ASC, updated_at DESC, id DESC;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (normalized_owner,))
+            rows = cur.fetchall() or []
+    keys = ["id", "owner", "name", "next_action_description", "cadence_days", "note", "is_favorite", "sort_order"]
+    return [dict(zip(keys, row)) for row in rows]
+
+
+def list_bulk_template_audit(
+    *,
+    owner: str | None = None,
+    template_id: int | None = None,
+    action: str | None = None,
+    limit: int = 100,
+) -> list[dict]:
+    normalized_owner = normalize_template_owner(owner)
+    capped_limit = max(1, min(int(limit or 100), 500))
+    query = """
+        SELECT id, template_id, owner, action, actor, payload, created_at
+        FROM sdr_bulk_template_audit
+        WHERE owner = %s
+    """
+    params: list[object] = [normalized_owner]
+    if template_id is not None:
+        query += " AND template_id = %s"
+        params.append(int(template_id))
+    normalized_action = (action or "").strip()
+    if normalized_action:
+        query += " AND action = %s"
+        params.append(normalized_action)
+    query += " ORDER BY created_at DESC, id DESC LIMIT %s"
+    params.append(capped_limit)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall() or []
+    keys = ["id", "template_id", "owner", "action", "actor", "payload", "created_at"]
+    return [dict(zip(keys, row)) for row in rows]
+
+
+def save_bulk_template(
+    *,
+    owner: str,
+    name: str,
+    next_action_description: str | None = None,
+    cadence_days: int = 1,
+    note: str | None = None,
+    is_favorite: bool | None = None,
+    sort_order: int | None = None,
+    actor: str | None = None,
+) -> dict:
+    normalized_owner = normalize_template_owner(owner)
+    normalized_actor = ensure_template_mutation_permission(owner=normalized_owner, actor=actor)
+    normalized_name = (name or "").strip()
+    if not normalized_name:
+        raise ValueError("name é obrigatório")
+    if len(normalized_name) > 120:
+        raise ValueError("name deve ter no máximo 120 caracteres")
+
+    normalized_description = (next_action_description or "").strip() or None
+    normalized_note = (note or "").strip() or None
+    normalized_cadence_days = max(1, min(int(cadence_days or 1), 30))
+    normalized_sort_order = int(sort_order) if sort_order is not None else None
+
+    query = """
+        INSERT INTO sdr_bulk_templates (owner, name, next_action_description, cadence_days, note, is_favorite, sort_order, updated_at)
+        VALUES (%s, %s, %s, %s, %s, COALESCE(%s, false), COALESCE(%s, 0), NOW())
+        ON CONFLICT (owner, name)
+        DO UPDATE SET
+          next_action_description = EXCLUDED.next_action_description,
+          cadence_days = EXCLUDED.cadence_days,
+          note = EXCLUDED.note,
+          is_favorite = COALESCE(EXCLUDED.is_favorite, sdr_bulk_templates.is_favorite),
+          sort_order = COALESCE(EXCLUDED.sort_order, sdr_bulk_templates.sort_order),
+          updated_at = NOW()
+        RETURNING id, owner, name, next_action_description, cadence_days, note, is_favorite, sort_order;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    normalized_owner,
+                    normalized_name,
+                    normalized_description,
+                    normalized_cadence_days,
+                    normalized_note,
+                    is_favorite,
+                    normalized_sort_order,
+                ),
+            )
+            row = cur.fetchone()
+            _log_bulk_template_audit(
+                cur,
+                template_id=int(row[0]),
+                owner=normalized_owner,
+                action="save",
+                actor=normalized_actor,
+                payload={
+                    "name": normalized_name,
+                    "cadence_days": normalized_cadence_days,
+                    "is_favorite": bool(row[6]),
+                    "sort_order": int(row[7]),
+                },
+            )
+        conn.commit()
+
+    keys = ["id", "owner", "name", "next_action_description", "cadence_days", "note", "is_favorite", "sort_order"]
+    return dict(zip(keys, row))
+
+
+def delete_bulk_template(*, template_id: int, owner: str | None = None, actor: str | None = None) -> bool:
+    normalized_owner = normalize_template_owner(owner)
+    normalized_actor = ensure_template_mutation_permission(owner=normalized_owner, actor=actor)
+    query = """
+        DELETE FROM sdr_bulk_templates
+        WHERE id = %s AND owner = %s
+        RETURNING id;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (int(template_id), normalized_owner))
+            row = cur.fetchone()
+            if row:
+                _log_bulk_template_audit(
+                    cur,
+                    template_id=int(template_id),
+                    owner=normalized_owner,
+                    action="delete",
+                    actor=normalized_actor,
+                    payload={},
+                )
+        conn.commit()
+    return bool(row)
+
+
+def update_bulk_template_preferences(
+    *,
+    template_id: int,
+    owner: str | None = None,
+    is_favorite: bool | None = None,
+    sort_order: int | None = None,
+    actor: str | None = None,
+) -> dict | None:
+    normalized_owner = normalize_template_owner(owner)
+    normalized_actor = ensure_template_mutation_permission(owner=normalized_owner, actor=actor)
+    if is_favorite is None and sort_order is None:
+        raise ValueError("is_favorite ou sort_order deve ser informado")
+
+    query = """
+        UPDATE sdr_bulk_templates
+        SET
+          is_favorite = COALESCE(%s, is_favorite),
+          sort_order = COALESCE(%s, sort_order),
+          updated_at = NOW()
+        WHERE id = %s AND owner = %s
+        RETURNING id, owner, name, next_action_description, cadence_days, note, is_favorite, sort_order;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    is_favorite,
+                    int(sort_order) if sort_order is not None else None,
+                    int(template_id),
+                    normalized_owner,
+                ),
+            )
+            row = cur.fetchone()
+            if row:
+                _log_bulk_template_audit(
+                    cur,
+                    template_id=int(template_id),
+                    owner=normalized_owner,
+                    action="patch",
+                    actor=normalized_actor,
+                    payload={
+                        "is_favorite": bool(row[6]),
+                        "sort_order": int(row[7]),
+                    },
+                )
+        conn.commit()
+    if not row:
+        return None
+    keys = ["id", "owner", "name", "next_action_description", "cadence_days", "note", "is_favorite", "sort_order"]
+    return dict(zip(keys, row))

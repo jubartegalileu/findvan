@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS sdr_activities (
 );
 CREATE INDEX IF NOT EXISTS idx_sdr_next_action ON sdr_activities(next_action_date) WHERE next_action_date IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_sdr_prospect_status ON sdr_activities(prospect_status);
+CREATE INDEX IF NOT EXISTS idx_sdr_active_queue ON sdr_activities(next_action_date, prospect_status, lead_id);
 """
 
 PIPELINE_TABLE_SQL = """
@@ -179,6 +180,45 @@ CREATE TABLE IF NOT EXISTS pipeline (
   CONSTRAINT uq_pipeline_lead UNIQUE (lead_id)
 );
 CREATE INDEX IF NOT EXISTS idx_pipeline_status_entered ON pipeline(funnel_status, entered_stage_at);
+CREATE INDEX IF NOT EXISTS idx_pipeline_active_status ON pipeline(funnel_status, lead_id)
+  WHERE funnel_status IN ('novo', 'contactado', 'respondeu', 'interessado');
+"""
+
+SDR_BULK_TEMPLATES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS sdr_bulk_templates (
+  id BIGSERIAL PRIMARY KEY,
+  owner VARCHAR(100) NOT NULL DEFAULT 'all',
+  name VARCHAR(120) NOT NULL,
+  next_action_description TEXT,
+  cadence_days INTEGER NOT NULL DEFAULT 1,
+  note TEXT,
+  is_favorite BOOLEAN NOT NULL DEFAULT false,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_sdr_bulk_templates_cadence_days CHECK (cadence_days BETWEEN 1 AND 30),
+  CONSTRAINT uq_sdr_bulk_templates_owner_name UNIQUE (owner, name)
+);
+ALTER TABLE sdr_bulk_templates ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE sdr_bulk_templates ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_sdr_bulk_templates_owner ON sdr_bulk_templates(owner, updated_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_sdr_bulk_templates_owner_order ON sdr_bulk_templates(owner, is_favorite DESC, sort_order ASC, id DESC);
+"""
+
+SDR_BULK_TEMPLATE_AUDIT_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS sdr_bulk_template_audit (
+  id BIGSERIAL PRIMARY KEY,
+  template_id BIGINT NOT NULL,
+  owner VARCHAR(100) NOT NULL,
+  action VARCHAR(30) NOT NULL,
+  actor VARCHAR(100) NOT NULL DEFAULT 'system',
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sdr_bulk_template_audit_owner_created
+  ON sdr_bulk_template_audit(owner, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_sdr_bulk_template_audit_template_created
+  ON sdr_bulk_template_audit(template_id, created_at DESC, id DESC);
 """
 
 TIMESTAMP_AND_TRIGGER_SQL = """
@@ -518,6 +558,8 @@ def ensure_schema():
             cur.execute(LEAD_INTERACTIONS_TABLE_SQL)
             cur.execute(SDR_ACTIVITIES_TABLE_SQL)
             cur.execute(PIPELINE_TABLE_SQL)
+            cur.execute(SDR_BULK_TEMPLATES_TABLE_SQL)
+            cur.execute(SDR_BULK_TEMPLATE_AUDIT_TABLE_SQL)
             cur.execute(TIMESTAMP_AND_TRIGGER_SQL)
             cur.execute(MESSAGING_RECEIPTS_TABLE_SQL)
             cur.execute(JOB_LOCKS_TABLE_SQL)

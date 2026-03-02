@@ -22,6 +22,20 @@ def test_get_pipeline_ok(monkeypatch):
     assert response.json()["total"] == 1
 
 
+def test_get_pipeline_forwards_limit(monkeypatch):
+    captured = {}
+
+    def _fake_get_grouped(**kwargs):
+        captured.update(kwargs)
+        return {"stages": {}, "total": 0}
+
+    monkeypatch.setattr(pipeline_api, "get_grouped", _fake_get_grouped)
+    client = build_client()
+    response = client.get("/api/pipeline?limit=777")
+    assert response.status_code == 200
+    assert captured["limit"] == 777
+
+
 def test_get_summary_ok(monkeypatch):
     monkeypatch.setattr(
         pipeline_api,
@@ -68,3 +82,14 @@ def test_history_ok(monkeypatch):
     payload = response.json()
     assert payload["count"] == 1
     assert payload["history"][0]["to"] == "contactado"
+
+
+def test_pipeline_internal_error_is_sanitized(monkeypatch):
+    def _raise(**kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(pipeline_api, "get_grouped", _raise)
+    client = build_client()
+    response = client.get("/api/pipeline")
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Erro interno ao processar a solicitação."

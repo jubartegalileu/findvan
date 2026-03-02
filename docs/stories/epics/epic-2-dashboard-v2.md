@@ -1,7 +1,7 @@
 # Epic 2 — Dashboard v2: Visibilidade Operacional
 
 **PRD:** PRD-V2-DASHBOARD-SCRAPER-LEADS.md
-**Status:** Ready
+**Status:** Closed
 **Prioridade:** P0 (Must Have)
 **Wave:** 1
 **Estimativa:** 1.5-2 semanas
@@ -103,3 +103,10 @@ Story 2.6 (Acoes rapidas) [independente]
 - [ ] Performance: Dashboard carrega em < 2s
 - [ ] Responsivo: funciona em 1280x720 e 1920x1080
 - [ ] Sem regressoes nas funcionalidades existentes
+
+## Closure Note (2026-03-02)
+
+- Epic legado fechado por supersessao de roadmap.
+- Apenas `2.1.story.md` existe como artefato `2.x`; demais stories planejadas nao estao presentes no backlog como arquivos rastreaveis.
+- Entregas de Dashboard/SDR/Funil foram consolidadas em epics posteriores (24-28) com gates e relatorios de QA.
+- Decisao PO/PM: `Closed` para manter backlog consistente com o estado atual do produto.

@@ -65,13 +65,436 @@ def test_patch_notes_ok(monkeypatch):
     assert response.json()["lead_id"] == 10
 
 
+def test_patch_notes_batch_ok(monkeypatch):
+    def _fake_add_note_batch(**kwargs):
+        return {
+            "updated_count": len(kwargs["lead_ids"]),
+            "lead_ids": kwargs["lead_ids"],
+        }
+
+    monkeypatch.setattr(sdr_api, "add_note_batch", _fake_add_note_batch)
+    client = build_client()
+    response = client.patch(
+        "/api/sdr/notes/batch",
+        json={"lead_ids": [10, 11], "note": "Nota operacional em lote"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["updated_count"] == 2
+    assert payload["lead_ids"] == [10, 11]
+
+
+def test_templates_list_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "list_bulk_templates",
+        lambda **kwargs: [{"id": 1, "owner": kwargs["owner"], "name": "Template A"}],
+    )
+    client = build_client()
+    response = client.get("/api/sdr/templates?owner=alice")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["templates"][0]["owner"] == "alice"
+
+
+def test_templates_list_validation_error(monkeypatch):
+    def _raise(**kwargs):
+        raise ValueError("owner de equipe inválido")
+
+    monkeypatch.setattr(sdr_api, "list_bulk_templates", _raise)
+    client = build_client()
+    response = client.get("/api/sdr/templates?owner=team:%20%20%20")
+    assert response.status_code == 400
+
+
+def test_templates_audit_ok(monkeypatch):
+    captured = {}
+
+    def _fake_list_bulk_template_audit(**kwargs):
+        captured.update(kwargs)
+        return [{"id": 11, "template_id": kwargs["template_id"], "owner": kwargs["owner"], "action": "save"}]
+
+    monkeypatch.setattr(
+        sdr_api,
+        "list_bulk_template_audit",
+        _fake_list_bulk_template_audit,
+    )
+    client = build_client()
+    response = client.get("/api/sdr/templates/audit?owner=alice&template_id=3&action=save&limit=20")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["events"][0]["template_id"] == 3
+    assert captured["action"] == "save"
+
+
+def test_templates_audit_validation_error(monkeypatch):
+    def _raise(**kwargs):
+        raise ValueError("owner de equipe inválido")
+
+    monkeypatch.setattr(sdr_api, "list_bulk_template_audit", _raise)
+    client = build_client()
+    response = client.get("/api/sdr/templates/audit?owner=team:%20%20%20")
+    assert response.status_code == 400
+
+
+def test_templates_permission_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "evaluate_template_mutation_permission",
+        lambda **kwargs: {
+            "allowed": True,
+            "owner": kwargs["owner"],
+            "actor": kwargs["actor"],
+            "reason": "ok",
+        },
+    )
+    client = build_client()
+    response = client.get("/api/sdr/templates/permission?owner=alice&actor=alice")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["allowed"] is True
+    assert payload["owner"] == "alice"
+
+
+def test_templates_permission_denied_with_remediation(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "evaluate_template_mutation_permission",
+        lambda **kwargs: {
+            "allowed": False,
+            "owner": kwargs["owner"],
+            "actor": kwargs["actor"],
+            "reason": "Acesso negado para mutação de templates globais",
+            "remediation": {
+                "title": "Permissão global requer admin",
+                "description": "Mutações em templates globais exigem ator admin.",
+                "next_action": "Defina o ator como admin.",
+            },
+        },
+    )
+    client = build_client()
+    response = client.get("/api/sdr/templates/permission?owner=all&actor=alice")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["allowed"] is False
+    assert payload["remediation"]["title"] == "Permissão global requer admin"
+
+
+def test_templates_permission_validation_error(monkeypatch):
+    def _raise(**kwargs):
+        raise ValueError("owner inválido")
+
+    monkeypatch.setattr(sdr_api, "evaluate_template_mutation_permission", _raise)
+    client = build_client()
+    response = client.get("/api/sdr/templates/permission?owner=team:%20%20%20")
+    assert response.status_code == 400
+
+
+def test_templates_permission_access_request_ok(monkeypatch):
+    captured = {}
+
+    def _fake_initiate_template_access_request(**kwargs):
+        captured.update(kwargs)
+        return {
+            "request_id": "sdr-access-10",
+            "owner": kwargs["owner"],
+            "actor": kwargs["actor"] or "unknown",
+            "reason": kwargs["reason"],
+            "template_id": kwargs["template_id"],
+            "action": "access_request_initiated",
+            "status": "queued",
+        }
+
+    monkeypatch.setattr(
+        sdr_api,
+        "initiate_template_access_request",
+        _fake_initiate_template_access_request,
+    )
+    client = build_client()
+    response = client.post(
+        "/api/sdr/templates/permission/access-request",
+        json={
+            "owner": "all",
+            "actor": "alice",
+            "reason": "Acesso negado para mutação de templates globais",
+            "template_id": 9,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["request"]["request_id"] == "sdr-access-10"
+    assert captured["owner"] == "all"
+    assert captured["actor"] == "alice"
+    assert captured["template_id"] == 9
+
+
+def test_templates_permission_access_request_validation_error(monkeypatch):
+    def _raise(**kwargs):
+        raise ValueError("reason é obrigatório")
+
+    monkeypatch.setattr(sdr_api, "initiate_template_access_request", _raise)
+    client = build_client()
+    response = client.post(
+        "/api/sdr/templates/permission/access-request",
+        json={"owner": "alice", "reason": " "},
+    )
+    assert response.status_code == 400
+
+
+def test_templates_save_ok(monkeypatch):
+    captured = {}
+
+    def _fake_save_bulk_template(**kwargs):
+        captured.update(kwargs)
+        return {"id": 2, "owner": kwargs["owner"], "name": kwargs["name"]}
+
+    monkeypatch.setattr(
+        sdr_api,
+        "save_bulk_template",
+        _fake_save_bulk_template,
+    )
+    client = build_client()
+    response = client.post("/api/sdr/templates", json={"owner": "alice", "name": "Template B"})
+    assert response.status_code == 200
+    assert response.json()["template"]["name"] == "Template B"
+    assert captured["actor"] == "alice"
+
+
+def test_templates_save_forbidden(monkeypatch):
+    captured = {"logged": False}
+
+    def _raise(**kwargs):
+        raise PermissionError("Acesso negado para mutação de templates de vendedor")
+
+    monkeypatch.setattr(sdr_api, "save_bulk_template", _raise)
+    monkeypatch.setattr(sdr_api, "log_bulk_template_permission_denied", lambda **kwargs: captured.update({"logged": True}))
+    client = build_client()
+    response = client.post("/api/sdr/templates", json={"owner": "alice", "actor": "bob", "name": "Template B"})
+    assert response.status_code == 403
+    assert captured["logged"] is True
+
+
+def test_templates_save_global_without_actor_forbidden(monkeypatch):
+    def _raise(**kwargs):
+        if kwargs.get("actor") is None:
+            raise PermissionError("Acesso negado para mutação de templates globais")
+        return {"id": 2, "owner": kwargs["owner"], "name": kwargs["name"]}
+
+    monkeypatch.setattr(sdr_api, "save_bulk_template", _raise)
+    monkeypatch.setattr(sdr_api, "log_bulk_template_permission_denied", lambda **kwargs: None)
+    client = build_client()
+    response = client.post("/api/sdr/templates", json={"owner": "all", "name": "Template Global"})
+    assert response.status_code == 403
+
+
+def test_templates_delete_ok(monkeypatch):
+    captured = {}
+
+    def _fake_delete_bulk_template(**kwargs):
+        captured.update(kwargs)
+        return True
+
+    monkeypatch.setattr(sdr_api, "delete_bulk_template", _fake_delete_bulk_template)
+    client = build_client()
+    response = client.delete("/api/sdr/templates/5?owner=alice")
+    assert response.status_code == 200
+    assert response.json()["template_id"] == 5
+    assert captured["actor"] == "alice"
+
+
+def test_templates_delete_forbidden(monkeypatch):
+    captured = {"logged": False}
+
+    def _raise(**kwargs):
+        raise PermissionError("Acesso negado para mutação de templates de vendedor")
+
+    monkeypatch.setattr(sdr_api, "delete_bulk_template", _raise)
+    monkeypatch.setattr(sdr_api, "log_bulk_template_permission_denied", lambda **kwargs: captured.update({"logged": True}))
+    client = build_client()
+    response = client.delete("/api/sdr/templates/5?owner=alice&actor=bob")
+    assert response.status_code == 403
+    assert captured["logged"] is True
+
+
+def test_templates_delete_validation_error(monkeypatch):
+    def _raise(**kwargs):
+        raise ValueError("owner de equipe inválido")
+
+    monkeypatch.setattr(sdr_api, "delete_bulk_template", _raise)
+    client = build_client()
+    response = client.delete("/api/sdr/templates/5?owner=team:%20%20%20")
+    assert response.status_code == 400
+
+
+def test_templates_patch_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "update_bulk_template_preferences",
+        lambda **kwargs: {
+            "id": kwargs["template_id"],
+            "owner": kwargs["owner"],
+            "is_favorite": kwargs["is_favorite"],
+            "sort_order": kwargs["sort_order"],
+        },
+    )
+    client = build_client()
+    response = client.patch(
+        "/api/sdr/templates/9",
+        json={"owner": "alice", "is_favorite": True, "sort_order": 1},
+    )
+    assert response.status_code == 200
+    payload = response.json()["template"]
+    assert payload["id"] == 9
+    assert payload["is_favorite"] is True
+    assert payload["sort_order"] == 1
+
+
+def test_templates_patch_forbidden(monkeypatch):
+    captured = {"logged": False}
+
+    def _raise(**kwargs):
+        raise PermissionError("Acesso negado para mutação de templates de equipe")
+
+    monkeypatch.setattr(sdr_api, "update_bulk_template_preferences", _raise)
+    monkeypatch.setattr(sdr_api, "log_bulk_template_permission_denied", lambda **kwargs: captured.update({"logged": True}))
+    client = build_client()
+    response = client.patch(
+        "/api/sdr/templates/9",
+        json={"owner": "team:ops", "actor": "team:sales", "is_favorite": True},
+    )
+    assert response.status_code == 403
+    assert captured["logged"] is True
+
+
 def test_get_stats_ok(monkeypatch):
     monkeypatch.setattr(
         sdr_api,
-        "get_stats",
-        lambda: {"total": 5, "done_today": 2, "pending": 3, "overdue": 1},
+        "get_stats_by_assignee",
+        lambda **kwargs: {"total": 5, "done_today": 2, "pending": 3, "overdue": 1},
     )
     client = build_client()
     response = client.get("/api/sdr/stats")
     assert response.status_code == 200
     assert response.json()["pending"] == 3
+
+
+def test_get_queue_forwards_limit(monkeypatch):
+    captured = {}
+
+    def _fake_get_queue(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(sdr_api, "get_queue", _fake_get_queue)
+    client = build_client()
+    response = client.get("/api/sdr/queue?limit=321")
+    assert response.status_code == 200
+    assert captured["limit"] == 321
+
+
+def test_get_queue_forwards_assigned_to(monkeypatch):
+    captured = {}
+
+    def _fake_get_queue(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(sdr_api, "get_queue", _fake_get_queue)
+    client = build_client()
+    response = client.get("/api/sdr/queue?assigned_to=alice")
+    assert response.status_code == 200
+    assert captured["assigned_to"] == "alice"
+
+
+def test_get_stats_forwards_assigned_to(monkeypatch):
+    captured = {}
+
+    def _fake_get_stats_by_assignee(**kwargs):
+        captured.update(kwargs)
+        return {"total": 0, "done_today": 0, "pending": 0, "overdue": 0}
+
+    monkeypatch.setattr(sdr_api, "get_stats_by_assignee", _fake_get_stats_by_assignee)
+    client = build_client()
+    response = client.get("/api/sdr/stats?assigned_to=alice")
+    assert response.status_code == 200
+    assert captured["assigned_to"] == "alice"
+
+
+def test_patch_assign_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "assign_owner",
+        lambda **kwargs: {"lead_id": kwargs["lead_id"], "assigned_to": kwargs["assigned_to"]},
+    )
+    client = build_client()
+    response = client.patch("/api/sdr/10/assign", json={"assigned_to": "alice"})
+    assert response.status_code == 200
+    assert response.json()["assigned_to"] == "alice"
+
+
+def test_patch_assign_batch_ok(monkeypatch):
+    def _fake_assign_owner_batch(**kwargs):
+        return {
+            "updated_count": len(kwargs["lead_ids"]),
+            "lead_ids": kwargs["lead_ids"],
+            "assigned_to": kwargs["assigned_to"],
+        }
+
+    monkeypatch.setattr(sdr_api, "assign_owner_batch", _fake_assign_owner_batch)
+    client = build_client()
+    response = client.patch(
+        "/api/sdr/assign/batch",
+        json={"lead_ids": [10, 11], "assigned_to": "alice"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["updated_count"] == 2
+    assert payload["lead_ids"] == [10, 11]
+    assert payload["assigned_to"] == "alice"
+
+
+def test_patch_action_batch_ok(monkeypatch):
+    captured = {}
+
+    def _fake_register_action_batch(**kwargs):
+        captured.update(kwargs)
+        return {
+            "updated_count": len(kwargs["lead_ids"]),
+            "lead_ids": kwargs["lead_ids"],
+            "action_type": kwargs["action_type"],
+        }
+
+    monkeypatch.setattr(sdr_api, "register_action_batch", _fake_register_action_batch)
+    client = build_client()
+    response = client.patch(
+        "/api/sdr/action/batch",
+        json={
+            "lead_ids": [10, 11],
+            "action_type": "scheduled",
+            "next_action_date": "2026-03-03T10:30:00",
+            "next_action_description": "Enviar proposta",
+            "cadence_days": 3,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["updated_count"] == 2
+    assert payload["lead_ids"] == [10, 11]
+    assert payload["action_type"] == "scheduled"
+    assert captured["next_action_date"] == "2026-03-03T10:30:00"
+    assert captured["next_action_description"] == "Enviar proposta"
+    assert captured["cadence_days"] == 3
+
+
+def test_get_queue_internal_error_is_sanitized(monkeypatch):
+    def _raise(**kwargs):
+        raise RuntimeError("db failed")
+
+    monkeypatch.setattr(sdr_api, "get_queue", _raise)
+    client = build_client()
+    response = client.get("/api/sdr/queue")
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Erro interno ao processar a solicitação."

@@ -1,7 +1,7 @@
 # Epic 24 — SDR & Funil de Vendas: Workflow Linear
 
 **Brief:** docs/brief-sdr-funil.md (v2.0 — Architect-Reviewed)
-**Status:** Draft
+**Status:** Done
 **Prioridade:** P0 (Foundation — habilita persistência de dados SDR/Pipeline)
 **Estimativa:** 1.5-2 sprints (4 stories)
 **Owner:** @pm (Morgan)
@@ -211,14 +211,21 @@ Story 24.1 (backend foundation)
 
 ## Definition of Done
 
-- [ ] Todas as 4 stories completadas com acceptance criteria met
-- [ ] Tabelas `sdr_activities` e `pipeline` criadas e funcionais
-- [ ] API de leads, SDR e pipeline operacional
-- [ ] Aba SDR funcional com fila do dia e quick actions
-- [ ] Aba Funil funcional com kanban e métricas
-- [ ] Leads.jsx e Dashboard.jsx consumindo dados reais do backend
-- [ ] Zero regressão nas abas existentes (Scraper, WhatsApp, Campanhas, Configurações)
-- [ ] Todos os testes passando, lint e typecheck OK
+- [x] Todas as 4 stories completadas com acceptance criteria met
+- [x] Tabelas `sdr_activities` e `pipeline` criadas e funcionais
+- [x] API de leads, SDR e pipeline operacional
+- [x] Aba SDR funcional com fila do dia e quick actions
+- [x] Aba Funil funcional com kanban e métricas
+- [x] Leads.jsx e Dashboard.jsx consumindo dados reais do backend
+- [x] Zero regressão nas abas existentes (Scraper, WhatsApp, Campanhas, Configurações)
+- [x] Todos os testes passando, lint e typecheck OK
+
+## Closure Note (2026-03-02)
+
+- Epic 24 foi concluído ao longo das waves subsequentes (25-28), com fechamento técnico no stack atual (`packages/backend/app/*` + `packages/dashboard/src/*`).
+- Gate final de fechamento:
+  - `npm run test:api:sdr-funil` -> PASS (67)
+  - `npm run test:regression:sdr-funil` -> PASS (5 files / 12 tests)
 
 ---
 

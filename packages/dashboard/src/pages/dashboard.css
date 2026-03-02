@@ -361,6 +361,38 @@ body,
 
 .fv-columns-leads .fv-row-button {
   background: #ffffff;
+  padding: 16px 18px;
+  border-radius: 14px;
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.fv-columns-leads .fv-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  align-items: center;
+  column-gap: 10px;
+}
+
+.fv-columns-leads .fv-row-main {
+  min-width: 0;
+}
+
+.fv-columns-leads .fv-row-button-inline {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.fv-columns-leads .fv-dot,
+.fv-columns-leads .fv-row-chip,
+.fv-columns-leads .fv-status {
+  flex-shrink: 0;
 }
 
 .fv-lead-card {

@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .error_utils import raise_bad_request, raise_internal_error, raise_not_found
-from ..services.sdr_service import add_note, get_queue, get_stats, register_action
+from ..services.sdr_service import add_note, assign_owner, get_queue, get_stats_by_assignee, register_action
 
 
 router = APIRouter()
@@ -25,9 +25,15 @@ class SDRNotePayload(BaseModel):
     author: str | None = Field(default=None, max_length=100)
 
 
+class SDRAssignPayload(BaseModel):
+    assigned_to: str = Field(..., min_length=1, max_length=100)
+    author: str | None = Field(default=None, max_length=100)
+
+
 @router.get("/queue")
 def sdr_queue(
     city: str | None = None,
+    assigned_to: str | None = Query(default=None, max_length=100),
     prospect_status: str | None = None,
     cadence: str | None = Query(default=None, description="overdue|today|planned"),
     score_min: int | None = Query(default=None, ge=0, le=100),
@@ -37,6 +43,7 @@ def sdr_queue(
     try:
         queue = get_queue(
             city=city,
+            assigned_to=assigned_to,
             prospect_status=prospect_status,
             cadence=cadence,
             score_min=score_min,
@@ -89,8 +96,24 @@ def sdr_notes(lead_id: int, payload: SDRNotePayload):
 
 
 @router.get("/stats")
-def sdr_stats():
+def sdr_stats(assigned_to: str | None = Query(default=None, max_length=100)):
     try:
-        return get_stats()
+        return get_stats_by_assignee(assigned_to=assigned_to)
     except Exception as exc:
         raise_internal_error(context="sdr_stats", exc=exc, code="sdr_stats_error")
+
+
+@router.patch("/{lead_id}/assign")
+def sdr_assign(lead_id: int, payload: SDRAssignPayload):
+    try:
+        updated = assign_owner(lead_id=lead_id, assigned_to=payload.assigned_to, author=payload.author)
+        if not updated:
+            raise_not_found("Lead not found in SDR queue", code="sdr_lead_not_found")
+        return {"status": "ok", **updated}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        logger.warning("sdr_assign validation failed lead_id=%s: %s", lead_id, exc)
+        raise_bad_request(str(exc), code="sdr_assign_validation")
+    except Exception as exc:
+        raise_internal_error(context=f"sdr_assign lead_id={lead_id}", exc=exc, code="sdr_assign_error")

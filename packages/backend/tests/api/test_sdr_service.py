@@ -2,10 +2,12 @@ from app.services import sdr_service
 
 
 class _FakeCursor:
-    def __init__(self, rows=None):
+    def __init__(self, rows=None, one_row=None):
         self.last_query = ""
         self.last_params = ()
         self._rows = list(rows or [])
+        self._one_row = one_row
+        self.executed = []
 
     def __enter__(self):
         return self
@@ -16,15 +18,21 @@ class _FakeCursor:
     def execute(self, query, params=None):
         self.last_query = str(query)
         self.last_params = tuple(params or ())
+        self.executed.append((self.last_query, self.last_params))
         self._rows = []
 
     def fetchall(self):
         return self._rows
 
+    def fetchone(self):
+        return self._one_row
+
 
 class _FakeConn:
     def __init__(self, cursor):
         self._cursor = cursor
+        self.did_commit = False
+        self.did_rollback = False
 
     def __enter__(self):
         return self
@@ -34,6 +42,12 @@ class _FakeConn:
 
     def cursor(self):
         return self._cursor
+
+    def commit(self):
+        self.did_commit = True
+
+    def rollback(self):
+        self.did_rollback = True
 
 
 def test_get_queue_applies_limit_clause(monkeypatch):
@@ -79,3 +93,39 @@ def test_get_queue_volume_uses_capped_limit_param(monkeypatch):
 
     _ = sdr_service.get_queue(limit=999999)
     assert cursor.last_params[-1] == 5000
+
+
+def test_get_queue_applies_assigned_to_filter(monkeypatch):
+    cursor = _FakeCursor()
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: _FakeConn(cursor))
+
+    sdr_service.get_queue(assigned_to="alice")
+
+    assert "s.assigned_to = %s" in cursor.last_query
+    assert "alice" in cursor.last_params
+
+
+def test_assign_owner_updates_assignment_and_commits(monkeypatch):
+    cursor = _FakeCursor(one_row=(12, "alice"))
+    conn = _FakeConn(cursor)
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
+
+    result = sdr_service.assign_owner(lead_id=12, assigned_to="alice")
+
+    assert result == {"lead_id": 12, "assigned_to": "alice"}
+    assert conn.did_commit is True
+    assert any("UPDATE sdr_activities" in query for query, _ in cursor.executed)
+    assert any("INSERT INTO lead_interactions" in query for query, _ in cursor.executed)
+
+
+def test_get_stats_by_assignee_applies_filter(monkeypatch):
+    cursor = _FakeCursor(one_row=(5, 2, 1))
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: _FakeConn(cursor))
+
+    stats = sdr_service.get_stats_by_assignee(assigned_to="alice")
+
+    assert stats["total"] == 5
+    assert stats["done_today"] == 2
+    assert stats["overdue"] == 1
+    assert "s.assigned_to = %s" in cursor.last_query
+    assert cursor.last_params == ("alice",)

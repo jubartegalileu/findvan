@@ -22,6 +22,7 @@ def _serialize_note(note: str, author: str | None, action_type: str | None = Non
 def get_queue(
     *,
     city: str | None = None,
+    assigned_to: str | None = None,
     prospect_status: str | None = None,
     cadence: str | None = None,
     score_min: int | None = None,
@@ -71,6 +72,11 @@ def get_queue(
     if city:
         query += " AND LOWER(l.city) = LOWER(%s)"
         params.append(city)
+
+    normalized_assigned_to = (assigned_to or "").strip() or None
+    if normalized_assigned_to and normalized_assigned_to != "all":
+        query += " AND s.assigned_to = %s"
+        params.append(normalized_assigned_to)
 
     if normalized_status:
         query += " AND s.prospect_status = %s"
@@ -239,6 +245,10 @@ def add_note(*, lead_id: int, note: str, author: str | None = None) -> dict | No
 
 
 def get_stats() -> dict:
+    return get_stats_by_assignee()
+
+
+def get_stats_by_assignee(*, assigned_to: str | None = None) -> dict:
     query = """
         SELECT
           COUNT(*)::int AS total,
@@ -256,9 +266,18 @@ def get_stats() -> dict:
         WHERE l.deleted_at IS NULL
           AND COALESCE(p.funnel_status, l.funnel_status, 'novo') NOT IN ('convertido', 'perdido');
     """
+    normalized_assigned_to = (assigned_to or "").strip() or None
+    params: list[object] = []
+    if normalized_assigned_to and normalized_assigned_to != "all":
+        query = query.replace(
+            "AND COALESCE(p.funnel_status, l.funnel_status, 'novo') NOT IN ('convertido', 'perdido');",
+            "AND COALESCE(p.funnel_status, l.funnel_status, 'novo') NOT IN ('convertido', 'perdido') AND s.assigned_to = %s;",
+        )
+        params.append(normalized_assigned_to)
+
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query)
+            cur.execute(query, tuple(params))
             row = cur.fetchone()
 
     total = int(row[0] or 0)
@@ -271,3 +290,43 @@ def get_stats() -> dict:
         "pending": pending,
         "overdue": overdue,
     }
+
+
+def assign_owner(*, lead_id: int, assigned_to: str, author: str | None = None) -> dict | None:
+    normalized_owner = (assigned_to or "").strip()
+    if not normalized_owner:
+        raise ValueError("assigned_to é obrigatório")
+    if len(normalized_owner) > 100:
+        raise ValueError("assigned_to deve ter no máximo 100 caracteres")
+
+    query = """
+        UPDATE sdr_activities
+        SET assigned_to = %s, updated_at = NOW()
+        WHERE lead_id = %s
+        RETURNING lead_id, assigned_to;
+    """
+    interaction_query = """
+        INSERT INTO lead_interactions (lead_id, type, content, metadata, author)
+        VALUES (%s, 'sdr_assignment', %s, %s::jsonb, %s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (normalized_owner, lead_id))
+            row = cur.fetchone()
+            if not row:
+                conn.rollback()
+                return None
+
+            cur.execute(
+                interaction_query,
+                (
+                    lead_id,
+                    f"SDR assignment: {normalized_owner}",
+                    json.dumps({"assigned_to": normalized_owner}),
+                    author or "sdr",
+                ),
+            )
+        conn.commit()
+
+    return {"lead_id": row[0], "assigned_to": row[1]}

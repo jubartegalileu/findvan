@@ -68,8 +68,8 @@ def test_patch_notes_ok(monkeypatch):
 def test_get_stats_ok(monkeypatch):
     monkeypatch.setattr(
         sdr_api,
-        "get_stats",
-        lambda: {"total": 5, "done_today": 2, "pending": 3, "overdue": 1},
+        "get_stats_by_assignee",
+        lambda **kwargs: {"total": 5, "done_today": 2, "pending": 3, "overdue": 1},
     )
     client = build_client()
     response = client.get("/api/sdr/stats")
@@ -89,6 +89,46 @@ def test_get_queue_forwards_limit(monkeypatch):
     response = client.get("/api/sdr/queue?limit=321")
     assert response.status_code == 200
     assert captured["limit"] == 321
+
+
+def test_get_queue_forwards_assigned_to(monkeypatch):
+    captured = {}
+
+    def _fake_get_queue(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(sdr_api, "get_queue", _fake_get_queue)
+    client = build_client()
+    response = client.get("/api/sdr/queue?assigned_to=alice")
+    assert response.status_code == 200
+    assert captured["assigned_to"] == "alice"
+
+
+def test_get_stats_forwards_assigned_to(monkeypatch):
+    captured = {}
+
+    def _fake_get_stats_by_assignee(**kwargs):
+        captured.update(kwargs)
+        return {"total": 0, "done_today": 0, "pending": 0, "overdue": 0}
+
+    monkeypatch.setattr(sdr_api, "get_stats_by_assignee", _fake_get_stats_by_assignee)
+    client = build_client()
+    response = client.get("/api/sdr/stats?assigned_to=alice")
+    assert response.status_code == 200
+    assert captured["assigned_to"] == "alice"
+
+
+def test_patch_assign_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "assign_owner",
+        lambda **kwargs: {"lead_id": kwargs["lead_id"], "assigned_to": kwargs["assigned_to"]},
+    )
+    client = build_client()
+    response = client.patch("/api/sdr/10/assign", json={"assigned_to": "alice"})
+    assert response.status_code == 200
+    assert response.json()["assigned_to"] == "alice"
 
 
 def test_get_queue_internal_error_is_sanitized(monkeypatch):

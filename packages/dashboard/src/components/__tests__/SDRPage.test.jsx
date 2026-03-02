@@ -12,6 +12,7 @@ const queuePayload = {
       phone: '11999990001',
       city: 'Santos',
       score: 88,
+      assigned_to: 'alice',
       cadence_bucket: 'overdue',
       next_action_description: 'Ligar',
       last_contact_at: null,
@@ -24,6 +25,7 @@ const queuePayload = {
       phone: '11999990002',
       city: 'Sao Paulo',
       score: 75,
+      assigned_to: 'bob',
       cadence_bucket: 'planned',
       next_action_description: 'Enviar proposta',
       last_contact_at: null,
@@ -87,6 +89,30 @@ describe('SDR page', () => {
       expect(screen.queryByText('Lead Beta')).toBeNull();
       expect(screen.getByText('1 / 1')).toBeDefined();
       expect(screen.queryByText('Carregando fila SDR...')).toBeNull();
+    });
+  });
+
+  it('forwards assigned_to when seller filter changes', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+      expect(screen.getByText('Lead Beta')).toBeDefined();
+    });
+
+    const sellerSelect = screen.getByLabelText('Vendedor');
+    await act(async () => {
+      await user.selectOptions(sellerSelect, 'alice');
+    });
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalled();
+      const calledUrls = fetch.mock.calls.map(([url]) => String(url));
+      expect(calledUrls.some((url) => url.includes('/api/sdr/queue') && url.includes('assigned_to=alice'))).toBe(true);
+      expect(calledUrls.some((url) => url.includes('/api/sdr/stats') && url.includes('assigned_to=alice'))).toBe(true);
     });
   });
 });

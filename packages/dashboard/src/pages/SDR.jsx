@@ -26,6 +26,7 @@ export default function SDR({ onNavigate, activePath }) {
   const [error, setError] = useState('');
   const [busyLeadId, setBusyLeadId] = useState(null);
   const [cadenceFilter, setCadenceFilter] = useState({ overdue: true, today: true, planned: true });
+  const [sellerFilter, setSellerFilter] = useState('all');
   const [cityFilter, setCityFilter] = useState('all');
   const [scoreMin, setScoreMin] = useState('0');
   const [scoreMax, setScoreMax] = useState('100');
@@ -36,7 +37,10 @@ export default function SDR({ onNavigate, activePath }) {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${API_BASE}/api/sdr/queue?limit=1000`);
+      const params = new URLSearchParams();
+      params.set('limit', '1000');
+      if (sellerFilter !== 'all') params.set('assigned_to', sellerFilter);
+      const response = await fetch(`${API_BASE}/api/sdr/queue?${params.toString()}`);
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload?.detail || 'Falha ao carregar fila SDR.');
@@ -47,11 +51,13 @@ export default function SDR({ onNavigate, activePath }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sellerFilter]);
 
   const loadStats = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/sdr/stats`);
+      const params = new URLSearchParams();
+      if (sellerFilter !== 'all') params.set('assigned_to', sellerFilter);
+      const response = await fetch(`${API_BASE}/api/sdr/stats${params.toString() ? `?${params.toString()}` : ''}`);
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload?.detail || 'Falha ao carregar métricas SDR.');
@@ -65,7 +71,7 @@ export default function SDR({ onNavigate, activePath }) {
     } catch (err) {
       setError(err.message || 'Falha ao carregar métricas SDR.');
     }
-  }, []);
+  }, [sellerFilter]);
 
   useEffect(() => {
     loadQueue();
@@ -74,6 +80,11 @@ export default function SDR({ onNavigate, activePath }) {
 
   const cities = useMemo(() => {
     const values = Array.from(new Set(queue.map((item) => item.city).filter(Boolean)));
+    return values.sort((a, b) => a.localeCompare(b));
+  }, [queue]);
+
+  const sellers = useMemo(() => {
+    const values = Array.from(new Set(queue.map((item) => item.assigned_to).filter(Boolean)));
     return values.sort((a, b) => a.localeCompare(b));
   }, [queue]);
 
@@ -201,6 +212,16 @@ export default function SDR({ onNavigate, activePath }) {
           </label>
 
           <label className="fv-field fv-field-inline">
+            <span>Vendedor</span>
+            <select className="fv-input fv-select" value={sellerFilter} onChange={(e) => setSellerFilter(e.target.value)}>
+              <option value="all">Todos</option>
+              {sellers.map((seller) => (
+                <option key={seller} value={seller}>{seller}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="fv-field fv-field-inline">
             <span>Cidade</span>
             <select className="fv-input fv-select" value={cityFilter} onChange={(e) => setCityFilter(e.target.value)}>
               <option value="all">Todas</option>
@@ -244,6 +265,7 @@ export default function SDR({ onNavigate, activePath }) {
                 <div className="fv-row-main">
                   <div className="fv-row-title">{lead.name || 'Lead sem nome'}</div>
                   <div className="fv-row-sub">{lead.company_name || '--'} • {lead.city || '--'} • {lead.phone || '--'}</div>
+                  <div className="fv-row-sub">Vendedor: {lead.assigned_to || 'default'}</div>
                   <div className="fv-row-sub">Ultimo contato: {formatDateTime(lead.last_contact_at)}</div>
                   <div className="fv-row-sub">Proxima acao: {lead.next_action_description || '--'} ({lead.next_action_date ? formatDateTime(lead.next_action_date) : 'sem data'})</div>
                   <div className="fv-row-actions">

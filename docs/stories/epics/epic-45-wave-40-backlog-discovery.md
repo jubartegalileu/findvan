@@ -1,9 +1,9 @@
 # Epic 45 — Wave 40 Backlog Discovery
 
-**Brief:** `TBD`  
-**Status:** Draft  
-**Prioridade:** TBD  
-**Estimativa:** TBD  
+**Brief:** `docs/brief-epic-45-wave-40-backlog-discovery.md`  
+**Status:** Done  
+**Prioridade:** P0  
+**Estimativa:** 1 sprint curta (readiness/discovery)  
 **Owner:** @pm (Morgan)
 
 ---
@@ -15,13 +15,13 @@ Consolidar discovery e escopo validado da próxima wave sem introduzir requisito
 ## Stories
 
 1. **45.1 — Scope framing + constraints validation** (`@pm + @architect`)  
-Status: `Draft`
+Status: `Done`
 
 2. **45.2 — Story breakdown and readiness plan** (`@sm`)  
-Status: `Draft`
+Status: `Done`
 
 3. **45.3 — PO validation and go/no-go for implementation** (`@po`)  
-Status: `Draft`
+Status: `Done`
 
 ## Execution Order
 
@@ -29,7 +29,7 @@ Status: `Draft`
 
 ## Definition of Done
 
-- [ ] Brief do Epic 45 publicado e revisado
-- [ ] Stories 45.x detalhadas com critérios claros
-- [ ] Priorização e dependências validadas
-- [ ] Gate PO de readiness documentado
+- [x] Brief do Epic 45 publicado e revisado
+- [x] Stories 45.x detalhadas com critérios claros
+- [x] Priorização e dependências validadas
+- [x] Gate PO de readiness documentado

@@ -2,8 +2,8 @@
 
 ## Epic Opened
 
-- Epic 45 — Wave 40 Backlog Discovery (`Draft`)
+- Epic 45 — Wave 40 Backlog Discovery & Readiness
 
-## PM Note
+## PM Outcome
 
-Kickoff iniciado em modo discovery para definição de escopo com base em artefatos aprovados.
+Kickoff executado e concluído no mesmo ciclo com pacote completo de readiness (GO PO).

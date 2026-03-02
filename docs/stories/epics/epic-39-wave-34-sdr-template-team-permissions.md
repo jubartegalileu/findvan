@@ -1,7 +1,7 @@
 # Epic 39 — Wave 34 SDR Template Team Permissions
 
 **Brief:** `docs/brief-epic-39-sdr-template-team-permissions.md`  
-**Status:** Draft  
+**Status:** Done  
 **Prioridade:** P0  
 **Estimativa:** 1 sprint curta (3 stories)  
 **Owner:** @pm (Morgan)
@@ -15,13 +15,13 @@ Aplicar permissao por equipe nas mutacoes de templates SDR para reduzir alteraca
 ## Stories
 
 1. **39.1 — Backend team permission policy for template mutations** (`@data-engineer`)  
-Status: `Draft`
+Status: `Done`
 
 2. **39.2 — Dashboard handling for permission-denied template operations** (`@dev`)  
-Status: `Draft`
+Status: `Done`
 
 3. **39.3 — QA Gate + PO Go/No-Go (team permissions)** (`@qa + @po`)  
-Status: `Draft`
+Status: `Done`
 
 ## Execution Order
 
@@ -29,7 +29,7 @@ Status: `Draft`
 
 ## Definition of Done
 
-- [ ] Backend bloqueia mutacao fora do escopo permitido
-- [ ] Dashboard exibe feedback claro para acesso negado
-- [ ] Testes backend e regressao dashboard verdes
-- [ ] Gate final QA/PO com decisao GO documentada
+- [x] Backend bloqueia mutacao fora do escopo permitido
+- [x] Dashboard exibe feedback claro para acesso negado
+- [x] Testes backend e regressao dashboard verdes
+- [x] Gate final QA/PO com decisao GO documentada

@@ -48,6 +48,7 @@ const normalizeTeamOwnerSlug = (value) => {
   const slug = raw.replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '');
   return slug || 'default';
 };
+const templatePermissionDeniedMessage = 'Acesso negado para operar template neste escopo.';
 
 export default function SDR({ onNavigate, activePath }) {
   const [queue, setQueue] = useState([]);
@@ -542,6 +543,9 @@ export default function SDR({ onNavigate, activePath }) {
       });
       const payload = await response.json();
       if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error(templatePermissionDeniedMessage);
+        }
         throw new Error(payload?.detail || 'Falha ao salvar template.');
       }
       await loadCustomTemplates();
@@ -569,6 +573,9 @@ export default function SDR({ onNavigate, activePath }) {
       );
       const payload = await response.json();
       if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error(templatePermissionDeniedMessage);
+        }
         throw new Error(payload?.detail || 'Falha ao excluir template.');
       }
       await loadCustomTemplates();
@@ -587,6 +594,9 @@ export default function SDR({ onNavigate, activePath }) {
     });
     const data = await response.json();
     if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error(templatePermissionDeniedMessage);
+      }
       throw new Error(data?.detail || 'Falha ao atualizar template.');
     }
     return data?.template;

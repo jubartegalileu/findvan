@@ -508,6 +508,36 @@ describe('SDR page', () => {
     });
   });
 
+  it('shows friendly feedback when template save is forbidden', async () => {
+    const user = userEvent.setup();
+    const baseImpl = fetch.getMockImplementation();
+    fetch.mockImplementation(async (url, options) => {
+      const value = String(url);
+      if (value.includes('/api/sdr/templates') && options?.method === 'POST') {
+        return { ok: false, status: 403, json: async () => ({ detail: 'forbidden' }) };
+      }
+      return baseImpl(url, options);
+    });
+
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.type(screen.getByPlaceholderText('Ex.: confirmar interesse e horario'), 'Template custom nota');
+      await user.type(screen.getByLabelText('Nome template'), 'Template Negado');
+      await user.click(screen.getByRole('button', { name: 'Salvar template' }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Acesso negado para operar template neste escopo.')).toBeDefined();
+    });
+  });
+
   it('updates selected custom template favorite via API', async () => {
     const user = userEvent.setup();
     await act(async () => {

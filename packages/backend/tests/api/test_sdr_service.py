@@ -289,6 +289,44 @@ def test_log_bulk_template_permission_denied_inserts_audit_row(monkeypatch):
     assert any("INSERT INTO sdr_bulk_template_audit" in query for query, _ in cursor.executed)
 
 
+def test_initiate_template_access_request_inserts_audit_row_and_returns_request_id(monkeypatch):
+    cursor = _FakeCursor(one_row=(321, "2026-03-02T12:00:00"))
+    conn = _FakeConn(cursor)
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
+
+    request = sdr_service.initiate_template_access_request(
+        owner="alice",
+        actor="bob",
+        reason="Acesso negado para mutação de templates",
+        template_id=9,
+    )
+
+    assert conn.did_commit is True
+    assert request["request_id"] == "sdr-access-321"
+    assert request["action"] == "access_request_initiated"
+    assert request["owner"] == "alice"
+    assert request["actor"] == "bob"
+    assert request["template_id"] == 9
+    assert any("INSERT INTO sdr_bulk_template_audit" in query for query, _ in cursor.executed)
+
+
+def test_initiate_template_access_request_defaults_actor_unknown_and_template_none(monkeypatch):
+    cursor = _FakeCursor(one_row=(11, "2026-03-02T12:00:00"))
+    conn = _FakeConn(cursor)
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
+
+    request = sdr_service.initiate_template_access_request(
+        owner="all",
+        actor=None,
+        reason="Acesso negado",
+        template_id=None,
+    )
+
+    assert request["actor"] == "unknown"
+    assert request["template_id"] is None
+    assert request["owner"] == "all"
+
+
 def test_save_bulk_template_upserts_and_commits(monkeypatch):
     row = (3, "alice", "Template B", "Ligar amanhã", 1, "Nota B", False, 4)
     cursor = _FakeCursor(one_row=row)

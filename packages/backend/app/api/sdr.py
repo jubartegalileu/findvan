@@ -13,6 +13,7 @@ from ..services.sdr_service import (
     evaluate_template_mutation_permission,
     get_queue,
     get_stats_by_assignee,
+    initiate_template_access_request,
     list_bulk_template_audit,
     list_bulk_templates,
     log_bulk_template_permission_denied,
@@ -82,6 +83,13 @@ class SDRBulkTemplatePatchPayload(BaseModel):
     actor: str | None = Field(default=None, max_length=100)
     is_favorite: bool | None = None
     sort_order: int | None = None
+
+
+class SDRTemplateAccessRequestPayload(BaseModel):
+    owner: str = Field(default="all", min_length=1, max_length=100)
+    actor: str | None = Field(default=None, max_length=100)
+    reason: str = Field(..., min_length=1, max_length=500)
+    template_id: int | None = Field(default=None, ge=1)
 
 
 def _resolve_template_actor(owner: str | None, actor: str | None) -> str | None:
@@ -287,6 +295,27 @@ def sdr_templates_permission(
         raise_bad_request(str(exc), code="sdr_templates_permission_validation")
     except Exception as exc:
         raise_internal_error(context="sdr_templates_permission", exc=exc, code="sdr_templates_permission_error")
+
+
+@router.post("/templates/permission/access-request")
+def sdr_templates_permission_access_request(payload: SDRTemplateAccessRequestPayload):
+    try:
+        request = initiate_template_access_request(
+            owner=payload.owner,
+            actor=payload.actor,
+            reason=payload.reason.strip(),
+            template_id=payload.template_id,
+        )
+        return {"status": "ok", "request": request}
+    except ValueError as exc:
+        logger.warning("sdr_templates_permission_access_request validation failed: %s", exc)
+        raise_bad_request(str(exc), code="sdr_templates_permission_access_request_validation")
+    except Exception as exc:
+        raise_internal_error(
+            context="sdr_templates_permission_access_request",
+            exc=exc,
+            code="sdr_templates_permission_access_request_error",
+        )
 
 
 @router.post("/templates")

@@ -192,6 +192,58 @@ def test_templates_permission_validation_error(monkeypatch):
     assert response.status_code == 400
 
 
+def test_templates_permission_access_request_ok(monkeypatch):
+    captured = {}
+
+    def _fake_initiate_template_access_request(**kwargs):
+        captured.update(kwargs)
+        return {
+            "request_id": "sdr-access-10",
+            "owner": kwargs["owner"],
+            "actor": kwargs["actor"] or "unknown",
+            "reason": kwargs["reason"],
+            "template_id": kwargs["template_id"],
+            "action": "access_request_initiated",
+            "status": "queued",
+        }
+
+    monkeypatch.setattr(
+        sdr_api,
+        "initiate_template_access_request",
+        _fake_initiate_template_access_request,
+    )
+    client = build_client()
+    response = client.post(
+        "/api/sdr/templates/permission/access-request",
+        json={
+            "owner": "all",
+            "actor": "alice",
+            "reason": "Acesso negado para mutação de templates globais",
+            "template_id": 9,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["request"]["request_id"] == "sdr-access-10"
+    assert captured["owner"] == "all"
+    assert captured["actor"] == "alice"
+    assert captured["template_id"] == 9
+
+
+def test_templates_permission_access_request_validation_error(monkeypatch):
+    def _raise(**kwargs):
+        raise ValueError("reason é obrigatório")
+
+    monkeypatch.setattr(sdr_api, "initiate_template_access_request", _raise)
+    client = build_client()
+    response = client.post(
+        "/api/sdr/templates/permission/access-request",
+        json={"owner": "alice", "reason": " "},
+    )
+    assert response.status_code == 400
+
+
 def test_templates_save_ok(monkeypatch):
     captured = {}
 

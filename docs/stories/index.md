@@ -1,6 +1,6 @@
 # Story Index
 
-**Generated:** 2026-03-02T03:45:28.872Z
+**Generated:** 2026-03-02T04:17:51.180Z
 **Total Stories:** 126
 **Epics:** 44
 
@@ -8,8 +8,7 @@
 
 ## 📊 Summary by Status
 
-- ✅ **Done**: 123
-- 🚀 **Ready for Dev**: 3
+- ✅ **Done**: 126
 
 ---
 
@@ -305,9 +304,9 @@
 
 | Story ID | Title | Status | Priority | Owner | Estimate |
 |----------|-------|--------|----------|-------|----------|
-| 44.1 | [Story 44.1 — Backend Access Request Initiation Contract](44.1.story.md) | 🚀 Ready for Dev | 🔴 P0 | Unassigned | TBD |
-| 44.2 | [Story 44.2 — SDR Dashboard Access Request Action UX](44.2.story.md) | 🚀 Ready for Dev | 🔴 P0 | Unassigned | TBD |
-| 44.3 | [Story 44.3 — QA Gate + PO Decision (Access Request Handoff)](44.3.story.md) | 🚀 Ready for Dev | 🔴 P0 | Unassigned | TBD |
+| 44.1 | [Story 44.1 — Backend Access Request Initiation Contract](44.1.story.md) | ✅ Done | 🔴 P0 | Unassigned | TBD |
+| 44.2 | [Story 44.2 — SDR Dashboard Access Request Action UX](44.2.story.md) | ✅ Done | 🔴 P0 | Unassigned | TBD |
+| 44.3 | [Story 44.3 — QA Gate + PO Decision (Access Request Handoff)](44.3.story.md) | ✅ Done | 🔴 P0 | Unassigned | TBD |
 
 ### 5 (Wave 1 P0 Closure) (3 stories)
 

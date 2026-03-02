@@ -173,6 +173,64 @@ def log_bulk_template_permission_denied(
         conn.commit()
 
 
+def initiate_template_access_request(
+    *,
+    owner: str | None,
+    actor: str | None,
+    reason: str | None,
+    template_id: int | None = None,
+) -> dict:
+    normalized_owner = normalize_template_owner(owner)
+    normalized_actor = (actor or "").strip() or "unknown"
+    normalized_reason = (reason or "").strip()
+    if not normalized_reason:
+        raise ValueError("reason é obrigatório")
+    if len(normalized_reason) > 500:
+        raise ValueError("reason deve ter no máximo 500 caracteres")
+
+    requested_template_id = int(template_id) if template_id is not None else 0
+    if requested_template_id < 0:
+        raise ValueError("template_id inválido")
+
+    payload = {
+        "reason": normalized_reason,
+        "operation": "access_request",
+    }
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO sdr_bulk_template_audit (template_id, owner, action, actor, payload)
+                VALUES (%s, %s, %s, %s, %s::jsonb)
+                RETURNING id, created_at;
+                """,
+                (
+                    requested_template_id,
+                    normalized_owner,
+                    "access_request_initiated",
+                    normalized_actor,
+                    json.dumps(payload),
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+
+    audit_id = int(row[0])
+    created_at = row[1]
+    return {
+        "request_id": f"sdr-access-{audit_id}",
+        "audit_id": audit_id,
+        "owner": normalized_owner,
+        "actor": normalized_actor,
+        "reason": normalized_reason,
+        "template_id": requested_template_id if requested_template_id > 0 else None,
+        "action": "access_request_initiated",
+        "created_at": created_at,
+        "status": "queued",
+    }
+
+
 def get_queue(
     *,
     city: str | None = None,

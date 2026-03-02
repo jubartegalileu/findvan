@@ -46,6 +46,23 @@ describe('SDR page', () => {
       'fetch',
       vi.fn(async (url, options) => {
         const value = String(url);
+        if (value.includes('/api/sdr/templates/permission/access-request')) {
+          const body = JSON.parse(String(options?.body || '{}'));
+          return {
+            ok: true,
+            json: async () => ({
+              status: 'ok',
+              request: {
+                request_id: 'sdr-access-777',
+                owner: body.owner || 'all',
+                actor: body.actor || 'unknown',
+                reason: body.reason || 'Acesso negado para mutação de templates',
+                action: 'access_request_initiated',
+                status: 'queued',
+              },
+            }),
+          };
+        }
         if (value.includes('/api/sdr/templates/permission')) {
           const parsedUrl = new URL(value, 'http://localhost');
           const owner = parsedUrl.searchParams.get('owner') || 'all';
@@ -178,6 +195,59 @@ describe('SDR page', () => {
       expect(screen.getByText('Como resolver')).toBeDefined();
       expect(screen.getByText('Permissão global requer admin')).toBeDefined();
       expect(screen.getByText(/Próxima ação:/i)).toBeDefined();
+    });
+  });
+
+  it('submits access request from remediation block and shows confirmation', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Solicitar acesso' })).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Solicitar acesso' }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Solicitação enviada (sdr-access-777).')).toBeDefined();
+      const requestCalls = fetch.mock.calls.filter(
+        ([url, options]) =>
+          String(url).includes('/api/sdr/templates/permission/access-request') &&
+          options?.method === 'POST'
+      );
+      expect(requestCalls.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows friendly error when access request submission fails', async () => {
+    const user = userEvent.setup();
+    const baseImpl = fetch.getMockImplementation();
+    fetch.mockImplementation(async (url, options) => {
+      const value = String(url);
+      if (value.includes('/api/sdr/templates/permission/access-request')) {
+        return { ok: false, status: 500, json: async () => ({ detail: 'Falha ao registrar solicitação' }) };
+      }
+      return baseImpl(url, options);
+    });
+
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Solicitar acesso' })).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Solicitar acesso' }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Falha ao registrar solicitação')).toBeDefined();
     });
   });
 

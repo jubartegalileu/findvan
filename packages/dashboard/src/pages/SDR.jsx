@@ -83,6 +83,8 @@ export default function SDR({ onNavigate, activePath }) {
   const [permissionDeniedEvents, setPermissionDeniedEvents] = useState([]);
   const [templatePermission, setTemplatePermission] = useState({ allowed: false, reason: 'Carregando...', remediation: null });
   const [templatePermissionLoading, setTemplatePermissionLoading] = useState(true);
+  const [templateAccessRequestLoading, setTemplateAccessRequestLoading] = useState(false);
+  const [templateAccessRequestFeedback, setTemplateAccessRequestFeedback] = useState('');
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -231,6 +233,51 @@ export default function SDR({ onNavigate, activePath }) {
       setPermissionDeniedEvents([]);
     }
   }, [templateOwner]);
+
+  const requestTemplateAccess = useCallback(async () => {
+    if (templatePermission.allowed || templatePermissionLoading || templateAccessRequestLoading) {
+      return;
+    }
+    setTemplateAccessRequestFeedback('');
+    setError('');
+    try {
+      setTemplateAccessRequestLoading(true);
+      const response = await fetch(`${API_BASE}/api/sdr/templates/permission/access-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          owner: templateOwner,
+          actor: templateActor || null,
+          reason: templatePermission.reason || templatePermissionDeniedMessage,
+          template_id: selectedTemplateId.startsWith('custom-')
+            ? Number(selectedTemplateId.replace('custom-', '')) || null
+            : null,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao enviar solicitação de acesso.');
+      }
+      const requestId = String(payload?.request?.request_id || '').trim();
+      setTemplateAccessRequestFeedback(
+        requestId ? `Solicitação enviada (${requestId}).` : 'Solicitação enviada.'
+      );
+      loadPermissionDeniedAudit();
+    } catch (err) {
+      setError(err.message || 'Falha ao enviar solicitação de acesso.');
+    } finally {
+      setTemplateAccessRequestLoading(false);
+    }
+  }, [
+    templatePermission.allowed,
+    templatePermission.reason,
+    templatePermissionLoading,
+    templateAccessRequestLoading,
+    templateOwner,
+    templateActor,
+    selectedTemplateId,
+    loadPermissionDeniedAudit,
+  ]);
 
   useEffect(() => {
     loadCustomTemplates();
@@ -1072,6 +1119,19 @@ export default function SDR({ onNavigate, activePath }) {
                   Próxima ação: {templatePermission.remediation.next_action}
                 </div>
               ) : null}
+              <div className="fv-template-remediation-actions">
+                <button
+                  className="fv-ghost"
+                  type="button"
+                  onClick={requestTemplateAccess}
+                  disabled={templateAccessRequestLoading}
+                >
+                  {templateAccessRequestLoading ? 'Enviando solicitação...' : 'Solicitar acesso'}
+                </button>
+                {templateAccessRequestFeedback ? (
+                  <div className="fv-template-remediation-item">{templateAccessRequestFeedback}</div>
+                ) : null}
+              </div>
             </div>
           ) : null}
           {templateOwner === 'all' && templateActor.toLowerCase() !== 'admin' ? (

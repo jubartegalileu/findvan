@@ -671,6 +671,13 @@ body,
   color: #7d5700;
 }
 
+.fv-template-remediation-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .fv-feedback-title {
   color: #8f6100;
   font-weight: 700;

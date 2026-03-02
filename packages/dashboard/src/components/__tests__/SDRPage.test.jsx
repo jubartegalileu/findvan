@@ -148,4 +148,41 @@ describe('SDR page', () => {
       expect(patchCalls.length).toBeGreaterThan(0);
     });
   });
+
+  it('sends batch assign request for selected leads', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+      expect(screen.getByText('Lead Beta')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.click(screen.getByLabelText('Selecionar lead 1'));
+      await user.click(screen.getByLabelText('Selecionar lead 2'));
+    });
+
+    const batchInput = screen.getByPlaceholderText('Vendedor lote');
+    await act(async () => {
+      await user.type(batchInput, 'danilo');
+    });
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Atribuir em lote' }));
+    });
+
+    await waitFor(() => {
+      const patchCalls = fetch.mock.calls.filter(
+        ([url, options]) =>
+          String(url).includes('/api/sdr/assign/batch') &&
+          options?.method === 'PATCH' &&
+          String(options?.body || '').includes('"lead_ids":[1,2]') &&
+          String(options?.body || '').includes('"assigned_to":"danilo"')
+      );
+      expect(patchCalls.length).toBeGreaterThan(0);
+    });
+  });
 });

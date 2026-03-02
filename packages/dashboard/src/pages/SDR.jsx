@@ -33,6 +33,8 @@ export default function SDR({ onNavigate, activePath }) {
   const [noteDrafts, setNoteDrafts] = useState({});
   const [assignDrafts, setAssignDrafts] = useState({});
   const [openNotes, setOpenNotes] = useState({});
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [batchAssignDraft, setBatchAssignDraft] = useState('');
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -46,7 +48,12 @@ export default function SDR({ onNavigate, activePath }) {
       if (!response.ok) {
         throw new Error(payload?.detail || 'Falha ao carregar fila SDR.');
       }
-      setQueue(Array.isArray(payload.queue) ? payload.queue : []);
+      const nextQueue = Array.isArray(payload.queue) ? payload.queue : [];
+      setQueue(nextQueue);
+      setSelectedLeadIds((prev) => {
+        const validIds = new Set(nextQueue.map((item) => item.lead_id));
+        return prev.filter((leadId) => validIds.has(leadId));
+      });
     } catch (err) {
       setError(err.message || 'Falha de conexão com o backend.');
     } finally {
@@ -180,6 +187,52 @@ export default function SDR({ onNavigate, activePath }) {
     }
   };
 
+  const patchAssignBatch = async () => {
+    const assignedTo = batchAssignDraft.trim();
+    if (!assignedTo || selectedLeadIds.length === 0) return;
+
+    setBusyLeadId('batch');
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE}/api/sdr/assign/batch`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_ids: selectedLeadIds, assigned_to: assignedTo, author: 'sdr-ui' }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao atribuir leads em lote.');
+      }
+      setBatchAssignDraft('');
+      setSelectedLeadIds([]);
+      await Promise.all([loadQueue(), loadStats()]);
+    } catch (err) {
+      setError(err.message || 'Falha ao atribuir leads em lote.');
+    } finally {
+      setBusyLeadId(null);
+    }
+  };
+
+  const toggleLeadSelection = (leadId, checked) => {
+    setSelectedLeadIds((prev) => {
+      if (checked) {
+        if (prev.includes(leadId)) return prev;
+        return [...prev, leadId];
+      }
+      return prev.filter((currentId) => currentId !== leadId);
+    });
+  };
+
+  const toggleSelectAllFiltered = (checked) => {
+    if (checked) {
+      setSelectedLeadIds(filteredQueue.map((lead) => lead.lead_id));
+      return;
+    }
+    setSelectedLeadIds([]);
+  };
+
+  const isAllFilteredSelected = filteredQueue.length > 0 && filteredQueue.every((lead) => selectedLeadIds.includes(lead.lead_id));
+
   const goToWhatsApp = (leadId) => {
     window.history.pushState({}, '', `/whatsapp?leadId=${leadId}`);
     onNavigate('/whatsapp');
@@ -275,6 +328,35 @@ export default function SDR({ onNavigate, activePath }) {
           <h2>Fila do dia</h2>
           <span className="fv-row-chip">{filteredQueue.length} leads</span>
         </div>
+        <div className="fv-row" style={{ justifyContent: 'space-between', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
+          <label className="fv-check-label" style={{ marginRight: 8 }}>
+            <input
+              aria-label="Selecionar todos os leads filtrados"
+              type="checkbox"
+              checked={isAllFilteredSelected}
+              onChange={(e) => toggleSelectAllFiltered(e.target.checked)}
+            />
+            Selecionar todos
+          </label>
+          <div className="fv-row-actions">
+            <span className="fv-row-sub">{selectedLeadIds.length} selecionados</span>
+            <input
+              className="fv-input"
+              style={{ minWidth: 140 }}
+              placeholder="Vendedor lote"
+              value={batchAssignDraft}
+              onChange={(e) => setBatchAssignDraft(e.target.value)}
+            />
+            <button
+              className="fv-primary"
+              type="button"
+              disabled={busyLeadId === 'batch' || selectedLeadIds.length === 0 || !batchAssignDraft.trim()}
+              onClick={patchAssignBatch}
+            >
+              {busyLeadId === 'batch' ? 'Atribuindo...' : 'Atribuir em lote'}
+            </button>
+          </div>
+        </div>
 
         {loading ? (
           <div className="fv-message">Carregando fila SDR...</div>
@@ -287,6 +369,14 @@ export default function SDR({ onNavigate, activePath }) {
                 key={lead.lead_id}
                 className={`fv-row fv-lead-card ${lead.cadence_bucket === 'overdue' ? 'overdue' : ''} ${lead.cadence_bucket === 'today' ? 'sdr-today' : ''}`}
               >
+                <label className="fv-check-label" style={{ marginRight: 10 }}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Selecionar lead ${lead.lead_id}`}
+                    checked={selectedLeadIds.includes(lead.lead_id)}
+                    onChange={(e) => toggleLeadSelection(lead.lead_id, e.target.checked)}
+                  />
+                </label>
                 <div className="fv-row-main">
                   <div className="fv-row-title">{lead.name || 'Lead sem nome'}</div>
                   <div className="fv-row-sub">{lead.company_name || '--'} • {lead.city || '--'} • {lead.phone || '--'}</div>

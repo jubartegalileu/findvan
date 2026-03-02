@@ -192,12 +192,17 @@ CREATE TABLE IF NOT EXISTS sdr_bulk_templates (
   next_action_description TEXT,
   cadence_days INTEGER NOT NULL DEFAULT 1,
   note TEXT,
+  is_favorite BOOLEAN NOT NULL DEFAULT false,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
   CONSTRAINT chk_sdr_bulk_templates_cadence_days CHECK (cadence_days BETWEEN 1 AND 30),
   CONSTRAINT uq_sdr_bulk_templates_owner_name UNIQUE (owner, name)
 );
+ALTER TABLE sdr_bulk_templates ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE sdr_bulk_templates ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_sdr_bulk_templates_owner ON sdr_bulk_templates(owner, updated_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_sdr_bulk_templates_owner_order ON sdr_bulk_templates(owner, is_favorite DESC, sort_order ASC, id DESC);
 """
 
 TIMESTAMP_AND_TRIGGER_SQL = """

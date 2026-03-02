@@ -528,16 +528,16 @@ def assign_owner_batch(*, lead_ids: list[int], assigned_to: str, author: str | N
 def list_bulk_templates(*, owner: str | None = None) -> list[dict]:
     normalized_owner = (owner or "all").strip() or "all"
     query = """
-        SELECT id, owner, name, next_action_description, cadence_days, note
+        SELECT id, owner, name, next_action_description, cadence_days, note, is_favorite, sort_order
         FROM sdr_bulk_templates
         WHERE owner = %s
-        ORDER BY updated_at DESC, id DESC;
+        ORDER BY is_favorite DESC, sort_order ASC, updated_at DESC, id DESC;
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(query, (normalized_owner,))
             rows = cur.fetchall() or []
-    keys = ["id", "owner", "name", "next_action_description", "cadence_days", "note"]
+    keys = ["id", "owner", "name", "next_action_description", "cadence_days", "note", "is_favorite", "sort_order"]
     return [dict(zip(keys, row)) for row in rows]
 
 
@@ -548,6 +548,8 @@ def save_bulk_template(
     next_action_description: str | None = None,
     cadence_days: int = 1,
     note: str | None = None,
+    is_favorite: bool | None = None,
+    sort_order: int | None = None,
 ) -> dict:
     normalized_owner = (owner or "all").strip() or "all"
     normalized_name = (name or "").strip()
@@ -559,17 +561,20 @@ def save_bulk_template(
     normalized_description = (next_action_description or "").strip() or None
     normalized_note = (note or "").strip() or None
     normalized_cadence_days = max(1, min(int(cadence_days or 1), 30))
+    normalized_sort_order = int(sort_order) if sort_order is not None else None
 
     query = """
-        INSERT INTO sdr_bulk_templates (owner, name, next_action_description, cadence_days, note, updated_at)
-        VALUES (%s, %s, %s, %s, %s, NOW())
+        INSERT INTO sdr_bulk_templates (owner, name, next_action_description, cadence_days, note, is_favorite, sort_order, updated_at)
+        VALUES (%s, %s, %s, %s, %s, COALESCE(%s, false), COALESCE(%s, 0), NOW())
         ON CONFLICT (owner, name)
         DO UPDATE SET
           next_action_description = EXCLUDED.next_action_description,
           cadence_days = EXCLUDED.cadence_days,
           note = EXCLUDED.note,
+          is_favorite = COALESCE(EXCLUDED.is_favorite, sdr_bulk_templates.is_favorite),
+          sort_order = COALESCE(EXCLUDED.sort_order, sdr_bulk_templates.sort_order),
           updated_at = NOW()
-        RETURNING id, owner, name, next_action_description, cadence_days, note;
+        RETURNING id, owner, name, next_action_description, cadence_days, note, is_favorite, sort_order;
     """
 
     with get_connection() as conn:
@@ -582,12 +587,14 @@ def save_bulk_template(
                     normalized_description,
                     normalized_cadence_days,
                     normalized_note,
+                    is_favorite,
+                    normalized_sort_order,
                 ),
             )
             row = cur.fetchone()
         conn.commit()
 
-    keys = ["id", "owner", "name", "next_action_description", "cadence_days", "note"]
+    keys = ["id", "owner", "name", "next_action_description", "cadence_days", "note", "is_favorite", "sort_order"]
     return dict(zip(keys, row))
 
 
@@ -604,3 +611,42 @@ def delete_bulk_template(*, template_id: int, owner: str | None = None) -> bool:
             row = cur.fetchone()
         conn.commit()
     return bool(row)
+
+
+def update_bulk_template_preferences(
+    *,
+    template_id: int,
+    owner: str | None = None,
+    is_favorite: bool | None = None,
+    sort_order: int | None = None,
+) -> dict | None:
+    normalized_owner = (owner or "all").strip() or "all"
+    if is_favorite is None and sort_order is None:
+        raise ValueError("is_favorite ou sort_order deve ser informado")
+
+    query = """
+        UPDATE sdr_bulk_templates
+        SET
+          is_favorite = COALESCE(%s, is_favorite),
+          sort_order = COALESCE(%s, sort_order),
+          updated_at = NOW()
+        WHERE id = %s AND owner = %s
+        RETURNING id, owner, name, next_action_description, cadence_days, note, is_favorite, sort_order;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    is_favorite,
+                    int(sort_order) if sort_order is not None else None,
+                    int(template_id),
+                    normalized_owner,
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    if not row:
+        return None
+    keys = ["id", "owner", "name", "next_action_description", "cadence_days", "note", "is_favorite", "sort_order"]
+    return dict(zip(keys, row))

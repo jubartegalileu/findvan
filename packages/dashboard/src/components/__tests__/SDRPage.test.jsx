@@ -64,9 +64,24 @@ describe('SDR page', () => {
             template.next_action_description = body.next_action_description || null;
             template.cadence_days = Number(body.cadence_days || 1);
             template.note = body.note || null;
+            template.is_favorite = Boolean(body.is_favorite || false);
+            template.sort_order = Number(body.sort_order || ((templatesByOwner[owner] || []).length + 1));
             const ownerList = templatesByOwner[owner] || [];
             templatesByOwner[owner] = [...ownerList.filter((item) => item.name !== name), template];
             return { ok: true, json: async () => ({ status: 'ok', template }) };
+          }
+          if (options.method === 'PATCH') {
+            const body = JSON.parse(String(options?.body || '{}'));
+            const owner = String(body.owner || 'all');
+            const templateId = Number(parsedUrl.pathname.split('/').pop());
+            const ownerList = templatesByOwner[owner] || [];
+            const current = ownerList.find((item) => Number(item.id) === templateId);
+            if (!current) {
+              return { ok: false, json: async () => ({ detail: 'Template não encontrado' }) };
+            }
+            if (typeof body.is_favorite === 'boolean') current.is_favorite = body.is_favorite;
+            if (typeof body.sort_order === 'number') current.sort_order = body.sort_order;
+            return { ok: true, json: async () => ({ status: 'ok', template: current }) };
           }
           if (options.method === 'DELETE') {
             const owner = parsedUrl.searchParams.get('owner') || 'all';
@@ -477,6 +492,43 @@ describe('SDR page', () => {
     await waitFor(() => {
       const options = Array.from(screen.getByLabelText('Template rapido').querySelectorAll('option')).map((option) => option.textContent);
       expect(options.includes('Template Alice')).toBe(true);
+    });
+  });
+
+  it('updates selected custom template favorite via API', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.type(screen.getByPlaceholderText('Ex.: confirmar interesse e horario'), 'Nota favorita');
+      await user.type(screen.getByLabelText('Nome template'), 'Template Favorito');
+      await user.click(screen.getByRole('button', { name: 'Salvar template' }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Template salvo para vendedor: all.')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.selectOptions(screen.getByLabelText('Template rapido'), 'custom-100');
+      await user.click(screen.getByRole('button', { name: 'Favoritar' }));
+    });
+
+    await waitFor(() => {
+      const patchCalls = fetch.mock.calls.filter(
+        ([url, options]) =>
+          String(url).includes('/api/sdr/templates/100') &&
+          options?.method === 'PATCH' &&
+          String(options?.body || '').includes('"is_favorite":true')
+      );
+      expect(patchCalls.length).toBeGreaterThan(0);
+      expect(screen.getByText('Template atualizado: Template Favorito.')).toBeDefined();
     });
   });
 });

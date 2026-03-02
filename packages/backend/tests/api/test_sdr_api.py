@@ -118,6 +118,29 @@ def test_templates_delete_ok(monkeypatch):
     assert response.json()["template_id"] == 5
 
 
+def test_templates_patch_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "update_bulk_template_preferences",
+        lambda **kwargs: {
+            "id": kwargs["template_id"],
+            "owner": kwargs["owner"],
+            "is_favorite": kwargs["is_favorite"],
+            "sort_order": kwargs["sort_order"],
+        },
+    )
+    client = build_client()
+    response = client.patch(
+        "/api/sdr/templates/9",
+        json={"owner": "alice", "is_favorite": True, "sort_order": 1},
+    )
+    assert response.status_code == 200
+    payload = response.json()["template"]
+    assert payload["id"] == 9
+    assert payload["is_favorite"] is True
+    assert payload["sort_order"] == 1
+
+
 def test_get_stats_ok(monkeypatch):
     monkeypatch.setattr(
         sdr_api,

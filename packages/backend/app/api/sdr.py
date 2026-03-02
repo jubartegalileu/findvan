@@ -16,6 +16,7 @@ from ..services.sdr_service import (
     register_action,
     register_action_batch,
     save_bulk_template,
+    update_bulk_template_preferences,
 )
 
 
@@ -69,6 +70,12 @@ class SDRBulkTemplatePayload(BaseModel):
     next_action_description: str | None = Field(default=None, max_length=500)
     cadence_days: int = Field(default=1, ge=1, le=30)
     note: str | None = Field(default=None, max_length=2000)
+
+
+class SDRBulkTemplatePatchPayload(BaseModel):
+    owner: str = Field(default="all", min_length=1, max_length=100)
+    is_favorite: bool | None = None
+    sort_order: int | None = None
 
 
 @router.get("/queue")
@@ -261,3 +268,24 @@ def sdr_templates_delete(template_id: int, owner: str | None = Query(default="al
         raise
     except Exception as exc:
         raise_internal_error(context=f"sdr_templates_delete template_id={template_id}", exc=exc, code="sdr_templates_delete_error")
+
+
+@router.patch("/templates/{template_id}")
+def sdr_templates_patch(template_id: int, payload: SDRBulkTemplatePatchPayload):
+    try:
+        updated = update_bulk_template_preferences(
+            template_id=template_id,
+            owner=payload.owner,
+            is_favorite=payload.is_favorite,
+            sort_order=payload.sort_order,
+        )
+        if not updated:
+            raise_not_found("Template não encontrado", code="sdr_template_not_found")
+        return {"status": "ok", "template": updated}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        logger.warning("sdr_templates_patch validation failed: %s", exc)
+        raise_bad_request(str(exc), code="sdr_templates_patch_validation")
+    except Exception as exc:
+        raise_internal_error(context=f"sdr_templates_patch template_id={template_id}", exc=exc, code="sdr_templates_patch_error")

@@ -137,6 +137,8 @@ export default function SDR({ onNavigate, activePath }) {
           nextActionDescription: String(item.next_action_description || '').trim(),
           cadenceDays: String(item.cadence_days || '1'),
           note: String(item.note || '').trim(),
+          isFavorite: Boolean(item.is_favorite),
+          sortOrder: Number(item.sort_order || 0),
           isCustom: true,
         }))
         .filter((item) => item.label);
@@ -523,6 +525,57 @@ export default function SDR({ onNavigate, activePath }) {
     }
   };
 
+  const patchTemplatePreferences = async (templateId, payload) => {
+    const response = await fetch(`${API_BASE}/api/sdr/templates/${templateId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner: sellerFilter || 'all', ...payload }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.detail || 'Falha ao atualizar template.');
+    }
+    return data?.template;
+  };
+
+  const toggleSelectedTemplateFavorite = async () => {
+    if (!selectedTemplateId) return;
+    const current = customBatchTemplates.find((item) => item.id === selectedTemplateId);
+    if (!current) {
+      setBatchFeedback('Apenas templates custom podem ser favoritados.');
+      return;
+    }
+    try {
+      await patchTemplatePreferences(current.templateId, { is_favorite: !current.isFavorite });
+      await loadCustomTemplates();
+      setBatchFeedback(`Template atualizado: ${current.label}.`);
+    } catch (err) {
+      setError(err.message || 'Falha ao atualizar template.');
+    }
+  };
+
+  const moveSelectedTemplate = async (direction) => {
+    if (!selectedTemplateId) return;
+    const currentIndex = customBatchTemplates.findIndex((item) => item.id === selectedTemplateId);
+    if (currentIndex < 0) return;
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= customBatchTemplates.length) return;
+
+    const current = customBatchTemplates[currentIndex];
+    const target = customBatchTemplates[targetIndex];
+    const currentOrder = Number.isFinite(current.sortOrder) ? current.sortOrder : currentIndex + 1;
+    const targetOrder = Number.isFinite(target.sortOrder) ? target.sortOrder : targetIndex + 1;
+
+    try {
+      await patchTemplatePreferences(current.templateId, { sort_order: targetOrder });
+      await patchTemplatePreferences(target.templateId, { sort_order: currentOrder });
+      await loadCustomTemplates();
+      setBatchFeedback(`Ordem atualizada: ${current.label}.`);
+    } catch (err) {
+      setError(err.message || 'Falha ao reordenar template.');
+    }
+  };
+
   const goToWhatsApp = (leadId) => {
     window.history.pushState({}, '', `/whatsapp?leadId=${leadId}`);
     onNavigate('/whatsapp');
@@ -700,6 +753,30 @@ export default function SDR({ onNavigate, activePath }) {
             onClick={deleteSelectedCustomTemplate}
           >
             Excluir template
+          </button>
+          <button
+            className="fv-ghost"
+            type="button"
+            disabled={!selectedTemplateId}
+            onClick={toggleSelectedTemplateFavorite}
+          >
+            Favoritar
+          </button>
+          <button
+            className="fv-ghost"
+            type="button"
+            disabled={!selectedTemplateId}
+            onClick={() => moveSelectedTemplate('up')}
+          >
+            Subir
+          </button>
+          <button
+            className="fv-ghost"
+            type="button"
+            disabled={!selectedTemplateId}
+            onClick={() => moveSelectedTemplate('down')}
+          >
+            Descer
           </button>
           <label className="fv-field fv-field-inline">
             <span>Nota (lote)</span>

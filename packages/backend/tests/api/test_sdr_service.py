@@ -218,7 +218,7 @@ def test_list_bulk_templates_by_owner(monkeypatch):
     class _TemplateListCursor(_FakeCursor):
         def execute(self, query, params=None):
             super().execute(query, params)
-            self._rows = [(1, "alice", "Template A", "Enviar proposta", 2, "Nota A")]
+            self._rows = [(1, "alice", "Template A", "Enviar proposta", 2, "Nota A", True, 7)]
 
     cursor = _TemplateListCursor()
     monkeypatch.setattr(sdr_service, "get_connection", lambda: _FakeConn(cursor))
@@ -232,7 +232,7 @@ def test_list_bulk_templates_by_owner(monkeypatch):
 
 
 def test_save_bulk_template_upserts_and_commits(monkeypatch):
-    row = (3, "alice", "Template B", "Ligar amanhã", 1, "Nota B")
+    row = (3, "alice", "Template B", "Ligar amanhã", 1, "Nota B", False, 4)
     cursor = _FakeCursor(one_row=row)
     conn = _FakeConn(cursor)
     monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
@@ -247,6 +247,7 @@ def test_save_bulk_template_upserts_and_commits(monkeypatch):
 
     assert saved["id"] == 3
     assert saved["owner"] == "alice"
+    assert saved["sort_order"] == 4
     assert conn.did_commit is True
     assert any("ON CONFLICT (owner, name)" in query for query, _ in cursor.executed)
 
@@ -262,3 +263,23 @@ def test_delete_bulk_template_returns_true_when_deleted(monkeypatch):
     assert conn.did_commit is True
     assert "DELETE FROM sdr_bulk_templates" in cursor.last_query
     assert cursor.last_params == (9, "alice")
+
+
+def test_update_bulk_template_preferences_updates_and_returns_row(monkeypatch):
+    row = (9, "alice", "Template Z", "Acao", 3, "Nota", True, 1)
+    cursor = _FakeCursor(one_row=row)
+    conn = _FakeConn(cursor)
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
+
+    updated = sdr_service.update_bulk_template_preferences(
+        template_id=9,
+        owner="alice",
+        is_favorite=True,
+        sort_order=1,
+    )
+
+    assert updated is not None
+    assert updated["is_favorite"] is True
+    assert updated["sort_order"] == 1
+    assert conn.did_commit is True
+    assert "UPDATE sdr_bulk_templates" in cursor.last_query

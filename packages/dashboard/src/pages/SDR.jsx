@@ -31,6 +31,7 @@ export default function SDR({ onNavigate, activePath }) {
   const [scoreMin, setScoreMin] = useState('0');
   const [scoreMax, setScoreMax] = useState('100');
   const [noteDrafts, setNoteDrafts] = useState({});
+  const [assignDrafts, setAssignDrafts] = useState({});
   const [openNotes, setOpenNotes] = useState({});
 
   const loadQueue = useCallback(async () => {
@@ -155,6 +156,30 @@ export default function SDR({ onNavigate, activePath }) {
     }
   };
 
+  const patchAssign = async (leadId) => {
+    const assignedTo = (assignDrafts[leadId] || '').trim();
+    if (!assignedTo) return;
+
+    setBusyLeadId(leadId);
+    setError('');
+    try {
+      const response = await fetch(`${API_BASE}/api/sdr/${leadId}/assign`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assigned_to: assignedTo, author: 'sdr-ui' }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao atribuir vendedor.');
+      }
+      await Promise.all([loadQueue(), loadStats()]);
+    } catch (err) {
+      setError(err.message || 'Falha ao atribuir vendedor.');
+    } finally {
+      setBusyLeadId(null);
+    }
+  };
+
   const goToWhatsApp = (leadId) => {
     window.history.pushState({}, '', `/whatsapp?leadId=${leadId}`);
     onNavigate('/whatsapp');
@@ -271,6 +296,24 @@ export default function SDR({ onNavigate, activePath }) {
                   <div className="fv-row-actions">
                     <span className="fv-status">{cadenceLabels[lead.cadence_bucket] || 'Planejada'}</span>
                     <ScoreBadge score={lead.score} />
+                  </div>
+
+                  <div className="fv-row-actions">
+                    <input
+                      className="fv-input"
+                      style={{ minWidth: 140 }}
+                      placeholder="Atribuir vendedor"
+                      value={assignDrafts[lead.lead_id] ?? lead.assigned_to ?? ''}
+                      onChange={(e) => setAssignDrafts((prev) => ({ ...prev, [lead.lead_id]: e.target.value }))}
+                    />
+                    <button
+                      className="fv-ghost small"
+                      type="button"
+                      disabled={busyLeadId === lead.lead_id}
+                      onClick={() => patchAssign(lead.lead_id)}
+                    >
+                      Atribuir
+                    </button>
                   </div>
 
                   <div className="fv-row-actions">

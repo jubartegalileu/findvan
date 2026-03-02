@@ -43,6 +43,7 @@ describe('SDR page', () => {
       'fetch',
       vi.fn(async (url) => {
         const value = String(url);
+        if (value.includes('/api/sdr/') && value.includes('/assign')) return { ok: true, json: async () => ({ status: 'ok' }) };
         if (value.includes('/api/sdr/queue')) return { ok: true, json: async () => queuePayload };
         if (value.includes('/api/sdr/stats')) return { ok: true, json: async () => statsPayload };
         return { ok: true, json: async () => ({}) };
@@ -113,6 +114,38 @@ describe('SDR page', () => {
       const calledUrls = fetch.mock.calls.map(([url]) => String(url));
       expect(calledUrls.some((url) => url.includes('/api/sdr/queue') && url.includes('assigned_to=alice'))).toBe(true);
       expect(calledUrls.some((url) => url.includes('/api/sdr/stats') && url.includes('assigned_to=alice'))).toBe(true);
+    });
+  });
+
+  it('sends assign request for a lead', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+    });
+
+    const inputs = screen.getAllByPlaceholderText('Atribuir vendedor');
+    await act(async () => {
+      await user.clear(inputs[0]);
+      await user.type(inputs[0], 'carol');
+    });
+
+    const assignButtons = screen.getAllByRole('button', { name: 'Atribuir' });
+    await act(async () => {
+      await user.click(assignButtons[0]);
+    });
+
+    await waitFor(() => {
+      const patchCalls = fetch.mock.calls.filter(
+        ([url, options]) =>
+          String(url).includes('/api/sdr/1/assign') &&
+          options?.method === 'PATCH' &&
+          String(options?.body || '').includes('"assigned_to":"carol"')
+      );
+      expect(patchCalls.length).toBeGreaterThan(0);
     });
   });
 });

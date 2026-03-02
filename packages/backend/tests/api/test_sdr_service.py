@@ -129,3 +129,31 @@ def test_get_stats_by_assignee_applies_filter(monkeypatch):
     assert stats["overdue"] == 1
     assert "s.assigned_to = %s" in cursor.last_query
     assert cursor.last_params == ("alice",)
+
+
+def test_assign_owner_batch_updates_multiple_and_commits(monkeypatch):
+    class _BatchCursor(_FakeCursor):
+        def __init__(self):
+            super().__init__()
+            self._update_called = False
+
+        def execute(self, query, params=None):
+            super().execute(query, params)
+            if "UPDATE sdr_activities" in str(query):
+                self._rows = [(12,), (13,)]
+                self._update_called = True
+            elif self._update_called:
+                self._rows = []
+
+    cursor = _BatchCursor()
+    conn = _FakeConn(cursor)
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
+
+    result = sdr_service.assign_owner_batch(lead_ids=[12, 13, 13], assigned_to="alice")
+
+    assert result["updated_count"] == 2
+    assert result["lead_ids"] == [12, 13]
+    assert result["assigned_to"] == "alice"
+    assert conn.did_commit is True
+    assert any("UPDATE sdr_activities" in query for query, _ in cursor.executed)
+    assert sum(1 for query, _ in cursor.executed if "INSERT INTO lead_interactions" in query) == 2

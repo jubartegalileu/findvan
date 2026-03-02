@@ -131,6 +131,27 @@ def test_patch_assign_ok(monkeypatch):
     assert response.json()["assigned_to"] == "alice"
 
 
+def test_patch_assign_batch_ok(monkeypatch):
+    def _fake_assign_owner_batch(**kwargs):
+        return {
+            "updated_count": len(kwargs["lead_ids"]),
+            "lead_ids": kwargs["lead_ids"],
+            "assigned_to": kwargs["assigned_to"],
+        }
+
+    monkeypatch.setattr(sdr_api, "assign_owner_batch", _fake_assign_owner_batch)
+    client = build_client()
+    response = client.patch(
+        "/api/sdr/assign/batch",
+        json={"lead_ids": [10, 11], "assigned_to": "alice"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["updated_count"] == 2
+    assert payload["lead_ids"] == [10, 11]
+    assert payload["assigned_to"] == "alice"
+
+
 def test_get_queue_internal_error_is_sanitized(monkeypatch):
     def _raise(**kwargs):
         raise RuntimeError("db failed")

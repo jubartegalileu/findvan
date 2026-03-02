@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .error_utils import raise_bad_request, raise_internal_error, raise_not_found
-from ..services.sdr_service import add_note, assign_owner, get_queue, get_stats_by_assignee, register_action
+from ..services.sdr_service import add_note, assign_owner, assign_owner_batch, get_queue, get_stats_by_assignee, register_action
 
 
 router = APIRouter()
@@ -26,6 +26,12 @@ class SDRNotePayload(BaseModel):
 
 
 class SDRAssignPayload(BaseModel):
+    assigned_to: str = Field(..., min_length=1, max_length=100)
+    author: str | None = Field(default=None, max_length=100)
+
+
+class SDRAssignBatchPayload(BaseModel):
+    lead_ids: list[int] = Field(..., min_length=1, max_length=500)
     assigned_to: str = Field(..., min_length=1, max_length=100)
     author: str | None = Field(default=None, max_length=100)
 
@@ -117,3 +123,23 @@ def sdr_assign(lead_id: int, payload: SDRAssignPayload):
         raise_bad_request(str(exc), code="sdr_assign_validation")
     except Exception as exc:
         raise_internal_error(context=f"sdr_assign lead_id={lead_id}", exc=exc, code="sdr_assign_error")
+
+
+@router.patch("/assign/batch")
+def sdr_assign_batch(payload: SDRAssignBatchPayload):
+    try:
+        updated = assign_owner_batch(
+            lead_ids=payload.lead_ids,
+            assigned_to=payload.assigned_to,
+            author=payload.author,
+        )
+        if updated["updated_count"] == 0:
+            raise_not_found("Nenhum lead encontrado para atribuição", code="sdr_lead_not_found")
+        return {"status": "ok", **updated}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        logger.warning("sdr_assign_batch validation failed: %s", exc)
+        raise_bad_request(str(exc), code="sdr_assign_batch_validation")
+    except Exception as exc:
+        raise_internal_error(context="sdr_assign_batch", exc=exc, code="sdr_assign_batch_error")

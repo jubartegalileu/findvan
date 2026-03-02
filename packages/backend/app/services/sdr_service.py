@@ -330,3 +330,62 @@ def assign_owner(*, lead_id: int, assigned_to: str, author: str | None = None) -
         conn.commit()
 
     return {"lead_id": row[0], "assigned_to": row[1]}
+
+
+def assign_owner_batch(*, lead_ids: list[int], assigned_to: str, author: str | None = None) -> dict:
+    normalized_owner = (assigned_to or "").strip()
+    if not normalized_owner:
+        raise ValueError("assigned_to é obrigatório")
+    if len(normalized_owner) > 100:
+        raise ValueError("assigned_to deve ter no máximo 100 caracteres")
+    if not lead_ids:
+        raise ValueError("lead_ids é obrigatório")
+
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for lead_id in lead_ids:
+        value = int(lead_id)
+        if value <= 0:
+            raise ValueError("lead_ids deve conter apenas IDs positivos")
+        if value in seen:
+            continue
+        normalized_ids.append(value)
+        seen.add(value)
+
+    update_query = """
+        UPDATE sdr_activities
+        SET assigned_to = %s, updated_at = NOW()
+        WHERE lead_id = ANY(%s::int[])
+        RETURNING lead_id;
+    """
+    interaction_query = """
+        INSERT INTO lead_interactions (lead_id, type, content, metadata, author)
+        VALUES (%s, 'sdr_assignment', %s, %s::jsonb, %s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(update_query, (normalized_owner, normalized_ids))
+            rows = cur.fetchall() or []
+            updated_ids = [int(row[0]) for row in rows]
+            if not updated_ids:
+                conn.rollback()
+                return {"updated_count": 0, "lead_ids": [], "assigned_to": normalized_owner}
+
+            for updated_id in updated_ids:
+                cur.execute(
+                    interaction_query,
+                    (
+                        updated_id,
+                        f"SDR assignment: {normalized_owner}",
+                        json.dumps({"assigned_to": normalized_owner}),
+                        author or "sdr",
+                    ),
+                )
+        conn.commit()
+
+    return {
+        "updated_count": len(updated_ids),
+        "lead_ids": updated_ids,
+        "assigned_to": normalized_owner,
+    }

@@ -31,5 +31,6 @@ Status: `Done`
 
 - [x] Backend persiste favorito e ordem de template
 - [x] UI SDR permite favoritar e ordenar templates custom
+- [x] Follow-up de owner scope (`seller/team/global`) validado no fluxo de templates
 - [x] Testes backend e regressao dashboard verdes
 - [x] Gate final QA/PO com decisao GO documentada

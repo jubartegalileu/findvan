@@ -11,6 +11,29 @@ const cadenceLabels = {
 };
 
 const cadenceOrder = { overdue: 0, today: 1, planned: 2 };
+const batchTemplates = [
+  {
+    id: 'followup-24h',
+    label: 'Follow-up 24h',
+    nextActionDescription: 'Retornar contato em 24h',
+    cadenceDays: '1',
+    note: 'Follow-up agendado para 24h',
+  },
+  {
+    id: 'proposta',
+    label: 'Enviar proposta',
+    nextActionDescription: 'Enviar proposta personalizada',
+    cadenceDays: '2',
+    note: 'Preparar proposta com detalhes do servico',
+  },
+  {
+    id: 'qualificar',
+    label: 'Qualificar lead',
+    nextActionDescription: 'Validar interesse e faixa de horario',
+    cadenceDays: '1',
+    note: 'Executar roteiro de qualificacao SDR',
+  },
+];
 
 const formatDateTime = (value) => {
   if (!value) return '--';
@@ -389,6 +412,14 @@ export default function SDR({ onNavigate, activePath }) {
   };
 
   const isAllFilteredSelected = filteredQueue.length > 0 && filteredQueue.every((lead) => selectedLeadIds.includes(lead.lead_id));
+  const applyBatchTemplate = (templateId) => {
+    const template = batchTemplates.find((item) => item.id === templateId);
+    if (!template) return;
+    setBatchNextActionDescription(template.nextActionDescription);
+    setBatchCadenceDays(template.cadenceDays);
+    setBatchNoteDraft(template.note);
+    setBatchFeedback(`Template aplicado: ${template.label}.`);
+  };
 
   const goToWhatsApp = (leadId) => {
     window.history.pushState({}, '', `/whatsapp?leadId=${leadId}`);
@@ -523,6 +554,24 @@ export default function SDR({ onNavigate, activePath }) {
           </div>
         </div>
         <div className="fv-row" style={{ marginBottom: 10, gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label className="fv-field fv-field-inline">
+            <span>Template rapido</span>
+            <select
+              className="fv-input fv-select"
+              aria-label="Template rapido"
+              defaultValue=""
+              onChange={(e) => {
+                if (!e.target.value) return;
+                applyBatchTemplate(e.target.value);
+                e.target.value = '';
+              }}
+            >
+              <option value="">Selecionar template</option>
+              {batchTemplates.map((template) => (
+                <option key={template.id} value={template.id}>{template.label}</option>
+              ))}
+            </select>
+          </label>
           <label className="fv-field fv-field-inline">
             <span>Nota (lote)</span>
             <input

@@ -380,4 +380,27 @@ describe('SDR page', () => {
 
     expect(screen.getByText('1 lead(s) com nota registrada em lote.')).toBeDefined();
   });
+
+  it('applies quick template to batch fields', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+    });
+
+    const templateSelect = screen.getByLabelText('Template rapido');
+    await act(async () => {
+      await user.selectOptions(templateSelect, 'proposta');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Preparar proposta com detalhes do servico')).toBeDefined();
+      expect(screen.getByDisplayValue('Enviar proposta personalizada')).toBeDefined();
+      expect(screen.getByDisplayValue('2')).toBeDefined();
+      expect(screen.getByText('Template aplicado: Enviar proposta.')).toBeDefined();
+    });
+  });
 });

@@ -212,3 +212,53 @@ def test_add_note_batch_updates_multiple_and_commits(monkeypatch):
     assert conn.did_commit is True
     assert any("UPDATE sdr_activities" in query for query, _ in cursor.executed)
     assert sum(1 for query, _ in cursor.executed if "INSERT INTO lead_interactions" in query) == 2
+
+
+def test_list_bulk_templates_by_owner(monkeypatch):
+    class _TemplateListCursor(_FakeCursor):
+        def execute(self, query, params=None):
+            super().execute(query, params)
+            self._rows = [(1, "alice", "Template A", "Enviar proposta", 2, "Nota A")]
+
+    cursor = _TemplateListCursor()
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: _FakeConn(cursor))
+
+    templates = sdr_service.list_bulk_templates(owner="alice")
+
+    assert len(templates) == 1
+    assert templates[0]["owner"] == "alice"
+    assert "FROM sdr_bulk_templates" in cursor.last_query
+    assert cursor.last_params == ("alice",)
+
+
+def test_save_bulk_template_upserts_and_commits(monkeypatch):
+    row = (3, "alice", "Template B", "Ligar amanhã", 1, "Nota B")
+    cursor = _FakeCursor(one_row=row)
+    conn = _FakeConn(cursor)
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
+
+    saved = sdr_service.save_bulk_template(
+        owner="alice",
+        name="Template B",
+        next_action_description="Ligar amanhã",
+        cadence_days=1,
+        note="Nota B",
+    )
+
+    assert saved["id"] == 3
+    assert saved["owner"] == "alice"
+    assert conn.did_commit is True
+    assert any("ON CONFLICT (owner, name)" in query for query, _ in cursor.executed)
+
+
+def test_delete_bulk_template_returns_true_when_deleted(monkeypatch):
+    cursor = _FakeCursor(one_row=(9,))
+    conn = _FakeConn(cursor)
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
+
+    deleted = sdr_service.delete_bulk_template(template_id=9, owner="alice")
+
+    assert deleted is True
+    assert conn.did_commit is True
+    assert "DELETE FROM sdr_bulk_templates" in cursor.last_query
+    assert cursor.last_params == (9, "alice")

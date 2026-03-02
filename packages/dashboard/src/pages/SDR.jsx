@@ -11,7 +11,6 @@ const cadenceLabels = {
 };
 
 const cadenceOrder = { overdue: 0, today: 1, planned: 2 };
-const batchTemplateStoragePrefix = 'findvan:sdr:bulk-templates';
 const batchTemplates = [
   {
     id: 'followup-24h',
@@ -63,7 +62,6 @@ export default function SDR({ onNavigate, activePath }) {
   const [customBatchTemplates, setCustomBatchTemplates] = useState([]);
   const [batchTemplateNameDraft, setBatchTemplateNameDraft] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
-  const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [batchAssignDraft, setBatchAssignDraft] = useState('');
   const [batchNoteDraft, setBatchNoteDraft] = useState('');
   const [batchNextActionDescription, setBatchNextActionDescription] = useState('');
@@ -121,49 +119,37 @@ export default function SDR({ onNavigate, activePath }) {
     loadStats();
   }, [loadQueue, loadStats]);
 
-  useEffect(() => {
-    const storageKey = `${batchTemplateStoragePrefix}:${sellerFilter || 'all'}`;
+  const loadCustomTemplates = useCallback(async () => {
     try {
-      const rawValue = window.localStorage.getItem(storageKey);
-      if (!rawValue) {
-        setCustomBatchTemplates([]);
-        setTemplatesLoaded(true);
-        return;
+      const params = new URLSearchParams();
+      params.set('owner', sellerFilter || 'all');
+      const response = await fetch(`${API_BASE}/api/sdr/templates?${params.toString()}`);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao carregar templates.');
       }
-      const parsed = JSON.parse(rawValue);
-      if (!Array.isArray(parsed)) {
-        setCustomBatchTemplates([]);
-        setTemplatesLoaded(true);
-        return;
-      }
-      const normalized = parsed
-        .filter((item) => item && typeof item === 'object')
+      const list = Array.isArray(payload?.templates) ? payload.templates : [];
+      const normalized = list
         .map((item) => ({
-          id: String(item.id || ''),
-          label: String(item.label || '').trim(),
-          nextActionDescription: String(item.nextActionDescription || '').trim(),
-          cadenceDays: String(item.cadenceDays || '1').trim() || '1',
+          id: `custom-${item.id}`,
+          templateId: Number(item.id),
+          label: String(item.name || '').trim(),
+          nextActionDescription: String(item.next_action_description || '').trim(),
+          cadenceDays: String(item.cadence_days || '1'),
           note: String(item.note || '').trim(),
           isCustom: true,
         }))
-        .filter((item) => item.id && item.label);
+        .filter((item) => item.label);
       setCustomBatchTemplates(normalized);
-      setTemplatesLoaded(true);
-    } catch {
+    } catch (err) {
+      setError(err.message || 'Falha ao carregar templates.');
       setCustomBatchTemplates([]);
-      setTemplatesLoaded(true);
     }
   }, [sellerFilter]);
 
   useEffect(() => {
-    if (!templatesLoaded) return;
-    const storageKey = `${batchTemplateStoragePrefix}:${sellerFilter || 'all'}`;
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify(customBatchTemplates));
-    } catch {
-      // ignore localStorage write failures to avoid blocking SDR operations
-    }
-  }, [customBatchTemplates, sellerFilter, templatesLoaded]);
+    loadCustomTemplates();
+  }, [loadCustomTemplates]);
 
   useEffect(() => {
     setSelectedTemplateId('');
@@ -479,40 +465,62 @@ export default function SDR({ onNavigate, activePath }) {
     setBatchFeedback(`Template aplicado: ${template.label}.`);
   };
 
-  const saveCurrentAsTemplate = () => {
+  const saveCurrentAsTemplate = async () => {
     const label = batchTemplateNameDraft.trim();
     if (!label) return;
     const nextActionDescription = batchNextActionDescription.trim();
     const note = batchNoteDraft.trim();
     if (!nextActionDescription && !note) return;
 
-    const customTemplate = {
-      id: `custom-${Date.now()}`,
-      label,
-      nextActionDescription,
-      cadenceDays: String(batchCadenceDays || '1'),
-      note,
-      isCustom: true,
-    };
-    setCustomBatchTemplates((prev) => {
-      const filtered = prev.filter((item) => item.label.toLowerCase() !== label.toLowerCase());
-      return [...filtered, customTemplate];
-    });
-    setBatchTemplateNameDraft('');
-    setSelectedTemplateId(customTemplate.id);
-    setBatchFeedback(`Template salvo para vendedor: ${sellerFilter || 'all'}.`);
+    try {
+      const response = await fetch(`${API_BASE}/api/sdr/templates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          owner: sellerFilter || 'all',
+          name: label,
+          next_action_description: nextActionDescription || null,
+          cadence_days: Number(batchCadenceDays || 1),
+          note: note || null,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao salvar template.');
+      }
+      await loadCustomTemplates();
+      setBatchTemplateNameDraft('');
+      if (payload?.template?.id) {
+        setSelectedTemplateId(`custom-${payload.template.id}`);
+      }
+      setBatchFeedback(`Template salvo para vendedor: ${sellerFilter || 'all'}.`);
+    } catch (err) {
+      setError(err.message || 'Falha ao salvar template.');
+    }
   };
 
-  const deleteSelectedCustomTemplate = () => {
+  const deleteSelectedCustomTemplate = async () => {
     if (!selectedTemplateId) return;
     const current = availableTemplates.find((item) => item.id === selectedTemplateId);
     if (!current || !current.isCustom) {
       setBatchFeedback('Apenas templates custom podem ser excluidos.');
       return;
     }
-    setCustomBatchTemplates((prev) => prev.filter((item) => item.id !== selectedTemplateId));
-    setSelectedTemplateId('');
-    setBatchFeedback(`Template removido: ${current.label}.`);
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/sdr/templates/${current.templateId}?owner=${encodeURIComponent(sellerFilter || 'all')}`,
+        { method: 'DELETE' }
+      );
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao excluir template.');
+      }
+      await loadCustomTemplates();
+      setSelectedTemplateId('');
+      setBatchFeedback(`Template removido: ${current.label}.`);
+    } catch (err) {
+      setError(err.message || 'Falha ao excluir template.');
+    }
   };
 
   const goToWhatsApp = (leadId) => {

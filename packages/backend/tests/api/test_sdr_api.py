@@ -84,6 +84,40 @@ def test_patch_notes_batch_ok(monkeypatch):
     assert payload["lead_ids"] == [10, 11]
 
 
+def test_templates_list_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "list_bulk_templates",
+        lambda **kwargs: [{"id": 1, "owner": kwargs["owner"], "name": "Template A"}],
+    )
+    client = build_client()
+    response = client.get("/api/sdr/templates?owner=alice")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["templates"][0]["owner"] == "alice"
+
+
+def test_templates_save_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "save_bulk_template",
+        lambda **kwargs: {"id": 2, "owner": kwargs["owner"], "name": kwargs["name"]},
+    )
+    client = build_client()
+    response = client.post("/api/sdr/templates", json={"owner": "alice", "name": "Template B"})
+    assert response.status_code == 200
+    assert response.json()["template"]["name"] == "Template B"
+
+
+def test_templates_delete_ok(monkeypatch):
+    monkeypatch.setattr(sdr_api, "delete_bulk_template", lambda **kwargs: True)
+    client = build_client()
+    response = client.delete("/api/sdr/templates/5?owner=alice")
+    assert response.status_code == 200
+    assert response.json()["template_id"] == 5
+
+
 def test_get_stats_ok(monkeypatch):
     monkeypatch.setattr(
         sdr_api,

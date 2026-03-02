@@ -523,3 +523,84 @@ def assign_owner_batch(*, lead_ids: list[int], assigned_to: str, author: str | N
         "lead_ids": updated_ids,
         "assigned_to": normalized_owner,
     }
+
+
+def list_bulk_templates(*, owner: str | None = None) -> list[dict]:
+    normalized_owner = (owner or "all").strip() or "all"
+    query = """
+        SELECT id, owner, name, next_action_description, cadence_days, note
+        FROM sdr_bulk_templates
+        WHERE owner = %s
+        ORDER BY updated_at DESC, id DESC;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (normalized_owner,))
+            rows = cur.fetchall() or []
+    keys = ["id", "owner", "name", "next_action_description", "cadence_days", "note"]
+    return [dict(zip(keys, row)) for row in rows]
+
+
+def save_bulk_template(
+    *,
+    owner: str,
+    name: str,
+    next_action_description: str | None = None,
+    cadence_days: int = 1,
+    note: str | None = None,
+) -> dict:
+    normalized_owner = (owner or "all").strip() or "all"
+    normalized_name = (name or "").strip()
+    if not normalized_name:
+        raise ValueError("name é obrigatório")
+    if len(normalized_name) > 120:
+        raise ValueError("name deve ter no máximo 120 caracteres")
+
+    normalized_description = (next_action_description or "").strip() or None
+    normalized_note = (note or "").strip() or None
+    normalized_cadence_days = max(1, min(int(cadence_days or 1), 30))
+
+    query = """
+        INSERT INTO sdr_bulk_templates (owner, name, next_action_description, cadence_days, note, updated_at)
+        VALUES (%s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (owner, name)
+        DO UPDATE SET
+          next_action_description = EXCLUDED.next_action_description,
+          cadence_days = EXCLUDED.cadence_days,
+          note = EXCLUDED.note,
+          updated_at = NOW()
+        RETURNING id, owner, name, next_action_description, cadence_days, note;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    normalized_owner,
+                    normalized_name,
+                    normalized_description,
+                    normalized_cadence_days,
+                    normalized_note,
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+
+    keys = ["id", "owner", "name", "next_action_description", "cadence_days", "note"]
+    return dict(zip(keys, row))
+
+
+def delete_bulk_template(*, template_id: int, owner: str | None = None) -> bool:
+    normalized_owner = (owner or "all").strip() or "all"
+    query = """
+        DELETE FROM sdr_bulk_templates
+        WHERE id = %s AND owner = %s
+        RETURNING id;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (int(template_id), normalized_owner))
+            row = cur.fetchone()
+        conn.commit()
+    return bool(row)

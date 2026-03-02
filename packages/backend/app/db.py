@@ -184,6 +184,22 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_active_status ON pipeline(funnel_status,
   WHERE funnel_status IN ('novo', 'contactado', 'respondeu', 'interessado');
 """
 
+SDR_BULK_TEMPLATES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS sdr_bulk_templates (
+  id BIGSERIAL PRIMARY KEY,
+  owner VARCHAR(100) NOT NULL DEFAULT 'all',
+  name VARCHAR(120) NOT NULL,
+  next_action_description TEXT,
+  cadence_days INTEGER NOT NULL DEFAULT 1,
+  note TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_sdr_bulk_templates_cadence_days CHECK (cadence_days BETWEEN 1 AND 30),
+  CONSTRAINT uq_sdr_bulk_templates_owner_name UNIQUE (owner, name)
+);
+CREATE INDEX IF NOT EXISTS idx_sdr_bulk_templates_owner ON sdr_bulk_templates(owner, updated_at DESC, id DESC);
+"""
+
 TIMESTAMP_AND_TRIGGER_SQL = """
 CREATE OR REPLACE FUNCTION update_timestamp()
 RETURNS TRIGGER AS $$
@@ -521,6 +537,7 @@ def ensure_schema():
             cur.execute(LEAD_INTERACTIONS_TABLE_SQL)
             cur.execute(SDR_ACTIVITIES_TABLE_SQL)
             cur.execute(PIPELINE_TABLE_SQL)
+            cur.execute(SDR_BULK_TEMPLATES_TABLE_SQL)
             cur.execute(TIMESTAMP_AND_TRIGGER_SQL)
             cur.execute(MESSAGING_RECEIPTS_TABLE_SQL)
             cur.execute(JOB_LOCKS_TABLE_SQL)

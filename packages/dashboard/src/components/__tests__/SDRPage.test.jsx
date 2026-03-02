@@ -40,10 +40,42 @@ const statsPayload = { total: 2, done_today: 1, pending: 1, overdue: 1 };
 describe('SDR page', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    let nextTemplateId = 100;
+    const templatesByOwner = { all: [], alice: [] };
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url, options) => {
         const value = String(url);
+        if (value.includes('/api/sdr/templates')) {
+          const parsedUrl = new URL(value, 'http://localhost');
+          if (!options || !options.method || options.method === 'GET') {
+            const owner = parsedUrl.searchParams.get('owner') || 'all';
+            const templates = templatesByOwner[owner] || [];
+            return { ok: true, json: async () => ({ templates, count: templates.length }) };
+          }
+          if (options.method === 'POST') {
+            const body = JSON.parse(String(options?.body || '{}'));
+            const owner = String(body.owner || 'all');
+            const name = String(body.name || '').trim();
+            const existing = (templatesByOwner[owner] || []).find((item) => item.name === name);
+            const template = existing || { id: nextTemplateId++ };
+            template.owner = owner;
+            template.name = name;
+            template.next_action_description = body.next_action_description || null;
+            template.cadence_days = Number(body.cadence_days || 1);
+            template.note = body.note || null;
+            const ownerList = templatesByOwner[owner] || [];
+            templatesByOwner[owner] = [...ownerList.filter((item) => item.name !== name), template];
+            return { ok: true, json: async () => ({ status: 'ok', template }) };
+          }
+          if (options.method === 'DELETE') {
+            const owner = parsedUrl.searchParams.get('owner') || 'all';
+            const templateId = Number(parsedUrl.pathname.split('/').pop());
+            const ownerList = templatesByOwner[owner] || [];
+            templatesByOwner[owner] = ownerList.filter((item) => Number(item.id) !== templateId);
+            return { ok: true, json: async () => ({ status: 'ok', template_id: templateId }) };
+          }
+        }
         if (value.includes('/api/sdr/notes/batch')) {
           const body = JSON.parse(String(options?.body || '{}'));
           const leadIds = Array.isArray(body.lead_ids) ? body.lead_ids : [];

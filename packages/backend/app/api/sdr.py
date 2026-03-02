@@ -9,10 +9,13 @@ from ..services.sdr_service import (
     add_note_batch,
     assign_owner,
     assign_owner_batch,
+    delete_bulk_template,
     get_queue,
     get_stats_by_assignee,
+    list_bulk_templates,
     register_action,
     register_action_batch,
+    save_bulk_template,
 )
 
 
@@ -58,6 +61,14 @@ class SDRActionBatchPayload(BaseModel):
     next_action_date: str | None = None
     next_action_description: str | None = Field(default=None, max_length=500)
     cadence_days: int = Field(default=1, ge=1, le=30)
+
+
+class SDRBulkTemplatePayload(BaseModel):
+    owner: str = Field(default="all", min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=120)
+    next_action_description: str | None = Field(default=None, max_length=500)
+    cadence_days: int = Field(default=1, ge=1, le=30)
+    note: str | None = Field(default=None, max_length=2000)
 
 
 @router.get("/queue")
@@ -210,3 +221,43 @@ def sdr_action_batch(payload: SDRActionBatchPayload):
         raise_bad_request(str(exc), code="sdr_action_batch_validation")
     except Exception as exc:
         raise_internal_error(context="sdr_action_batch", exc=exc, code="sdr_action_batch_error")
+
+
+@router.get("/templates")
+def sdr_templates(owner: str | None = Query(default="all", max_length=100)):
+    try:
+        templates = list_bulk_templates(owner=owner)
+        return {"templates": templates, "count": len(templates)}
+    except Exception as exc:
+        raise_internal_error(context="sdr_templates", exc=exc, code="sdr_templates_error")
+
+
+@router.post("/templates")
+def sdr_templates_save(payload: SDRBulkTemplatePayload):
+    try:
+        saved = save_bulk_template(
+            owner=payload.owner,
+            name=payload.name,
+            next_action_description=payload.next_action_description,
+            cadence_days=payload.cadence_days,
+            note=payload.note,
+        )
+        return {"status": "ok", "template": saved}
+    except ValueError as exc:
+        logger.warning("sdr_templates_save validation failed: %s", exc)
+        raise_bad_request(str(exc), code="sdr_templates_save_validation")
+    except Exception as exc:
+        raise_internal_error(context="sdr_templates_save", exc=exc, code="sdr_templates_save_error")
+
+
+@router.delete("/templates/{template_id}")
+def sdr_templates_delete(template_id: int, owner: str | None = Query(default="all", max_length=100)):
+    try:
+        deleted = delete_bulk_template(template_id=template_id, owner=owner)
+        if not deleted:
+            raise_not_found("Template não encontrado", code="sdr_template_not_found")
+        return {"status": "ok", "template_id": template_id}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise_internal_error(context=f"sdr_templates_delete template_id={template_id}", exc=exc, code="sdr_templates_delete_error")

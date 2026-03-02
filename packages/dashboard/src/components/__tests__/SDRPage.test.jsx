@@ -46,6 +46,14 @@ describe('SDR page', () => {
       'fetch',
       vi.fn(async (url, options) => {
         const value = String(url);
+        if (value.includes('/api/sdr/templates/permission')) {
+          const parsedUrl = new URL(value, 'http://localhost');
+          const owner = parsedUrl.searchParams.get('owner') || 'all';
+          const actor = (parsedUrl.searchParams.get('actor') || '').trim();
+          const allowed = owner === 'all' ? actor === 'admin' : actor === owner;
+          const reason = allowed ? 'ok' : 'Acesso negado para mutação de templates';
+          return { ok: true, json: async () => ({ allowed, owner, actor: actor || null, reason }) };
+        }
         if (value.includes('/api/sdr/templates/audit')) {
           const parsedUrl = new URL(value, 'http://localhost');
           const templateId = Number(parsedUrl.searchParams.get('template_id') || 0);
@@ -476,6 +484,7 @@ describe('SDR page', () => {
     });
 
     await act(async () => {
+      await user.type(screen.getByLabelText('Ator template'), 'admin');
       await user.type(screen.getByPlaceholderText('Ex.: confirmar interesse e horario'), 'Template custom nota');
       await user.type(screen.getByPlaceholderText('Ex.: ligar amanha'), 'Template custom acao');
       await user.clear(screen.getByLabelText('Cadencia (dias)'));
@@ -528,6 +537,7 @@ describe('SDR page', () => {
     });
 
     await act(async () => {
+      await user.type(screen.getByLabelText('Ator template'), 'admin');
       await user.type(screen.getByPlaceholderText('Ex.: confirmar interesse e horario'), 'Template custom nota');
       await user.type(screen.getByLabelText('Nome template'), 'Template Negado');
       await user.click(screen.getByRole('button', { name: 'Salvar template' }));
@@ -549,6 +559,7 @@ describe('SDR page', () => {
     });
 
     await act(async () => {
+      await user.type(screen.getByLabelText('Ator template'), 'admin');
       await user.type(screen.getByPlaceholderText('Ex.: confirmar interesse e horario'), 'Nota favorita');
       await user.type(screen.getByLabelText('Nome template'), 'Template Favorito');
       await user.click(screen.getByRole('button', { name: 'Salvar template' }));
@@ -625,6 +636,7 @@ describe('SDR page', () => {
     });
 
     await act(async () => {
+      await user.type(screen.getByLabelText('Ator template'), 'admin');
       await user.type(screen.getByPlaceholderText('Ex.: confirmar interesse e horario'), 'Nota auditoria');
       await user.type(screen.getByLabelText('Nome template'), 'Template Audit');
       await user.click(screen.getByRole('button', { name: 'Salvar template' }));

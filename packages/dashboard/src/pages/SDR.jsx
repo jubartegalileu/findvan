@@ -80,6 +80,8 @@ export default function SDR({ onNavigate, activePath }) {
   const [templateAuditEvents, setTemplateAuditEvents] = useState([]);
   const [templateAuditLoading, setTemplateAuditLoading] = useState(false);
   const [templateAuditError, setTemplateAuditError] = useState('');
+  const [templatePermission, setTemplatePermission] = useState({ allowed: false, reason: 'Carregando...' });
+  const [templatePermissionLoading, setTemplatePermissionLoading] = useState(true);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -144,6 +146,7 @@ export default function SDR({ onNavigate, activePath }) {
     if (templateOwner === 'all') return '';
     return templateOwner;
   }, [templateActorInput, templateOwner]);
+  const templateMutationDisabled = templatePermissionLoading || !templatePermission.allowed;
 
   const loadCustomTemplates = useCallback(async () => {
     try {
@@ -175,9 +178,37 @@ export default function SDR({ onNavigate, activePath }) {
     }
   }, [templateOwner]);
 
+  const loadTemplatePermission = useCallback(async () => {
+    setTemplatePermissionLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('owner', templateOwner);
+      if (templateActor) {
+        params.set('actor', templateActor);
+      }
+      const response = await fetch(`${API_BASE}/api/sdr/templates/permission?${params.toString()}`);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao validar permissao de template.');
+      }
+      setTemplatePermission({
+        allowed: Boolean(payload?.allowed),
+        reason: String(payload?.reason || ''),
+      });
+    } catch (err) {
+      setTemplatePermission({ allowed: false, reason: err.message || 'Falha ao validar permissao de template.' });
+    } finally {
+      setTemplatePermissionLoading(false);
+    }
+  }, [templateOwner, templateActor]);
+
   useEffect(() => {
     loadCustomTemplates();
   }, [loadCustomTemplates]);
+
+  useEffect(() => {
+    loadTemplatePermission();
+  }, [loadTemplatePermission]);
 
   useEffect(() => {
     setSelectedTemplateId('');
@@ -530,6 +561,10 @@ export default function SDR({ onNavigate, activePath }) {
   };
 
   const saveCurrentAsTemplate = async () => {
+    if (templateMutationDisabled) {
+      setError(templatePermission.reason || templatePermissionDeniedMessage);
+      return;
+    }
     const label = batchTemplateNameDraft.trim();
     if (!label) return;
     const nextActionDescription = batchNextActionDescription.trim();
@@ -568,6 +603,10 @@ export default function SDR({ onNavigate, activePath }) {
   };
 
   const deleteSelectedCustomTemplate = async () => {
+    if (templateMutationDisabled) {
+      setError(templatePermission.reason || templatePermissionDeniedMessage);
+      return;
+    }
     if (!selectedTemplateId) return;
     const current = availableTemplates.find((item) => item.id === selectedTemplateId);
     if (!current || !current.isCustom) {
@@ -613,6 +652,10 @@ export default function SDR({ onNavigate, activePath }) {
   };
 
   const toggleSelectedTemplateFavorite = async () => {
+    if (templateMutationDisabled) {
+      setError(templatePermission.reason || templatePermissionDeniedMessage);
+      return;
+    }
     if (!selectedTemplateId) return;
     const current = customBatchTemplates.find((item) => item.id === selectedTemplateId);
     if (!current) {
@@ -629,6 +672,10 @@ export default function SDR({ onNavigate, activePath }) {
   };
 
   const moveSelectedTemplate = async (direction) => {
+    if (templateMutationDisabled) {
+      setError(templatePermission.reason || templatePermissionDeniedMessage);
+      return;
+    }
     if (!selectedTemplateId) return;
     const currentIndex = customBatchTemplates.findIndex((item) => item.id === selectedTemplateId);
     if (currentIndex < 0) return;
@@ -850,7 +897,11 @@ export default function SDR({ onNavigate, activePath }) {
           <button
             className="fv-ghost"
             type="button"
-            disabled={!batchTemplateNameDraft.trim() || (!batchNextActionDescription.trim() && !batchNoteDraft.trim())}
+            disabled={
+              templateMutationDisabled ||
+              !batchTemplateNameDraft.trim() ||
+              (!batchNextActionDescription.trim() && !batchNoteDraft.trim())
+            }
             onClick={saveCurrentAsTemplate}
           >
             Salvar template
@@ -858,7 +909,7 @@ export default function SDR({ onNavigate, activePath }) {
           <button
             className="fv-ghost"
             type="button"
-            disabled={!selectedTemplateId}
+            disabled={templateMutationDisabled || !selectedTemplateId}
             onClick={deleteSelectedCustomTemplate}
           >
             Excluir template
@@ -866,7 +917,7 @@ export default function SDR({ onNavigate, activePath }) {
           <button
             className="fv-ghost"
             type="button"
-            disabled={!selectedTemplateId}
+            disabled={templateMutationDisabled || !selectedTemplateId}
             onClick={toggleSelectedTemplateFavorite}
           >
             Favoritar
@@ -874,7 +925,7 @@ export default function SDR({ onNavigate, activePath }) {
           <button
             className="fv-ghost"
             type="button"
-            disabled={!selectedTemplateId}
+            disabled={templateMutationDisabled || !selectedTemplateId}
             onClick={() => moveSelectedTemplate('up')}
           >
             Subir
@@ -882,7 +933,7 @@ export default function SDR({ onNavigate, activePath }) {
           <button
             className="fv-ghost"
             type="button"
-            disabled={!selectedTemplateId}
+            disabled={templateMutationDisabled || !selectedTemplateId}
             onClick={() => moveSelectedTemplate('down')}
           >
             Descer
@@ -948,6 +999,14 @@ export default function SDR({ onNavigate, activePath }) {
         <div className="fv-row-sub" style={{ marginBottom: 10 }}>
           Ator efetivo de templates: {templateActor || '(ausente)'}
         </div>
+        <div className="fv-row-sub" style={{ marginBottom: 10 }}>
+          Permissao de mutacao: {templatePermissionLoading ? 'carregando...' : templatePermission.allowed ? 'Permitido' : 'Bloqueado'}
+        </div>
+        {!templatePermissionLoading && !templatePermission.allowed && (
+          <div className="fv-row-sub" style={{ marginBottom: 10 }}>
+            Motivo: {templatePermission.reason || 'Acesso negado.'}
+          </div>
+        )}
         {templateOwner === 'all' && templateActor.toLowerCase() !== 'admin' && (
           <div className="fv-row-sub" style={{ marginBottom: 10 }}>
             Escopo global requer ator `admin` para mutacoes de template.

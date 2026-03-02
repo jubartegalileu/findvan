@@ -1,14 +1,14 @@
 # Story Index
 
-**Generated:** 2026-03-02T04:17:51.180Z
-**Total Stories:** 126
-**Epics:** 44
+**Generated:** 2026-03-02T14:37:21.624Z
+**Total Stories:** 129
+**Epics:** 45
 
 ---
 
 ## 📊 Summary by Status
 
-- ✅ **Done**: 126
+- ✅ **Done**: 129
 
 ---
 
@@ -307,6 +307,14 @@
 | 44.1 | [Story 44.1 — Backend Access Request Initiation Contract](44.1.story.md) | ✅ Done | 🔴 P0 | Unassigned | TBD |
 | 44.2 | [Story 44.2 — SDR Dashboard Access Request Action UX](44.2.story.md) | ✅ Done | 🔴 P0 | Unassigned | TBD |
 | 44.3 | [Story 44.3 — QA Gate + PO Decision (Access Request Handoff)](44.3.story.md) | ✅ Done | 🔴 P0 | Unassigned | TBD |
+
+### 45 (Wave 40 Backlog Discovery & Readiness) (3 stories)
+
+| Story ID | Title | Status | Priority | Owner | Estimate |
+|----------|-------|--------|----------|-------|----------|
+| 45.1 | [Story 45.1 — Scope Framing + Constraints Validation](45.1.story.md) | ✅ Done | 🔴 P0 | Unassigned | TBD |
+| 45.2 | [Story 45.2 — Story Breakdown and Readiness Plan](45.2.story.md) | ✅ Done | 🔴 P0 | Unassigned | TBD |
+| 45.3 | [Story 45.3 — PO Validation and Go/No-Go for Implementation](45.3.story.md) | ✅ Done | 🔴 P0 | Unassigned | TBD |
 
 ### 5 (Wave 1 P0 Closure) (3 stories)
 

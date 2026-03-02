@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .error_utils import raise_bad_request, raise_internal_error, raise_not_found
+from .error_utils import raise_bad_request, raise_forbidden, raise_internal_error, raise_not_found
 from ..services.sdr_service import (
     add_note,
     add_note_batch,
@@ -67,6 +67,7 @@ class SDRActionBatchPayload(BaseModel):
 
 class SDRBulkTemplatePayload(BaseModel):
     owner: str = Field(default="all", min_length=1, max_length=100)
+    actor: str | None = Field(default=None, max_length=100)
     name: str = Field(..., min_length=1, max_length=120)
     next_action_description: str | None = Field(default=None, max_length=500)
     cadence_days: int = Field(default=1, ge=1, le=30)
@@ -75,6 +76,7 @@ class SDRBulkTemplatePayload(BaseModel):
 
 class SDRBulkTemplatePatchPayload(BaseModel):
     owner: str = Field(default="all", min_length=1, max_length=100)
+    actor: str | None = Field(default=None, max_length=100)
     is_favorite: bool | None = None
     sort_order: int | None = None
 
@@ -264,12 +266,16 @@ def sdr_templates_save(payload: SDRBulkTemplatePayload):
     try:
         saved = save_bulk_template(
             owner=payload.owner,
+            actor=payload.actor,
             name=payload.name,
             next_action_description=payload.next_action_description,
             cadence_days=payload.cadence_days,
             note=payload.note,
         )
         return {"status": "ok", "template": saved}
+    except PermissionError as exc:
+        logger.warning("sdr_templates_save permission denied: %s", exc)
+        raise_forbidden(str(exc), code="sdr_templates_save_forbidden")
     except ValueError as exc:
         logger.warning("sdr_templates_save validation failed: %s", exc)
         raise_bad_request(str(exc), code="sdr_templates_save_validation")
@@ -278,14 +284,21 @@ def sdr_templates_save(payload: SDRBulkTemplatePayload):
 
 
 @router.delete("/templates/{template_id}")
-def sdr_templates_delete(template_id: int, owner: str | None = Query(default="all", max_length=100)):
+def sdr_templates_delete(
+    template_id: int,
+    owner: str | None = Query(default="all", max_length=100),
+    actor: str | None = Query(default=None, max_length=100),
+):
     try:
-        deleted = delete_bulk_template(template_id=template_id, owner=owner)
+        deleted = delete_bulk_template(template_id=template_id, owner=owner, actor=actor)
         if not deleted:
             raise_not_found("Template não encontrado", code="sdr_template_not_found")
         return {"status": "ok", "template_id": template_id}
     except HTTPException:
         raise
+    except PermissionError as exc:
+        logger.warning("sdr_templates_delete permission denied: %s", exc)
+        raise_forbidden(str(exc), code="sdr_templates_delete_forbidden")
     except ValueError as exc:
         logger.warning("sdr_templates_delete validation failed: %s", exc)
         raise_bad_request(str(exc), code="sdr_templates_delete_validation")
@@ -299,6 +312,7 @@ def sdr_templates_patch(template_id: int, payload: SDRBulkTemplatePatchPayload):
         updated = update_bulk_template_preferences(
             template_id=template_id,
             owner=payload.owner,
+            actor=payload.actor,
             is_favorite=payload.is_favorite,
             sort_order=payload.sort_order,
         )
@@ -307,6 +321,9 @@ def sdr_templates_patch(template_id: int, payload: SDRBulkTemplatePatchPayload):
         return {"status": "ok", "template": updated}
     except HTTPException:
         raise
+    except PermissionError as exc:
+        logger.warning("sdr_templates_patch permission denied: %s", exc)
+        raise_forbidden(str(exc), code="sdr_templates_patch_forbidden")
     except ValueError as exc:
         logger.warning("sdr_templates_patch validation failed: %s", exc)
         raise_bad_request(str(exc), code="sdr_templates_patch_validation")

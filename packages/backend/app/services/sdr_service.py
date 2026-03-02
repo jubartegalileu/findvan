@@ -40,6 +40,36 @@ def normalize_template_owner(owner: str | None) -> str:
     return normalized_owner
 
 
+def normalize_template_actor(actor: str | None) -> str:
+    normalized_actor = (actor or "system").strip()
+    if not normalized_actor:
+        normalized_actor = "system"
+    if len(normalized_actor) > 100:
+        raise ValueError("actor deve ter no máximo 100 caracteres")
+    return normalized_actor
+
+
+def ensure_template_mutation_permission(*, owner: str, actor: str | None = None) -> str:
+    normalized_owner = normalize_template_owner(owner)
+    normalized_actor = normalize_template_actor(actor)
+    lower_actor = normalized_actor.lower()
+    privileged_actors = {"system", "admin"}
+    if lower_actor in privileged_actors:
+        return normalized_actor
+
+    if normalized_owner == "all":
+        raise PermissionError("Acesso negado para mutação de templates globais")
+
+    if normalized_owner.startswith("team:"):
+        if normalize_template_owner(normalized_actor) != normalized_owner:
+            raise PermissionError("Acesso negado para mutação de templates de equipe")
+        return normalized_actor
+
+    if normalized_actor != normalized_owner:
+        raise PermissionError("Acesso negado para mutação de templates de vendedor")
+    return normalized_actor
+
+
 def _log_bulk_template_audit(
     cur,
     *,
@@ -623,8 +653,10 @@ def save_bulk_template(
     note: str | None = None,
     is_favorite: bool | None = None,
     sort_order: int | None = None,
+    actor: str | None = None,
 ) -> dict:
     normalized_owner = normalize_template_owner(owner)
+    normalized_actor = ensure_template_mutation_permission(owner=normalized_owner, actor=actor)
     normalized_name = (name or "").strip()
     if not normalized_name:
         raise ValueError("name é obrigatório")
@@ -670,6 +702,7 @@ def save_bulk_template(
                 template_id=int(row[0]),
                 owner=normalized_owner,
                 action="save",
+                actor=normalized_actor,
                 payload={
                     "name": normalized_name,
                     "cadence_days": normalized_cadence_days,
@@ -683,8 +716,9 @@ def save_bulk_template(
     return dict(zip(keys, row))
 
 
-def delete_bulk_template(*, template_id: int, owner: str | None = None) -> bool:
+def delete_bulk_template(*, template_id: int, owner: str | None = None, actor: str | None = None) -> bool:
     normalized_owner = normalize_template_owner(owner)
+    normalized_actor = ensure_template_mutation_permission(owner=normalized_owner, actor=actor)
     query = """
         DELETE FROM sdr_bulk_templates
         WHERE id = %s AND owner = %s
@@ -700,6 +734,7 @@ def delete_bulk_template(*, template_id: int, owner: str | None = None) -> bool:
                     template_id=int(template_id),
                     owner=normalized_owner,
                     action="delete",
+                    actor=normalized_actor,
                     payload={},
                 )
         conn.commit()
@@ -712,8 +747,10 @@ def update_bulk_template_preferences(
     owner: str | None = None,
     is_favorite: bool | None = None,
     sort_order: int | None = None,
+    actor: str | None = None,
 ) -> dict | None:
     normalized_owner = normalize_template_owner(owner)
+    normalized_actor = ensure_template_mutation_permission(owner=normalized_owner, actor=actor)
     if is_favorite is None and sort_order is None:
         raise ValueError("is_favorite ou sort_order deve ser informado")
 
@@ -744,6 +781,7 @@ def update_bulk_template_preferences(
                     template_id=int(template_id),
                     owner=normalized_owner,
                     action="patch",
+                    actor=normalized_actor,
                     payload={
                         "is_favorite": bool(row[6]),
                         "sort_order": int(row[7]),

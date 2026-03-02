@@ -377,3 +377,21 @@ def test_normalize_template_owner_team_slug_and_invalid():
         assert False, "expected ValueError"
     except ValueError as exc:
         assert "owner de equipe inválido" in str(exc)
+
+
+def test_ensure_template_mutation_permission_allows_matching_seller():
+    actor = sdr_service.ensure_template_mutation_permission(owner="alice", actor="alice")
+    assert actor == "alice"
+
+
+def test_ensure_template_mutation_permission_allows_matching_team():
+    actor = sdr_service.ensure_template_mutation_permission(owner="team:ops", actor="team:ops")
+    assert actor == "team:ops"
+
+
+def test_ensure_template_mutation_permission_denies_mismatch():
+    try:
+        sdr_service.ensure_template_mutation_permission(owner="alice", actor="bob")
+        assert False, "expected PermissionError"
+    except PermissionError as exc:
+        assert "Acesso negado" in str(exc)

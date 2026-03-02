@@ -144,12 +144,32 @@ def test_templates_save_ok(monkeypatch):
     assert response.json()["template"]["name"] == "Template B"
 
 
+def test_templates_save_forbidden(monkeypatch):
+    def _raise(**kwargs):
+        raise PermissionError("Acesso negado para mutação de templates de vendedor")
+
+    monkeypatch.setattr(sdr_api, "save_bulk_template", _raise)
+    client = build_client()
+    response = client.post("/api/sdr/templates", json={"owner": "alice", "actor": "bob", "name": "Template B"})
+    assert response.status_code == 403
+
+
 def test_templates_delete_ok(monkeypatch):
     monkeypatch.setattr(sdr_api, "delete_bulk_template", lambda **kwargs: True)
     client = build_client()
     response = client.delete("/api/sdr/templates/5?owner=alice")
     assert response.status_code == 200
     assert response.json()["template_id"] == 5
+
+
+def test_templates_delete_forbidden(monkeypatch):
+    def _raise(**kwargs):
+        raise PermissionError("Acesso negado para mutação de templates de vendedor")
+
+    monkeypatch.setattr(sdr_api, "delete_bulk_template", _raise)
+    client = build_client()
+    response = client.delete("/api/sdr/templates/5?owner=alice&actor=bob")
+    assert response.status_code == 403
 
 
 def test_templates_delete_validation_error(monkeypatch):
@@ -183,6 +203,19 @@ def test_templates_patch_ok(monkeypatch):
     assert payload["id"] == 9
     assert payload["is_favorite"] is True
     assert payload["sort_order"] == 1
+
+
+def test_templates_patch_forbidden(monkeypatch):
+    def _raise(**kwargs):
+        raise PermissionError("Acesso negado para mutação de templates de equipe")
+
+    monkeypatch.setattr(sdr_api, "update_bulk_template_preferences", _raise)
+    client = build_client()
+    response = client.patch(
+        "/api/sdr/templates/9",
+        json={"owner": "team:ops", "actor": "team:sales", "is_favorite": True},
+    )
+    assert response.status_code == 403
 
 
 def test_get_stats_ok(monkeypatch):

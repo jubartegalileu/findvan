@@ -472,7 +472,7 @@ describe('SDR page', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Template salvo para vendedor: all.')).toBeDefined();
+      expect(screen.getByText('Template salvo no escopo: all.')).toBeDefined();
     });
 
     const sellerSelect = screen.getByLabelText('Vendedor');
@@ -512,7 +512,7 @@ describe('SDR page', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Template salvo para vendedor: all.')).toBeDefined();
+      expect(screen.getByText('Template salvo no escopo: all.')).toBeDefined();
     });
 
     await act(async () => {
@@ -529,6 +529,44 @@ describe('SDR page', () => {
       );
       expect(patchCalls.length).toBeGreaterThan(0);
       expect(screen.getByText('Template atualizado: Template Favorito.')).toBeDefined();
+    });
+  });
+
+  it('uses team scope owner namespace for templates API', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.selectOptions(screen.getByLabelText('Escopo templates'), 'team');
+      await user.clear(screen.getByLabelText('Nome equipe'));
+      await user.type(screen.getByLabelText('Nome equipe'), 'ops');
+    });
+
+    await waitFor(() => {
+      const teamQueryCalls = fetch.mock.calls.filter(([url]) => String(url).includes('/api/sdr/templates?owner=team%3Aops'));
+      expect(teamQueryCalls.length).toBeGreaterThan(0);
+    });
+
+    await act(async () => {
+      await user.type(screen.getByPlaceholderText('Ex.: confirmar interesse e horario'), 'Nota equipe');
+      await user.type(screen.getByLabelText('Nome template'), 'Template Ops');
+      await user.click(screen.getByRole('button', { name: 'Salvar template' }));
+    });
+
+    await waitFor(() => {
+      const saveCalls = fetch.mock.calls.filter(
+        ([url, options]) =>
+          String(url).includes('/api/sdr/templates') &&
+          options?.method === 'POST' &&
+          String(options?.body || '').includes('"owner":"team:ops"')
+      );
+      expect(saveCalls.length).toBeGreaterThan(0);
     });
   });
 });

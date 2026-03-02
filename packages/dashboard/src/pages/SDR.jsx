@@ -60,6 +60,8 @@ export default function SDR({ onNavigate, activePath }) {
   const [openNotes, setOpenNotes] = useState({});
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [customBatchTemplates, setCustomBatchTemplates] = useState([]);
+  const [templateOwnerScope, setTemplateOwnerScope] = useState('seller');
+  const [templateTeamName, setTemplateTeamName] = useState('default');
   const [batchTemplateNameDraft, setBatchTemplateNameDraft] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [batchAssignDraft, setBatchAssignDraft] = useState('');
@@ -119,10 +121,19 @@ export default function SDR({ onNavigate, activePath }) {
     loadStats();
   }, [loadQueue, loadStats]);
 
+  const templateOwner = useMemo(() => {
+    if (templateOwnerScope === 'global') return 'all';
+    if (templateOwnerScope === 'team') {
+      const normalizedTeam = (templateTeamName || '').trim().toLowerCase() || 'default';
+      return `team:${normalizedTeam}`;
+    }
+    return sellerFilter || 'all';
+  }, [templateOwnerScope, templateTeamName, sellerFilter]);
+
   const loadCustomTemplates = useCallback(async () => {
     try {
       const params = new URLSearchParams();
-      params.set('owner', sellerFilter || 'all');
+      params.set('owner', templateOwner);
       const response = await fetch(`${API_BASE}/api/sdr/templates?${params.toString()}`);
       const payload = await response.json();
       if (!response.ok) {
@@ -147,7 +158,7 @@ export default function SDR({ onNavigate, activePath }) {
       setError(err.message || 'Falha ao carregar templates.');
       setCustomBatchTemplates([]);
     }
-  }, [sellerFilter]);
+  }, [templateOwner]);
 
   useEffect(() => {
     loadCustomTemplates();
@@ -155,7 +166,7 @@ export default function SDR({ onNavigate, activePath }) {
 
   useEffect(() => {
     setSelectedTemplateId('');
-  }, [sellerFilter]);
+  }, [templateOwner]);
 
   const cities = useMemo(() => {
     const values = Array.from(new Set(queue.map((item) => item.city).filter(Boolean)));
@@ -479,7 +490,7 @@ export default function SDR({ onNavigate, activePath }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          owner: sellerFilter || 'all',
+          owner: templateOwner,
           name: label,
           next_action_description: nextActionDescription || null,
           cadence_days: Number(batchCadenceDays || 1),
@@ -495,7 +506,7 @@ export default function SDR({ onNavigate, activePath }) {
       if (payload?.template?.id) {
         setSelectedTemplateId(`custom-${payload.template.id}`);
       }
-      setBatchFeedback(`Template salvo para vendedor: ${sellerFilter || 'all'}.`);
+      setBatchFeedback(`Template salvo no escopo: ${templateOwner}.`);
     } catch (err) {
       setError(err.message || 'Falha ao salvar template.');
     }
@@ -510,7 +521,7 @@ export default function SDR({ onNavigate, activePath }) {
     }
     try {
       const response = await fetch(
-        `${API_BASE}/api/sdr/templates/${current.templateId}?owner=${encodeURIComponent(sellerFilter || 'all')}`,
+        `${API_BASE}/api/sdr/templates/${current.templateId}?owner=${encodeURIComponent(templateOwner)}`,
         { method: 'DELETE' }
       );
       const payload = await response.json();
@@ -529,7 +540,7 @@ export default function SDR({ onNavigate, activePath }) {
     const response = await fetch(`${API_BASE}/api/sdr/templates/${templateId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ owner: sellerFilter || 'all', ...payload }),
+      body: JSON.stringify({ owner: templateOwner, ...payload }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -709,6 +720,31 @@ export default function SDR({ onNavigate, activePath }) {
           </div>
         </div>
         <div className="fv-row" style={{ marginBottom: 10, gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label className="fv-field fv-field-inline">
+            <span>Escopo templates</span>
+            <select
+              className="fv-input fv-select"
+              aria-label="Escopo templates"
+              value={templateOwnerScope}
+              onChange={(e) => setTemplateOwnerScope(e.target.value)}
+            >
+              <option value="seller">Vendedor atual</option>
+              <option value="team">Equipe</option>
+              <option value="global">Global</option>
+            </select>
+          </label>
+          {templateOwnerScope === 'team' && (
+            <label className="fv-field fv-field-inline">
+              <span>Equipe</span>
+              <input
+                className="fv-input"
+                aria-label="Nome equipe"
+                placeholder="default"
+                value={templateTeamName}
+                onChange={(e) => setTemplateTeamName(e.target.value)}
+              />
+            </label>
+          )}
           <label className="fv-field fv-field-inline">
             <span>Template rapido</span>
             <select

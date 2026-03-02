@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SDR from '../../pages/SDR.jsx';
 
@@ -53,7 +53,9 @@ describe('SDR page', () => {
   });
 
   it('renders queue and stats from API', async () => {
-    render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Lead Alpha')).toBeDefined();
@@ -65,18 +67,26 @@ describe('SDR page', () => {
 
   it('filters queue by cadence checkbox', async () => {
     const user = userEvent.setup();
-    render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Lead Alpha')).toBeDefined();
       expect(screen.getByText('Lead Beta')).toBeDefined();
+      expect(screen.getByText('1 / 1')).toBeDefined();
+      expect(screen.queryByText('Carregando fila SDR...')).toBeNull();
     });
 
     const plannedCheckbox = screen.getByLabelText('Planejada');
-    await user.click(plannedCheckbox);
+    await act(async () => {
+      await user.click(plannedCheckbox);
+    });
     await waitFor(() => {
       expect(screen.getByText('Lead Alpha')).toBeDefined();
       expect(screen.queryByText('Lead Beta')).toBeNull();
+      expect(screen.getByText('1 / 1')).toBeDefined();
+      expect(screen.queryByText('Carregando fila SDR...')).toBeNull();
     });
   });
 });

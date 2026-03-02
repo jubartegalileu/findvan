@@ -1,7 +1,7 @@
 # Epic 25 — Wave 20 SDR/Funil Hardening & Release Readiness
 
 **PRD:** Continuidade pós Epic 24 (SDR/Funil workflow linear)
-**Status:** Draft
+**Status:** Done
 **Prioridade:** P0 (Estabilização de produção)
 **Wave:** 20
 **Estimativa:** 1 sprint (3 stories)
@@ -66,12 +66,11 @@ Consolidar a entrega do Epic 24 com foco em robustez operacional, performance em
 
 ## Definition of Done
 
-- [ ] Stories 25.1, 25.2 e 25.3 em `Done`
-- [ ] Suíte de regressão SDR/Funil/Leads/Dashboard estável e verde
-- [ ] Checklists de release e rollback documentados no story final
-- [ ] Sem regressão funcional das abas já existentes
+- [x] Stories 25.1, 25.2 e 25.3 em `Done`
+- [x] Suíte de regressão SDR/Funil/Leads/Dashboard estável e verde
+- [x] Checklists de release e rollback documentados no story final
+- [x] Sem regressão funcional das abas já existentes
 
 ## Exit Criteria
 
 - Epic pode ser fechado quando o módulo SDR/Funil estiver operacionalmente estável, com QA gate formal e pronto para evolução de features.
-

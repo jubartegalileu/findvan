@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Funnel from '../../pages/Funnel.jsx';
 
@@ -40,7 +40,9 @@ describe('Funnel page', () => {
   });
 
   it('renders funnel columns and lead cards from API', async () => {
-    render(<Funnel onNavigate={vi.fn()} activePath="/funil" />);
+    await act(async () => {
+      render(<Funnel onNavigate={vi.fn()} activePath="/funil" />);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Funil de Vendas')).toBeDefined();
@@ -51,17 +53,28 @@ describe('Funnel page', () => {
 
   it('updates period filter state when selecting another range', async () => {
     const user = userEvent.setup();
-    render(<Funnel onNavigate={vi.fn()} activePath="/funil" />);
+    await act(async () => {
+      render(<Funnel onNavigate={vi.fn()} activePath="/funil" />);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Lead One')).toBeDefined();
+      expect(screen.getByRole('button', { name: /Atualizar funil/i })).toBeDefined();
     });
 
     const allButton = screen.getByRole('button', { name: 'Tudo' });
-    await user.click(allButton);
+    await act(async () => {
+      await user.click(allButton);
+    });
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(4);
+    });
+
     await waitFor(() => {
       expect(allButton).toBeDefined();
-      expect(fetch).toHaveBeenCalled();
+      expect(screen.getByText('Lead One')).toBeDefined();
+      expect(screen.getByRole('button', { name: /Atualizar funil/i })).toBeDefined();
     });
   });
 });

@@ -40,7 +40,9 @@
     "qa:smoke:e2e": "bash scripts/qa-smoke-e2e.sh",
     "qa:smoke:e2e:external": "MANAGE_RUNTIME=0 bash scripts/qa-smoke-e2e.sh",
     "scraper:run": "cd packages/scraper && npm run scraper:google-maps",
-    "clean": "rm -rf node_modules coverage .npm-cache && npm cache clean --force"
+    "clean": "rm -rf node_modules coverage .npm-cache && npm cache clean --force",
+    "validate:agents": "node .aios-core/infrastructure/scripts/validate-agents.js",
+    "validate:structure": "node .aios-core/infrastructure/scripts/validate-paths.js"
   },
   "keywords": [
     "osint",

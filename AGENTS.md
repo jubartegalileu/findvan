@@ -18,6 +18,8 @@ Este arquivo define as instrucoes do projeto para o Codex CLI.
 - Rode `npm run typecheck`
 - Rode `npm test`
 - Atualize checklist e file list da story antes de concluir
+- Rode `npm run build`
+- Validar que nao ha issues CRITICAL no CodeRabbit (quando aplicavel)
 <!-- AIOS-MANAGED-END: quality -->
 
 <!-- AIOS-MANAGED-START: codebase -->

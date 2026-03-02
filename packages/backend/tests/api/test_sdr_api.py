@@ -65,6 +65,25 @@ def test_patch_notes_ok(monkeypatch):
     assert response.json()["lead_id"] == 10
 
 
+def test_patch_notes_batch_ok(monkeypatch):
+    def _fake_add_note_batch(**kwargs):
+        return {
+            "updated_count": len(kwargs["lead_ids"]),
+            "lead_ids": kwargs["lead_ids"],
+        }
+
+    monkeypatch.setattr(sdr_api, "add_note_batch", _fake_add_note_batch)
+    client = build_client()
+    response = client.patch(
+        "/api/sdr/notes/batch",
+        json={"lead_ids": [10, 11], "note": "Nota operacional em lote"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["updated_count"] == 2
+    assert payload["lead_ids"] == [10, 11]
+
+
 def test_get_stats_ok(monkeypatch):
     monkeypatch.setattr(
         sdr_api,

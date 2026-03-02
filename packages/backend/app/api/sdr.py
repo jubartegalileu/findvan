@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from .error_utils import raise_bad_request, raise_internal_error, raise_not_found
 from ..services.sdr_service import (
     add_note,
+    add_note_batch,
     assign_owner,
     assign_owner_batch,
     get_queue,
@@ -29,6 +30,12 @@ class SDRActionPayload(BaseModel):
 
 
 class SDRNotePayload(BaseModel):
+    note: str = Field(..., min_length=1, max_length=2000)
+    author: str | None = Field(default=None, max_length=100)
+
+
+class SDRNoteBatchPayload(BaseModel):
+    lead_ids: list[int] = Field(..., min_length=1, max_length=500)
     note: str = Field(..., min_length=1, max_length=2000)
     author: str | None = Field(default=None, max_length=100)
 
@@ -116,6 +123,26 @@ def sdr_notes(lead_id: int, payload: SDRNotePayload):
         raise
     except Exception as exc:
         raise_internal_error(context=f"sdr_notes lead_id={lead_id}", exc=exc, code="sdr_notes_error")
+
+
+@router.patch("/notes/batch")
+def sdr_notes_batch(payload: SDRNoteBatchPayload):
+    try:
+        updated = add_note_batch(
+            lead_ids=payload.lead_ids,
+            note=payload.note.strip(),
+            author=payload.author,
+        )
+        if updated["updated_count"] == 0:
+            raise_not_found("Nenhum lead encontrado para nota em lote", code="sdr_lead_not_found")
+        return {"status": "ok", **updated}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        logger.warning("sdr_notes_batch validation failed: %s", exc)
+        raise_bad_request(str(exc), code="sdr_notes_batch_validation")
+    except Exception as exc:
+        raise_internal_error(context="sdr_notes_batch", exc=exc, code="sdr_notes_batch_error")
 
 
 @router.get("/stats")

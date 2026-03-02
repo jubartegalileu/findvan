@@ -43,6 +43,11 @@ describe('SDR page', () => {
       'fetch',
       vi.fn(async (url, options) => {
         const value = String(url);
+        if (value.includes('/api/sdr/notes/batch')) {
+          const body = JSON.parse(String(options?.body || '{}'));
+          const leadIds = Array.isArray(body.lead_ids) ? body.lead_ids : [];
+          return { ok: true, json: async () => ({ status: 'ok', updated_count: leadIds.length, lead_ids: leadIds }) };
+        }
         if (value.includes('/api/sdr/action/batch')) {
           const body = JSON.parse(String(options?.body || '{}'));
           const leadIds = Array.isArray(body.lead_ids) ? body.lead_ids : [];
@@ -343,5 +348,36 @@ describe('SDR page', () => {
     });
 
     expect(screen.getByText('1 lead(s) com proxima acao agendada.')).toBeDefined();
+  });
+
+  it('sends batch note request and shows success feedback', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+      expect(screen.getByText('Lead Beta')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.click(screen.getByLabelText('Selecionar lead 1'));
+      await user.type(screen.getByPlaceholderText('Ex.: confirmar interesse e horario'), 'Retornar no periodo da tarde');
+      await user.click(screen.getByRole('button', { name: 'Adicionar nota em lote' }));
+    });
+
+    await waitFor(() => {
+      const patchCalls = fetch.mock.calls.filter(
+        ([url, options]) =>
+          String(url).includes('/api/sdr/notes/batch') &&
+          options?.method === 'PATCH' &&
+          String(options?.body || '').includes('"lead_ids":[1]') &&
+          String(options?.body || '').includes('"note":"Retornar no periodo da tarde"')
+      );
+      expect(patchCalls.length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByText('1 lead(s) com nota registrada em lote.')).toBeDefined();
   });
 });

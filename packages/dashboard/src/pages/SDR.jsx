@@ -37,6 +37,7 @@ export default function SDR({ onNavigate, activePath }) {
   const [openNotes, setOpenNotes] = useState({});
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [batchAssignDraft, setBatchAssignDraft] = useState('');
+  const [batchNoteDraft, setBatchNoteDraft] = useState('');
   const [batchNextActionDescription, setBatchNextActionDescription] = useState('');
   const [batchNextActionDate, setBatchNextActionDate] = useState('');
   const [batchCadenceDays, setBatchCadenceDays] = useState('1');
@@ -323,6 +324,52 @@ export default function SDR({ onNavigate, activePath }) {
     }
   };
 
+  const patchNoteBatch = async () => {
+    if (selectedLeadIds.length === 0) return;
+    const requestedLeadIds = [...selectedLeadIds];
+    const note = batchNoteDraft.trim();
+    if (!note) return;
+
+    setBusyLeadId('batch');
+    setError('');
+    setBatchFeedback('');
+    try {
+      const response = await fetch(`${API_BASE}/api/sdr/notes/batch`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: selectedLeadIds,
+          note,
+          author: 'sdr-ui',
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(batchErrorMessage(payload?.detail, 'Operacao em lote falhou ao adicionar nota.'));
+      }
+      const updatedIds = Array.isArray(payload?.lead_ids)
+        ? payload.lead_ids.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+        : [];
+      const updatedSet = new Set(updatedIds);
+      const updatedCount = Number(payload?.updated_count ?? updatedIds.length ?? 0);
+      const remainingSelected = requestedLeadIds.filter((leadId) => !updatedSet.has(leadId));
+      setSelectedLeadIds(remainingSelected);
+      setBatchNoteDraft('');
+      if (updatedCount === requestedLeadIds.length) {
+        setBatchFeedback(`${updatedCount} lead(s) com nota registrada em lote.`);
+      } else {
+        setBatchFeedback(
+          `${updatedCount} de ${requestedLeadIds.length} lead(s) com nota registrada em lote. ${remainingSelected.length} permanece(m) selecionado(s).`
+        );
+      }
+      await Promise.all([loadQueue(), loadStats()]);
+    } catch (err) {
+      setError(err.message || 'Operacao em lote falhou ao adicionar nota.');
+    } finally {
+      setBusyLeadId(null);
+    }
+  };
+
   const toggleLeadSelection = (leadId, checked) => {
     setSelectedLeadIds((prev) => {
       if (checked) {
@@ -476,6 +523,23 @@ export default function SDR({ onNavigate, activePath }) {
           </div>
         </div>
         <div className="fv-row" style={{ marginBottom: 10, gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label className="fv-field fv-field-inline">
+            <span>Nota (lote)</span>
+            <input
+              className="fv-input"
+              placeholder="Ex.: confirmar interesse e horario"
+              value={batchNoteDraft}
+              onChange={(e) => setBatchNoteDraft(e.target.value)}
+            />
+          </label>
+          <button
+            className="fv-ghost"
+            type="button"
+            disabled={busyLeadId === 'batch' || selectedLeadIds.length === 0 || !batchNoteDraft.trim()}
+            onClick={patchNoteBatch}
+          >
+            {busyLeadId === 'batch' ? 'Salvando...' : 'Adicionar nota em lote'}
+          </button>
           <label className="fv-field fv-field-inline">
             <span>Proxima acao (lote)</span>
             <input

@@ -324,6 +324,60 @@ def add_note(*, lead_id: int, note: str, author: str | None = None) -> dict | No
     return {"lead_id": row[0], "notes": row[1]}
 
 
+def add_note_batch(*, lead_ids: list[int], note: str, author: str | None = None) -> dict:
+    normalized_note = (note or "").strip()
+    if not normalized_note:
+        raise ValueError("note é obrigatório")
+
+    payload_note = _serialize_note(normalized_note, author)
+    serialized_note = json.dumps(payload_note)
+
+    if not lead_ids:
+        raise ValueError("lead_ids é obrigatório")
+
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for lead_id in lead_ids:
+        value = int(lead_id)
+        if value <= 0:
+            raise ValueError("lead_ids deve conter apenas IDs positivos")
+        if value in seen:
+            continue
+        normalized_ids.append(value)
+        seen.add(value)
+
+    update_query = """
+        UPDATE sdr_activities
+        SET
+          notes = COALESCE(notes, '[]'::jsonb) || jsonb_build_array(%s::jsonb),
+          updated_at = NOW()
+        WHERE lead_id = ANY(%s::int[])
+        RETURNING lead_id;
+    """
+    interaction_query = """
+        INSERT INTO lead_interactions (lead_id, type, content, metadata, author)
+        VALUES (%s, 'note', %s, '{}'::jsonb, %s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(update_query, (serialized_note, normalized_ids))
+            rows = cur.fetchall() or []
+            updated_ids = [int(row[0]) for row in rows]
+            if not updated_ids:
+                conn.rollback()
+                return {"updated_count": 0, "lead_ids": []}
+
+            for updated_id in updated_ids:
+                cur.execute(
+                    interaction_query,
+                    (updated_id, normalized_note, author or "sdr"),
+                )
+        conn.commit()
+
+    return {"updated_count": len(updated_ids), "lead_ids": updated_ids}
+
+
 def get_stats() -> dict:
     return get_stats_by_assignee()
 

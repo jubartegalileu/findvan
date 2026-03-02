@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout.jsx';
 import ScoreBadge from '../components/ScoreBadge.jsx';
 import { API_BASE } from '../lib/apiBase.js';
@@ -32,11 +32,11 @@ export default function SDR({ onNavigate, activePath }) {
   const [noteDrafts, setNoteDrafts] = useState({});
   const [openNotes, setOpenNotes] = useState({});
 
-  const loadQueue = async () => {
+  const loadQueue = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${API_BASE}/api/sdr/queue`);
+      const response = await fetch(`${API_BASE}/api/sdr/queue?limit=1000`);
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload?.detail || 'Falha ao carregar fila SDR.');
@@ -47,9 +47,9 @@ export default function SDR({ onNavigate, activePath }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/api/sdr/stats`);
       const payload = await response.json();
@@ -65,12 +65,12 @@ export default function SDR({ onNavigate, activePath }) {
     } catch (err) {
       setError(err.message || 'Falha ao carregar métricas SDR.');
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadQueue();
     loadStats();
-  }, []);
+  }, [loadQueue, loadStats]);
 
   const cities = useMemo(() => {
     const values = Array.from(new Set(queue.map((item) => item.city).filter(Boolean)));

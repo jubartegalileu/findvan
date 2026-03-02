@@ -39,10 +39,12 @@ describe('SDR page', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => queuePayload })
-        .mockResolvedValueOnce({ ok: true, json: async () => statsPayload })
+      vi.fn(async (url) => {
+        const value = String(url);
+        if (value.includes('/api/sdr/queue')) return { ok: true, json: async () => queuePayload };
+        if (value.includes('/api/sdr/stats')) return { ok: true, json: async () => statsPayload };
+        return { ok: true, json: async () => ({}) };
+      })
     );
   });
 
@@ -72,8 +74,9 @@ describe('SDR page', () => {
 
     const plannedCheckbox = screen.getByLabelText('Planejada');
     await user.click(plannedCheckbox);
-
-    expect(screen.getByText('Lead Alpha')).toBeDefined();
-    expect(screen.queryByText('Lead Beta')).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+      expect(screen.queryByText('Lead Beta')).toBeNull();
+    });
   });
 });

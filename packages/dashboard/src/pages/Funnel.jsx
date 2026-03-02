@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DndContext, closestCorners, useDraggable, useDroppable } from '@dnd-kit/core';
 import Layout from '../components/Layout.jsx';
 import ScoreBadge from '../components/ScoreBadge.jsx';
@@ -94,11 +94,14 @@ export default function Funnel({ onNavigate, activePath }) {
   const [lossReason, setLossReason] = useState('sem_interesse');
   const [lossReasonDetail, setLossReasonDetail] = useState('');
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const query = period === 'all' ? '' : `?period=${period}`;
+      const params = new URLSearchParams();
+      if (period !== 'all') params.set('period', period);
+      params.set('limit', '2000');
+      const query = `?${params.toString()}`;
       const [pipelineRes, summaryRes] = await Promise.all([
         fetch(`${API_BASE}/api/pipeline/${query}`),
         fetch(`${API_BASE}/api/pipeline/summary${query}`),
@@ -120,11 +123,11 @@ export default function Funnel({ onNavigate, activePath }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [period]);
 
   useEffect(() => {
     loadData();
-  }, [period]);
+  }, [loadData]);
 
   const stageSummaryMap = useMemo(() => {
     const map = {};

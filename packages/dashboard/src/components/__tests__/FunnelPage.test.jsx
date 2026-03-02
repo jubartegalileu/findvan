@@ -26,10 +26,12 @@ describe('Funnel page', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => pipelinePayload })
-        .mockResolvedValueOnce({ ok: true, json: async () => summaryPayload })
+      vi.fn(async (url) => {
+        const value = String(url);
+        if (value.includes('/api/pipeline/summary')) return { ok: true, json: async () => summaryPayload };
+        if (value.includes('/api/pipeline')) return { ok: true, json: async () => pipelinePayload };
+        return { ok: true, json: async () => ({}) };
+      })
     );
   });
 
@@ -57,6 +59,9 @@ describe('Funnel page', () => {
 
     const allButton = screen.getByRole('button', { name: 'Tudo' });
     await user.click(allButton);
-    expect(allButton).toBeDefined();
+    await waitFor(() => {
+      expect(allButton).toBeDefined();
+      expect(fetch).toHaveBeenCalled();
+    });
   });
 });

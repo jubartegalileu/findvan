@@ -109,17 +109,24 @@ def test_templates_list_validation_error(monkeypatch):
 
 
 def test_templates_audit_ok(monkeypatch):
+    captured = {}
+
+    def _fake_list_bulk_template_audit(**kwargs):
+        captured.update(kwargs)
+        return [{"id": 11, "template_id": kwargs["template_id"], "owner": kwargs["owner"], "action": "save"}]
+
     monkeypatch.setattr(
         sdr_api,
         "list_bulk_template_audit",
-        lambda **kwargs: [{"id": 11, "template_id": kwargs["template_id"], "owner": kwargs["owner"], "action": "save"}],
+        _fake_list_bulk_template_audit,
     )
     client = build_client()
-    response = client.get("/api/sdr/templates/audit?owner=alice&template_id=3&limit=20")
+    response = client.get("/api/sdr/templates/audit?owner=alice&template_id=3&action=save&limit=20")
     assert response.status_code == 200
     payload = response.json()
     assert payload["count"] == 1
     assert payload["events"][0]["template_id"] == 3
+    assert captured["action"] == "save"
 
 
 def test_templates_audit_validation_error(monkeypatch):
@@ -181,13 +188,17 @@ def test_templates_save_ok(monkeypatch):
 
 
 def test_templates_save_forbidden(monkeypatch):
+    captured = {"logged": False}
+
     def _raise(**kwargs):
         raise PermissionError("Acesso negado para mutação de templates de vendedor")
 
     monkeypatch.setattr(sdr_api, "save_bulk_template", _raise)
+    monkeypatch.setattr(sdr_api, "log_bulk_template_permission_denied", lambda **kwargs: captured.update({"logged": True}))
     client = build_client()
     response = client.post("/api/sdr/templates", json={"owner": "alice", "actor": "bob", "name": "Template B"})
     assert response.status_code == 403
+    assert captured["logged"] is True
 
 
 def test_templates_save_global_without_actor_forbidden(monkeypatch):
@@ -197,6 +208,7 @@ def test_templates_save_global_without_actor_forbidden(monkeypatch):
         return {"id": 2, "owner": kwargs["owner"], "name": kwargs["name"]}
 
     monkeypatch.setattr(sdr_api, "save_bulk_template", _raise)
+    monkeypatch.setattr(sdr_api, "log_bulk_template_permission_denied", lambda **kwargs: None)
     client = build_client()
     response = client.post("/api/sdr/templates", json={"owner": "all", "name": "Template Global"})
     assert response.status_code == 403
@@ -218,13 +230,17 @@ def test_templates_delete_ok(monkeypatch):
 
 
 def test_templates_delete_forbidden(monkeypatch):
+    captured = {"logged": False}
+
     def _raise(**kwargs):
         raise PermissionError("Acesso negado para mutação de templates de vendedor")
 
     monkeypatch.setattr(sdr_api, "delete_bulk_template", _raise)
+    monkeypatch.setattr(sdr_api, "log_bulk_template_permission_denied", lambda **kwargs: captured.update({"logged": True}))
     client = build_client()
     response = client.delete("/api/sdr/templates/5?owner=alice&actor=bob")
     assert response.status_code == 403
+    assert captured["logged"] is True
 
 
 def test_templates_delete_validation_error(monkeypatch):
@@ -261,16 +277,20 @@ def test_templates_patch_ok(monkeypatch):
 
 
 def test_templates_patch_forbidden(monkeypatch):
+    captured = {"logged": False}
+
     def _raise(**kwargs):
         raise PermissionError("Acesso negado para mutação de templates de equipe")
 
     monkeypatch.setattr(sdr_api, "update_bulk_template_preferences", _raise)
+    monkeypatch.setattr(sdr_api, "log_bulk_template_permission_denied", lambda **kwargs: captured.update({"logged": True}))
     client = build_client()
     response = client.patch(
         "/api/sdr/templates/9",
         json={"owner": "team:ops", "actor": "team:sales", "is_favorite": True},
     )
     assert response.status_code == 403
+    assert captured["logged"] is True
 
 
 def test_get_stats_ok(monkeypatch):

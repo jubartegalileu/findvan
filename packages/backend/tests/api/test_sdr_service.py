@@ -264,12 +264,29 @@ def test_list_bulk_template_audit_filters_owner_template_and_limit(monkeypatch):
     cursor = _AuditListCursor()
     monkeypatch.setattr(sdr_service, "get_connection", lambda: _FakeConn(cursor))
 
-    events = sdr_service.list_bulk_template_audit(owner="alice", template_id=3, limit=20)
+    events = sdr_service.list_bulk_template_audit(owner="alice", template_id=3, action="save", limit=20)
 
     assert len(events) == 1
     assert events[0]["template_id"] == 3
     assert "FROM sdr_bulk_template_audit" in cursor.last_query
-    assert cursor.last_params == ("alice", 3, 20)
+    assert cursor.last_params == ("alice", 3, "save", 20)
+
+
+def test_log_bulk_template_permission_denied_inserts_audit_row(monkeypatch):
+    cursor = _FakeCursor()
+    conn = _FakeConn(cursor)
+    monkeypatch.setattr(sdr_service, "get_connection", lambda: conn)
+
+    sdr_service.log_bulk_template_permission_denied(
+        owner="alice",
+        actor="bob",
+        operation="save",
+        reason="forbidden",
+        template_id=9,
+    )
+
+    assert conn.did_commit is True
+    assert any("INSERT INTO sdr_bulk_template_audit" in query for query, _ in cursor.executed)
 
 
 def test_save_bulk_template_upserts_and_commits(monkeypatch):

@@ -15,6 +15,7 @@ from ..services.sdr_service import (
     get_stats_by_assignee,
     list_bulk_template_audit,
     list_bulk_templates,
+    log_bulk_template_permission_denied,
     normalize_template_owner,
     register_action,
     register_action_batch,
@@ -260,10 +261,11 @@ def sdr_templates(owner: str | None = Query(default="all", max_length=100)):
 def sdr_templates_audit(
     owner: str | None = Query(default="all", max_length=100),
     template_id: int | None = Query(default=None, ge=1),
+    action: str | None = Query(default=None, max_length=30),
     limit: int = Query(default=100, ge=1, le=500),
 ):
     try:
-        events = list_bulk_template_audit(owner=owner, template_id=template_id, limit=limit)
+        events = list_bulk_template_audit(owner=owner, template_id=template_id, action=action, limit=limit)
         return {"events": events, "count": len(events)}
     except ValueError as exc:
         logger.warning("sdr_templates_audit validation failed: %s", exc)
@@ -301,6 +303,12 @@ def sdr_templates_save(payload: SDRBulkTemplatePayload):
         )
         return {"status": "ok", "template": saved}
     except PermissionError as exc:
+        log_bulk_template_permission_denied(
+            owner=payload.owner,
+            actor=_resolve_template_actor(payload.owner, payload.actor),
+            operation="save",
+            reason=str(exc),
+        )
         logger.warning("sdr_templates_save permission denied: %s", exc)
         raise_forbidden(str(exc), code="sdr_templates_save_forbidden")
     except ValueError as exc:
@@ -325,6 +333,13 @@ def sdr_templates_delete(
     except HTTPException:
         raise
     except PermissionError as exc:
+        log_bulk_template_permission_denied(
+            owner=owner,
+            actor=_resolve_template_actor(owner, actor),
+            operation="delete",
+            reason=str(exc),
+            template_id=template_id,
+        )
         logger.warning("sdr_templates_delete permission denied: %s", exc)
         raise_forbidden(str(exc), code="sdr_templates_delete_forbidden")
     except ValueError as exc:
@@ -351,6 +366,13 @@ def sdr_templates_patch(template_id: int, payload: SDRBulkTemplatePatchPayload):
     except HTTPException:
         raise
     except PermissionError as exc:
+        log_bulk_template_permission_denied(
+            owner=payload.owner,
+            actor=_resolve_template_actor(payload.owner, payload.actor),
+            operation="patch",
+            reason=str(exc),
+            template_id=template_id,
+        )
         logger.warning("sdr_templates_patch permission denied: %s", exc)
         raise_forbidden(str(exc), code="sdr_templates_patch_forbidden")
     except ValueError as exc:

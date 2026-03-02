@@ -113,6 +113,30 @@ def _log_bulk_template_audit(
     )
 
 
+def log_bulk_template_permission_denied(
+    *,
+    owner: str | None,
+    actor: str | None,
+    operation: str,
+    reason: str,
+    template_id: int | None = None,
+) -> None:
+    normalized_owner = normalize_template_owner(owner)
+    normalized_actor = (actor or "").strip() or "unknown"
+    denied_template_id = int(template_id) if template_id is not None else 0
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            _log_bulk_template_audit(
+                cur,
+                template_id=denied_template_id,
+                owner=normalized_owner,
+                action="permission_denied",
+                actor=normalized_actor,
+                payload={"operation": operation, "reason": reason},
+            )
+        conn.commit()
+
+
 def get_queue(
     *,
     city: str | None = None,
@@ -639,6 +663,7 @@ def list_bulk_template_audit(
     *,
     owner: str | None = None,
     template_id: int | None = None,
+    action: str | None = None,
     limit: int = 100,
 ) -> list[dict]:
     normalized_owner = normalize_template_owner(owner)
@@ -652,6 +677,10 @@ def list_bulk_template_audit(
     if template_id is not None:
         query += " AND template_id = %s"
         params.append(int(template_id))
+    normalized_action = (action or "").strip()
+    if normalized_action:
+        query += " AND action = %s"
+        params.append(normalized_action)
     query += " ORDER BY created_at DESC, id DESC LIMIT %s"
     params.append(capped_limit)
 

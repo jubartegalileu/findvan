@@ -52,7 +52,14 @@ describe('SDR page', () => {
           const actor = (parsedUrl.searchParams.get('actor') || '').trim();
           const allowed = owner === 'all' ? actor === 'admin' : actor === owner;
           const reason = allowed ? 'ok' : 'Acesso negado para mutação de templates';
-          return { ok: true, json: async () => ({ allowed, owner, actor: actor || null, reason }) };
+          const remediation = allowed
+            ? null
+            : {
+                title: 'Permissão global requer admin',
+                description: 'Mutações em templates globais exigem ator admin.',
+                next_action: 'Defina o ator como admin ou altere o owner para escopo específico.',
+              };
+          return { ok: true, json: async () => ({ allowed, owner, actor: actor || null, reason, remediation }) };
         }
         if (value.includes('/api/sdr/templates/audit')) {
           const parsedUrl = new URL(value, 'http://localhost');
@@ -160,6 +167,18 @@ describe('SDR page', () => {
     });
 
     expect(screen.getByText('1 / 1')).toBeDefined();
+  });
+
+  it('shows remediation guidance when template permission is denied', async () => {
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Como resolver')).toBeDefined();
+      expect(screen.getByText('Permissão global requer admin')).toBeDefined();
+      expect(screen.getByText(/Próxima ação:/i)).toBeDefined();
+    });
   });
 
   it('filters queue by cadence checkbox', async () => {

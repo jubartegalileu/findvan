@@ -158,6 +158,30 @@ def test_templates_permission_ok(monkeypatch):
     assert payload["owner"] == "alice"
 
 
+def test_templates_permission_denied_with_remediation(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "evaluate_template_mutation_permission",
+        lambda **kwargs: {
+            "allowed": False,
+            "owner": kwargs["owner"],
+            "actor": kwargs["actor"],
+            "reason": "Acesso negado para mutação de templates globais",
+            "remediation": {
+                "title": "Permissão global requer admin",
+                "description": "Mutações em templates globais exigem ator admin.",
+                "next_action": "Defina o ator como admin.",
+            },
+        },
+    )
+    client = build_client()
+    response = client.get("/api/sdr/templates/permission?owner=all&actor=alice")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["allowed"] is False
+    assert payload["remediation"]["title"] == "Permissão global requer admin"
+
+
 def test_templates_permission_validation_error(monkeypatch):
     def _raise(**kwargs):
         raise ValueError("owner inválido")

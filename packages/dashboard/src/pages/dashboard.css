@@ -643,6 +643,34 @@ body,
   color: #4c777d;
 }
 
+.fv-template-remediation {
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(249, 168, 37, 0.12);
+  border: 1px solid rgba(143, 97, 0, 0.22);
+  display: grid;
+  gap: 4px;
+}
+
+.fv-template-remediation-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #8f6100;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.fv-template-remediation-item {
+  font-size: 13px;
+  color: #5f4f1f;
+}
+
+.fv-template-remediation-next {
+  font-size: 13px;
+  font-weight: 600;
+  color: #7d5700;
+}
+
 .fv-feedback-title {
   color: #8f6100;
   font-weight: 700;

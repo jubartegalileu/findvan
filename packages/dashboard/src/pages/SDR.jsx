@@ -81,7 +81,7 @@ export default function SDR({ onNavigate, activePath }) {
   const [templateAuditLoading, setTemplateAuditLoading] = useState(false);
   const [templateAuditError, setTemplateAuditError] = useState('');
   const [permissionDeniedEvents, setPermissionDeniedEvents] = useState([]);
-  const [templatePermission, setTemplatePermission] = useState({ allowed: false, reason: 'Carregando...' });
+  const [templatePermission, setTemplatePermission] = useState({ allowed: false, reason: 'Carregando...', remediation: null });
   const [templatePermissionLoading, setTemplatePermissionLoading] = useState(true);
 
   const loadQueue = useCallback(async () => {
@@ -192,12 +192,25 @@ export default function SDR({ onNavigate, activePath }) {
       if (!response.ok) {
         throw new Error(payload?.detail || 'Falha ao validar permissao de template.');
       }
+      const remediationPayload = payload?.remediation;
+      const remediation = remediationPayload && typeof remediationPayload === 'object'
+        ? {
+            title: String(remediationPayload.title || '').trim(),
+            description: String(remediationPayload.description || '').trim(),
+            next_action: String(remediationPayload.next_action || '').trim(),
+          }
+        : null;
       setTemplatePermission({
         allowed: Boolean(payload?.allowed),
         reason: String(payload?.reason || ''),
+        remediation: remediation && (remediation.title || remediation.description || remediation.next_action) ? remediation : null,
       });
     } catch (err) {
-      setTemplatePermission({ allowed: false, reason: err.message || 'Falha ao validar permissao de template.' });
+      setTemplatePermission({
+        allowed: false,
+        reason: err.message || 'Falha ao validar permissao de template.',
+        remediation: null,
+      });
     } finally {
       setTemplatePermissionLoading(false);
     }
@@ -1041,6 +1054,24 @@ export default function SDR({ onNavigate, activePath }) {
           {!templatePermissionLoading && !templatePermission.allowed ? (
             <div className="fv-template-config-alert">
               Motivo: {templatePermission.reason || 'Acesso negado.'}
+            </div>
+          ) : null}
+          {!templatePermissionLoading && !templatePermission.allowed && templatePermission.remediation ? (
+            <div className="fv-template-remediation">
+              <div className="fv-template-remediation-title">Como resolver</div>
+              {templatePermission.remediation.title ? (
+                <div className="fv-template-remediation-item">
+                  <strong>{templatePermission.remediation.title}</strong>
+                </div>
+              ) : null}
+              {templatePermission.remediation.description ? (
+                <div className="fv-template-remediation-item">{templatePermission.remediation.description}</div>
+              ) : null}
+              {templatePermission.remediation.next_action ? (
+                <div className="fv-template-remediation-next">
+                  Próxima ação: {templatePermission.remediation.next_action}
+                </div>
+              ) : null}
             </div>
           ) : null}
           {templateOwner === 'all' && templateActor.toLowerCase() !== 'admin' ? (

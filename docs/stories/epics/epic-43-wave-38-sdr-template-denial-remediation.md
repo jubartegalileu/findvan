@@ -1,7 +1,7 @@
 # Epic 43 — Wave 38 SDR Template Denial Remediation
 
 **Brief:** `docs/brief-epic-43-sdr-template-denial-remediation.md`  
-**Status:** Draft  
+**Status:** In Progress  
 **Prioridade:** P0  
 **Estimativa:** 1 sprint curta (3 stories)  
 **Owner:** @pm (Morgan)
@@ -15,13 +15,13 @@ Transformar bloqueios de permissao de templates SDR em fluxo guiado de resolucao
 ## Stories
 
 1. **43.1 — Backend denial remediation recommendations endpoint** (`@data-engineer`)  
-Status: `Draft`
+Status: `Done`
 
 2. **43.2 — SDR dashboard guided remediation UX** (`@dev`)  
-Status: `Draft`
+Status: `Done`
 
 3. **43.3 — QA Gate + PO Go/No-Go (denial remediation)** (`@qa + @po`)  
-Status: `Draft`
+Status: `Ready`
 
 ## Execution Order
 

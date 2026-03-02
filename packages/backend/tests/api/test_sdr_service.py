@@ -434,6 +434,7 @@ def test_evaluate_template_mutation_permission_allowed():
     assert evaluation["owner"] == "alice"
     assert evaluation["actor"] == "alice"
     assert evaluation["reason"] == "ok"
+    assert evaluation["remediation"] is None
 
 
 def test_evaluate_template_mutation_permission_denied():
@@ -442,3 +443,20 @@ def test_evaluate_template_mutation_permission_denied():
     assert evaluation["owner"] == "all"
     assert evaluation["actor"] == "alice"
     assert "Acesso negado" in evaluation["reason"]
+    remediation = evaluation["remediation"]
+    assert remediation["title"] == "Permissão global requer admin"
+    assert remediation["next_action"]
+
+
+def test_evaluate_template_mutation_permission_actor_required_remediation():
+    evaluation = sdr_service.evaluate_template_mutation_permission(owner="alice", actor=None)
+    assert evaluation["allowed"] is False
+    remediation = evaluation["remediation"]
+    assert remediation["title"] == "Ator não informado"
+    assert "Preencha o campo de ator" in remediation["next_action"]
+
+
+def test_resolve_template_permission_denial_remediation_fallback():
+    remediation = sdr_service._resolve_template_permission_denial_remediation("erro desconhecido")
+    assert remediation["title"] == "Permissão negada"
+    assert remediation["next_action"]

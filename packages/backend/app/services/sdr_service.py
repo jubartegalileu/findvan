@@ -79,14 +79,50 @@ def evaluate_template_mutation_permission(*, owner: str | None = None, actor: st
             "owner": normalized_owner,
             "actor": normalized_actor,
             "reason": "ok",
+            "remediation": None,
         }
     except (PermissionError, ValueError) as exc:
+        reason = str(exc)
         return {
             "allowed": False,
             "owner": normalized_owner,
             "actor": (actor or "").strip() or None,
-            "reason": str(exc),
+            "reason": reason,
+            "remediation": _resolve_template_permission_denial_remediation(reason),
         }
+
+
+def _resolve_template_permission_denial_remediation(reason: str | None) -> dict:
+    normalized_reason = (reason or "").strip().lower()
+    if "templates globais" in normalized_reason:
+        return {
+            "title": "Permissão global requer admin",
+            "description": "Mutações em templates globais exigem ator admin.",
+            "next_action": "Defina o ator como admin ou altere o owner para escopo específico.",
+        }
+    if "templates de equipe" in normalized_reason:
+        return {
+            "title": "Permissão de equipe divergente",
+            "description": "O ator precisa pertencer ao mesmo owner de equipe do template.",
+            "next_action": "Ajuste owner/ator para o mesmo team:{slug}.",
+        }
+    if "templates de vendedor" in normalized_reason:
+        return {
+            "title": "Permissão de vendedor divergente",
+            "description": "O ator precisa ser o mesmo vendedor dono do template.",
+            "next_action": "Use actor igual ao owner do template ou altere o owner selecionado.",
+        }
+    if "actor é obrigatório" in normalized_reason:
+        return {
+            "title": "Ator não informado",
+            "description": "O backend não recebeu um ator válido para validar a mutação.",
+            "next_action": "Preencha o campo de ator antes de salvar, excluir ou editar template.",
+        }
+    return {
+        "title": "Permissão negada",
+        "description": "Não foi possível validar a mutação com o contexto atual.",
+        "next_action": "Revise owner/ator e tente novamente com um contexto autorizado.",
+    }
 
 
 def _log_bulk_template_audit(

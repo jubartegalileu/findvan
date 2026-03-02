@@ -70,6 +70,25 @@ def ensure_template_mutation_permission(*, owner: str, actor: str | None = None)
     return normalized_actor
 
 
+def evaluate_template_mutation_permission(*, owner: str | None = None, actor: str | None = None) -> dict:
+    normalized_owner = normalize_template_owner(owner)
+    try:
+        normalized_actor = ensure_template_mutation_permission(owner=normalized_owner, actor=actor)
+        return {
+            "allowed": True,
+            "owner": normalized_owner,
+            "actor": normalized_actor,
+            "reason": "ok",
+        }
+    except (PermissionError, ValueError) as exc:
+        return {
+            "allowed": False,
+            "owner": normalized_owner,
+            "actor": (actor or "").strip() or None,
+            "reason": str(exc),
+        }
+
+
 def _log_bulk_template_audit(
     cur,
     *,

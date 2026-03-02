@@ -409,3 +409,19 @@ def test_ensure_template_mutation_permission_allows_global_only_for_admin():
         assert False, "expected PermissionError"
     except PermissionError as exc:
         assert "Acesso negado" in str(exc)
+
+
+def test_evaluate_template_mutation_permission_allowed():
+    evaluation = sdr_service.evaluate_template_mutation_permission(owner="alice", actor="alice")
+    assert evaluation["allowed"] is True
+    assert evaluation["owner"] == "alice"
+    assert evaluation["actor"] == "alice"
+    assert evaluation["reason"] == "ok"
+
+
+def test_evaluate_template_mutation_permission_denied():
+    evaluation = sdr_service.evaluate_template_mutation_permission(owner="all", actor="alice")
+    assert evaluation["allowed"] is False
+    assert evaluation["owner"] == "all"
+    assert evaluation["actor"] == "alice"
+    assert "Acesso negado" in evaluation["reason"]

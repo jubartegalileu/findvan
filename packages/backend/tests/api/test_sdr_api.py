@@ -132,6 +132,35 @@ def test_templates_audit_validation_error(monkeypatch):
     assert response.status_code == 400
 
 
+def test_templates_permission_ok(monkeypatch):
+    monkeypatch.setattr(
+        sdr_api,
+        "evaluate_template_mutation_permission",
+        lambda **kwargs: {
+            "allowed": True,
+            "owner": kwargs["owner"],
+            "actor": kwargs["actor"],
+            "reason": "ok",
+        },
+    )
+    client = build_client()
+    response = client.get("/api/sdr/templates/permission?owner=alice&actor=alice")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["allowed"] is True
+    assert payload["owner"] == "alice"
+
+
+def test_templates_permission_validation_error(monkeypatch):
+    def _raise(**kwargs):
+        raise ValueError("owner inválido")
+
+    monkeypatch.setattr(sdr_api, "evaluate_template_mutation_permission", _raise)
+    client = build_client()
+    response = client.get("/api/sdr/templates/permission?owner=team:%20%20%20")
+    assert response.status_code == 400
+
+
 def test_templates_save_ok(monkeypatch):
     captured = {}
 

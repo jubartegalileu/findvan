@@ -10,6 +10,7 @@ from ..services.sdr_service import (
     assign_owner,
     assign_owner_batch,
     delete_bulk_template,
+    evaluate_template_mutation_permission,
     get_queue,
     get_stats_by_assignee,
     list_bulk_template_audit,
@@ -269,6 +270,21 @@ def sdr_templates_audit(
         raise_bad_request(str(exc), code="sdr_templates_audit_validation")
     except Exception as exc:
         raise_internal_error(context="sdr_templates_audit", exc=exc, code="sdr_templates_audit_error")
+
+
+@router.get("/templates/permission")
+def sdr_templates_permission(
+    owner: str | None = Query(default="all", max_length=100),
+    actor: str | None = Query(default=None, max_length=100),
+):
+    try:
+        evaluation = evaluate_template_mutation_permission(owner=owner, actor=actor)
+        return evaluation
+    except ValueError as exc:
+        logger.warning("sdr_templates_permission validation failed: %s", exc)
+        raise_bad_request(str(exc), code="sdr_templates_permission_validation")
+    except Exception as exc:
+        raise_internal_error(context="sdr_templates_permission", exc=exc, code="sdr_templates_permission_error")
 
 
 @router.post("/templates")

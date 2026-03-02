@@ -35,6 +35,7 @@ export default function SDR({ onNavigate, activePath }) {
   const [openNotes, setOpenNotes] = useState({});
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [batchAssignDraft, setBatchAssignDraft] = useState('');
+  const [batchFeedback, setBatchFeedback] = useState('');
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -193,6 +194,7 @@ export default function SDR({ onNavigate, activePath }) {
 
     setBusyLeadId('batch');
     setError('');
+    setBatchFeedback('');
     try {
       const response = await fetch(`${API_BASE}/api/sdr/assign/batch`, {
         method: 'PATCH',
@@ -203,8 +205,10 @@ export default function SDR({ onNavigate, activePath }) {
       if (!response.ok) {
         throw new Error(payload?.detail || 'Falha ao atribuir leads em lote.');
       }
+      const updatedCount = Number(payload?.updated_count || 0);
       setBatchAssignDraft('');
       setSelectedLeadIds([]);
+      setBatchFeedback(`${updatedCount} lead(s) atribuído(s) com sucesso.`);
       await Promise.all([loadQueue(), loadStats()]);
     } catch (err) {
       setError(err.message || 'Falha ao atribuir leads em lote.');
@@ -357,6 +361,8 @@ export default function SDR({ onNavigate, activePath }) {
             </button>
           </div>
         </div>
+        {selectedLeadIds.length === 0 && <div className="fv-row-sub" style={{ marginBottom: 10 }}>Selecione ao menos 1 lead para habilitar atribuição em lote.</div>}
+        {batchFeedback && <div className="fv-feedback-banner" style={{ marginBottom: 10 }}>{batchFeedback}</div>}
 
         {loading ? (
           <div className="fv-message">Carregando fila SDR...</div>

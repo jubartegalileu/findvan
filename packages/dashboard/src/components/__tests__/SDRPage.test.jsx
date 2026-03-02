@@ -43,6 +43,9 @@ describe('SDR page', () => {
       'fetch',
       vi.fn(async (url) => {
         const value = String(url);
+        if (value.includes('/api/sdr/assign/batch')) {
+          return { ok: true, json: async () => ({ status: 'ok', updated_count: 2, lead_ids: [1, 2], assigned_to: 'danilo' }) };
+        }
         if (value.includes('/api/sdr/') && value.includes('/assign')) return { ok: true, json: async () => ({ status: 'ok' }) };
         if (value.includes('/api/sdr/queue')) return { ok: true, json: async () => queuePayload };
         if (value.includes('/api/sdr/stats')) return { ok: true, json: async () => statsPayload };
@@ -183,6 +186,49 @@ describe('SDR page', () => {
           String(options?.body || '').includes('"assigned_to":"danilo"')
       );
       expect(patchCalls.length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByText('2 lead(s) atribuído(s) com sucesso.')).toBeDefined();
+  });
+
+  it('shows backend error when batch assign fails', async () => {
+    const user = userEvent.setup();
+    fetch.mockImplementationOnce(async (url) => {
+      const value = String(url);
+      if (value.includes('/api/sdr/queue')) return { ok: true, json: async () => queuePayload };
+      return { ok: true, json: async () => statsPayload };
+    });
+    fetch.mockImplementationOnce(async (url) => {
+      const value = String(url);
+      if (value.includes('/api/sdr/stats')) return { ok: true, json: async () => statsPayload };
+      return { ok: true, json: async () => queuePayload };
+    });
+    fetch.mockImplementation(async (url) => {
+      const value = String(url);
+      if (value.includes('/api/sdr/assign/batch')) {
+        return { ok: false, json: async () => ({ detail: 'Nenhum lead encontrado para atribuição' }) };
+      }
+      if (value.includes('/api/sdr/queue')) return { ok: true, json: async () => queuePayload };
+      if (value.includes('/api/sdr/stats')) return { ok: true, json: async () => statsPayload };
+      return { ok: true, json: async () => ({}) };
+    });
+
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.click(screen.getByLabelText('Selecionar lead 1'));
+      await user.type(screen.getByPlaceholderText('Vendedor lote'), 'danilo');
+      await user.click(screen.getByRole('button', { name: 'Atribuir em lote' }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Nenhum lead encontrado para atribuição')).toBeDefined();
     });
   });
 });

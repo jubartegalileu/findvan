@@ -19,6 +19,8 @@ const formatDateTime = (value) => {
   return date.toLocaleString('pt-BR');
 };
 
+const batchErrorMessage = (detail, fallback) => (detail ? `Operacao em lote falhou: ${detail}` : fallback);
+
 export default function SDR({ onNavigate, activePath }) {
   const [queue, setQueue] = useState([]);
   const [stats, setStats] = useState({ total: 0, done_today: 0, pending: 0, overdue: 0 });
@@ -191,6 +193,7 @@ export default function SDR({ onNavigate, activePath }) {
   const patchAssignBatch = async () => {
     const assignedTo = batchAssignDraft.trim();
     if (!assignedTo || selectedLeadIds.length === 0) return;
+    const requestedLeadIds = [...selectedLeadIds];
 
     setBusyLeadId('batch');
     setError('');
@@ -203,15 +206,26 @@ export default function SDR({ onNavigate, activePath }) {
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload?.detail || 'Falha ao atribuir leads em lote.');
+        throw new Error(batchErrorMessage(payload?.detail, 'Operacao em lote falhou ao atribuir leads.'));
       }
-      const updatedCount = Number(payload?.updated_count || 0);
+      const updatedIds = Array.isArray(payload?.lead_ids)
+        ? payload.lead_ids.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+        : [];
+      const updatedSet = new Set(updatedIds);
+      const updatedCount = Number(payload?.updated_count ?? updatedIds.length ?? 0);
+      const remainingSelected = requestedLeadIds.filter((leadId) => !updatedSet.has(leadId));
       setBatchAssignDraft('');
-      setSelectedLeadIds([]);
-      setBatchFeedback(`${updatedCount} lead(s) atribuído(s) com sucesso.`);
+      setSelectedLeadIds(remainingSelected);
+      if (updatedCount === requestedLeadIds.length) {
+        setBatchFeedback(`${updatedCount} lead(s) atribuido(s) com sucesso.`);
+      } else {
+        setBatchFeedback(
+          `${updatedCount} de ${requestedLeadIds.length} lead(s) atribuido(s) com sucesso. ${remainingSelected.length} permanece(m) selecionado(s).`
+        );
+      }
       await Promise.all([loadQueue(), loadStats()]);
     } catch (err) {
-      setError(err.message || 'Falha ao atribuir leads em lote.');
+      setError(err.message || 'Operacao em lote falhou ao atribuir leads.');
     } finally {
       setBusyLeadId(null);
     }
@@ -219,6 +233,7 @@ export default function SDR({ onNavigate, activePath }) {
 
   const patchActionBatchDone = async () => {
     if (selectedLeadIds.length === 0) return;
+    const requestedLeadIds = [...selectedLeadIds];
 
     setBusyLeadId('batch');
     setError('');
@@ -231,14 +246,25 @@ export default function SDR({ onNavigate, activePath }) {
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload?.detail || 'Falha ao marcar lote como feito.');
+        throw new Error(batchErrorMessage(payload?.detail, 'Operacao em lote falhou ao marcar lote como feito.'));
       }
-      const updatedCount = Number(payload?.updated_count || 0);
-      setSelectedLeadIds([]);
-      setBatchFeedback(`${updatedCount} lead(s) marcado(s) como feito.`);
+      const updatedIds = Array.isArray(payload?.lead_ids)
+        ? payload.lead_ids.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+        : [];
+      const updatedSet = new Set(updatedIds);
+      const updatedCount = Number(payload?.updated_count ?? updatedIds.length ?? 0);
+      const remainingSelected = requestedLeadIds.filter((leadId) => !updatedSet.has(leadId));
+      setSelectedLeadIds(remainingSelected);
+      if (updatedCount === requestedLeadIds.length) {
+        setBatchFeedback(`${updatedCount} lead(s) marcado(s) como feito.`);
+      } else {
+        setBatchFeedback(
+          `${updatedCount} de ${requestedLeadIds.length} lead(s) marcado(s) como feito. ${remainingSelected.length} permanece(m) selecionado(s).`
+        );
+      }
       await Promise.all([loadQueue(), loadStats()]);
     } catch (err) {
-      setError(err.message || 'Falha ao marcar lote como feito.');
+      setError(err.message || 'Operacao em lote falhou ao marcar lote como feito.');
     } finally {
       setBusyLeadId(null);
     }
@@ -396,7 +422,7 @@ export default function SDR({ onNavigate, activePath }) {
             </button>
           </div>
         </div>
-        {selectedLeadIds.length === 0 && <div className="fv-row-sub" style={{ marginBottom: 10 }}>Selecione ao menos 1 lead para habilitar atribuição em lote.</div>}
+        {selectedLeadIds.length === 0 && <div className="fv-row-sub" style={{ marginBottom: 10 }}>Selecione ao menos 1 lead para habilitar ações em lote.</div>}
         {batchFeedback && <div className="fv-feedback-banner" style={{ marginBottom: 10 }}>{batchFeedback}</div>}
 
         {loading ? (

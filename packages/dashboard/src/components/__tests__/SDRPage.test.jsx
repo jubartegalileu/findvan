@@ -41,13 +41,17 @@ describe('SDR page', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url) => {
+      vi.fn(async (url, options) => {
         const value = String(url);
         if (value.includes('/api/sdr/action/batch')) {
-          return { ok: true, json: async () => ({ status: 'ok', updated_count: 2, lead_ids: [1, 2], action_type: 'done' }) };
+          const body = JSON.parse(String(options?.body || '{}'));
+          const leadIds = Array.isArray(body.lead_ids) ? body.lead_ids : [];
+          return { ok: true, json: async () => ({ status: 'ok', updated_count: leadIds.length, lead_ids: leadIds, action_type: 'done' }) };
         }
         if (value.includes('/api/sdr/assign/batch')) {
-          return { ok: true, json: async () => ({ status: 'ok', updated_count: 2, lead_ids: [1, 2], assigned_to: 'danilo' }) };
+          const body = JSON.parse(String(options?.body || '{}'));
+          const leadIds = Array.isArray(body.lead_ids) ? body.lead_ids : [];
+          return { ok: true, json: async () => ({ status: 'ok', updated_count: leadIds.length, lead_ids: leadIds, assigned_to: 'danilo' }) };
         }
         if (value.includes('/api/sdr/') && value.includes('/assign')) return { ok: true, json: async () => ({ status: 'ok' }) };
         if (value.includes('/api/sdr/queue')) return { ok: true, json: async () => queuePayload };
@@ -191,7 +195,7 @@ describe('SDR page', () => {
       expect(patchCalls.length).toBeGreaterThan(0);
     });
 
-    expect(screen.getByText('2 lead(s) atribuído(s) com sucesso.')).toBeDefined();
+    expect(screen.getByText('2 lead(s) atribuido(s) com sucesso.')).toBeDefined();
   });
 
   it('shows backend error when batch assign fails', async () => {
@@ -231,7 +235,7 @@ describe('SDR page', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Nenhum lead encontrado para atribuição')).toBeDefined();
+      expect(screen.getByText('Operacao em lote falhou: Nenhum lead encontrado para atribuição')).toBeDefined();
     });
   });
 
@@ -261,6 +265,46 @@ describe('SDR page', () => {
       expect(patchCalls.length).toBeGreaterThan(0);
     });
 
-    expect(screen.getByText('2 lead(s) marcado(s) como feito.')).toBeDefined();
+    expect(screen.getByText('1 lead(s) marcado(s) como feito.')).toBeDefined();
+  });
+
+  it('keeps non-updated leads selected on partial batch assign response', async () => {
+    const user = userEvent.setup();
+    fetch.mockImplementation(async (url, options) => {
+      const value = String(url);
+      if (value.includes('/api/sdr/assign/batch')) {
+        return { ok: true, json: async () => ({ status: 'ok', updated_count: 1, lead_ids: [1], assigned_to: 'danilo' }) };
+      }
+      if (value.includes('/api/sdr/action/batch')) {
+        const body = JSON.parse(String(options?.body || '{}'));
+        const leadIds = Array.isArray(body.lead_ids) ? body.lead_ids : [];
+        return { ok: true, json: async () => ({ status: 'ok', updated_count: leadIds.length, lead_ids: leadIds, action_type: 'done' }) };
+      }
+      if (value.includes('/api/sdr/') && value.includes('/assign')) return { ok: true, json: async () => ({ status: 'ok' }) };
+      if (value.includes('/api/sdr/queue')) return { ok: true, json: async () => queuePayload };
+      if (value.includes('/api/sdr/stats')) return { ok: true, json: async () => statsPayload };
+      return { ok: true, json: async () => ({}) };
+    });
+
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Lead Alpha')).toBeDefined();
+      expect(screen.getByText('Lead Beta')).toBeDefined();
+    });
+
+    await act(async () => {
+      await user.click(screen.getByLabelText('Selecionar lead 1'));
+      await user.click(screen.getByLabelText('Selecionar lead 2'));
+      await user.type(screen.getByPlaceholderText('Vendedor lote'), 'danilo');
+      await user.click(screen.getByRole('button', { name: 'Atribuir em lote' }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('1 de 2 lead(s) atribuido(s) com sucesso. 1 permanece(m) selecionado(s).')).toBeDefined();
+      expect(screen.getByText('1 selecionados')).toBeDefined();
+    });
   });
 });

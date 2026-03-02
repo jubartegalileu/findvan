@@ -1,7 +1,7 @@
 # Epic 30 — Wave 25 SDR Bulk Done Execution
 
 **Brief:** `docs/brief-epic-30-sdr-bulk-done-execution.md`  
-**Status:** In Progress  
+**Status:** Done  
 **Prioridade:** P0  
 **Estimativa:** 1 sprint curta (3 stories)  
 **Owner:** @pm (Morgan)
@@ -18,10 +18,10 @@ Acelerar a execução diária do SDR permitindo marcar lote de leads como conclu
 Status: `Done`
 
 2. **30.2 — Bulk execution UX guard rails** (`@dev`)  
-Status: `Ready`
+Status: `Done`
 
 3. **30.3 — QA Gate + PO Go/No-Go (bulk done)** (`@qa + @po`)  
-Status: `Draft`
+Status: `Done`
 
 ## Execution Order
 
@@ -31,5 +31,5 @@ Status: `Draft`
 
 - [x] Endpoint batch de ação SDR publicado e validado
 - [x] Ação "Marcar lote como feito" disponível na aba SDR
-- [ ] Guard rails finais de UX de execução em lote aplicados
-- [ ] Gate final QA/PO com decisão GO/HOLD documentada
+- [x] Guard rails finais de UX de execução em lote aplicados
+- [x] Gate final QA/PO com decisão GO/HOLD documentada

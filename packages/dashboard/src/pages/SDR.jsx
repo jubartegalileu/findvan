@@ -80,6 +80,7 @@ export default function SDR({ onNavigate, activePath }) {
   const [templateAuditEvents, setTemplateAuditEvents] = useState([]);
   const [templateAuditLoading, setTemplateAuditLoading] = useState(false);
   const [templateAuditError, setTemplateAuditError] = useState('');
+  const [permissionDeniedEvents, setPermissionDeniedEvents] = useState([]);
   const [templatePermission, setTemplatePermission] = useState({ allowed: false, reason: 'Carregando...' });
   const [templatePermissionLoading, setTemplatePermissionLoading] = useState(true);
 
@@ -201,6 +202,22 @@ export default function SDR({ onNavigate, activePath }) {
       setTemplatePermissionLoading(false);
     }
   }, [templateOwner, templateActor]);
+  const loadPermissionDeniedAudit = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      params.set('owner', templateOwner);
+      params.set('action', 'permission_denied');
+      params.set('limit', '5');
+      const response = await fetch(`${API_BASE}/api/sdr/templates/audit?${params.toString()}`);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || 'Falha ao carregar bloqueios recentes.');
+      }
+      setPermissionDeniedEvents(Array.isArray(payload?.events) ? payload.events : []);
+    } catch (_err) {
+      setPermissionDeniedEvents([]);
+    }
+  }, [templateOwner]);
 
   useEffect(() => {
     loadCustomTemplates();
@@ -209,6 +226,9 @@ export default function SDR({ onNavigate, activePath }) {
   useEffect(() => {
     loadTemplatePermission();
   }, [loadTemplatePermission]);
+  useEffect(() => {
+    loadPermissionDeniedAudit();
+  }, [loadPermissionDeniedAudit]);
 
   useEffect(() => {
     setSelectedTemplateId('');
@@ -1002,6 +1022,14 @@ export default function SDR({ onNavigate, activePath }) {
         <div className="fv-row-sub" style={{ marginBottom: 10 }}>
           Permissao de mutacao: {templatePermissionLoading ? 'carregando...' : templatePermission.allowed ? 'Permitido' : 'Bloqueado'}
         </div>
+        <div className="fv-row-sub" style={{ marginBottom: 10 }}>
+          Bloqueios recentes (owner): {permissionDeniedEvents.length}
+        </div>
+        {permissionDeniedEvents.length > 0 && (
+          <div className="fv-row-sub" style={{ marginBottom: 10 }}>
+            Ultimo bloqueio: {String(permissionDeniedEvents[0]?.payload?.reason || 'sem motivo')}
+          </div>
+        )}
         {!templatePermissionLoading && !templatePermission.allowed && (
           <div className="fv-row-sub" style={{ marginBottom: 10 }}>
             Motivo: {templatePermission.reason || 'Acesso negado.'}

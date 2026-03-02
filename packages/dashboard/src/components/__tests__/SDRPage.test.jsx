@@ -56,7 +56,17 @@ describe('SDR page', () => {
         }
         if (value.includes('/api/sdr/templates/audit')) {
           const parsedUrl = new URL(value, 'http://localhost');
+          const action = parsedUrl.searchParams.get('action') || '';
           const templateId = Number(parsedUrl.searchParams.get('template_id') || 0);
+          if (action === 'permission_denied') {
+            return {
+              ok: true,
+              json: async () => ({
+                events: [{ id: 99, template_id: 0, owner: parsedUrl.searchParams.get('owner') || 'all', action: 'permission_denied', actor: 'alice', payload: { reason: 'Acesso negado para mutação de templates' }, created_at: '2026-03-02T11:00:00Z' }],
+                count: 1,
+              }),
+            };
+          }
           return {
             ok: true,
             json: async () => ({
@@ -686,6 +696,17 @@ describe('SDR page', () => {
       );
       expect(saveCalls.length).toBeGreaterThan(0);
       expect(screen.getByText('Ator efetivo de templates: admin')).toBeDefined();
+    });
+  });
+
+  it('shows denial audit summary for current owner', async () => {
+    await act(async () => {
+      render(<SDR onNavigate={vi.fn()} activePath="/sdr" />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Bloqueios recentes (owner): 1')).toBeDefined();
+      expect(screen.getByText('Ultimo bloqueio: Acesso negado para mutação de templates')).toBeDefined();
     });
   });
 });
